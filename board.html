@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>周知掲示板</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        h1 {
+            color: #333;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        .admin-link {
+            margin-top: 15px;
+        }
+
+        .admin-link button {
+            background: #f5576c;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        .admin-link button:hover {
+            background: #e74c61;
+            transform: translateY(-2px);
+        }
+
+        /* 閲覧モード */
+        .controls {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .refresh-info {
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .posts-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .post {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            border-left: 6px solid;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .post:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+        }
+
+        .post.priority-high {
+            border-left-color: #e74c3c;
+            background: #fff5f5;
+        }
+
+        .post.priority-normal {
+            border-left-color: #3498db;
+        }
+
+        .post.priority-low {
+            border-left-color: #95a5a6;
+            background: #f8f9fa;
+        }
+
+        .post-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .post-title {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #2c3e50;
+            flex: 1;
+        }
+
+        .priority-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: bold;
+            color: white;
+        }
+
+        .priority-badge.high {
+            background: #e74c3c;
+        }
+
+        .priority-badge.normal {
+            background: #3498db;
+        }
+
+        .priority-badge.low {
+            background: #95a5a6;
+        }
+
+        .post-content {
+            color: #555;
+            line-height: 1.8;
+            margin-bottom: 15px;
+            white-space: pre-wrap;
+            font-size: 1.1em;
+        }
+
+        .post-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #888;
+            font-size: 0.9em;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+        }
+
+        .post-author {
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .no-posts {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            text-align: center;
+            color: #999;
+            font-size: 1.2em;
+        }
+
+        /* 管理モード */
+        #adminMode {
+            display: none;
+        }
+
+        .login-container {
+            max-width: 400px;
+            margin: 50px auto;
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .login-container h2 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: bold;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 1em;
+            font-family: inherit;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #f5576c;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        .btn {
+            background: #f5576c;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: bold;
+            transition: all 0.3s;
+            width: 100%;
+        }
+
+        .btn:hover {
+            background: #e74c61;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(245, 87, 108, 0.4);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .btn-success {
+            background: #28a745;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-small {
+            padding: 8px 16px;
+            font-size: 0.9em;
+            width: auto;
+            display: inline-block;
+        }
+
+        .message {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid;
+        }
+
+        .message.error {
+            background: #fee;
+            color: #c33;
+            border-left-color: #e74c3c;
+        }
+
+        .message.success {
+            background: #efe;
+            color: #3c3;
+            border-left-color: #28a745;
+        }
+
+        .admin-controls {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .admin-controls-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .panel {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        }
+
+        .panel h2 {
+            margin-bottom: 20px;
+            color: #333;
+            border-bottom: 3px solid #f5576c;
+            padding-bottom: 10px;
+        }
+
+        .post-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .post-item {
+            border: 2px solid #eee;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 6px solid;
+            transition: all 0.2s;
+        }
+
+        .post-item:hover {
+            border-color: #f5576c;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+        }
+
+        .post-item.priority-high {
+            border-left-color: #e74c3c;
+        }
+
+        .post-item.priority-normal {
+            border-left-color: #3498db;
+        }
+
+        .post-item.priority-low {
+            border-left-color: #95a5a6;
+        }
+
+        .post-item-title {
+            font-weight: bold;
+            font-size: 1.1em;
+            margin-bottom: 8px;
+            color: #333;
+        }
+
+        .post-item-meta {
+            font-size: 0.85em;
+            color: #888;
+            margin-bottom: 10px;
+        }
+
+        .post-item-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .instruction {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .instruction h3 {
+            color: #856404;
+            margin-bottom: 10px;
+        }
+
+        .instruction ol {
+            margin-left: 20px;
+            color: #856404;
+        }
+
+        .instruction li {
+            margin-bottom: 8px;
+        }
+
+        @media (max-width: 900px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+
+            .admin-controls-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 閲覧モード -->
+        <div id="viewMode">
+            <header>
+                <h1>📢 周知掲示板</h1>
+                <p class="subtitle">重要なお知らせをお届けします</p>
+                <div class="admin-link">
+                    <button onclick="showLoginDialog()">🔐 管理者ログイン</button>
+                </div>
+            </header>
+
+            <div class="controls">
+                <div class="refresh-info">このページは常に最新の情報を表示します</div>
+            </div>
+
+            <div id="postsContainer" class="posts-container">
+                <!-- 投稿はJavaScriptで表示 -->
+            </div>
+        </div>
+
+        <!-- ログインダイアログ -->
+        <div id="loginDialog" style="display: none;">
+            <div class="login-container">
+                <h2>🔐 管理者ログイン</h2>
+                <div id="loginMessage"></div>
+                <div class="form-group">
+                    <label for="password">パスワード</label>
+                    <input type="password" id="password" placeholder="パスワードを入力">
+                </div>
+                <button class="btn" onclick="login()">ログイン</button>
+                <button class="btn btn-secondary" style="margin-top: 10px;" onclick="cancelLogin()">キャンセル</button>
+                <p style="margin-top: 20px; color: #888; font-size: 0.9em;">
+                    デフォルトパスワード: <strong>admin123</strong>
+                </p>
+            </div>
+        </div>
+
+        <!-- 管理モード -->
+        <div id="adminMode">
+            <header>
+                <h1>🛠️ 管理画面</h1>
+                <p class="subtitle">周知掲示板の投稿を管理</p>
+            </header>
+
+            <div class="instruction">
+                <h3>📝 使い方</h3>
+                <ol>
+                    <li>左側のフォームで新しい投稿を作成、または既存の投稿を編集します</li>
+                    <li>右側のリストから編集・削除したい投稿を選択できます</li>
+                    <li><strong>重要:</strong> 「💾 更新版をダウンロード」ボタンで更新したHTMLファイルを保存します</li>
+                    <li>ダウンロードした<strong>board.html</strong>を元のファイルに上書き保存してください</li>
+                    <li>閲覧者がページを開くと、新しい内容が反映されます</li>
+                </ol>
+            </div>
+
+            <div class="admin-controls">
+                <div id="adminMessage"></div>
+                <div class="admin-controls-grid">
+                    <button class="btn btn-success btn-small" onclick="downloadHTML()">💾 更新版をダウンロード</button>
+                    <button class="btn btn-secondary btn-small" onclick="clearForm()">🆕 新規投稿</button>
+                    <button class="btn btn-secondary btn-small" onclick="logout()">🚪 ログアウト</button>
+                </div>
+            </div>
+
+            <div class="main-content">
+                <!-- 投稿フォーム -->
+                <div class="panel">
+                    <h2 id="formTitle">新規投稿</h2>
+                    <form id="postForm" onsubmit="savePost(event)">
+                        <input type="hidden" id="editId" value="">
+
+                        <div class="form-group">
+                            <label for="title">タイトル *</label>
+                            <input type="text" id="title" required placeholder="投稿のタイトル">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="content">内容 *</label>
+                            <textarea id="content" required placeholder="投稿の内容を入力してください"></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="author">投稿者名</label>
+                            <input type="text" id="author" value="管理者" placeholder="投稿者名">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="priority">優先度</label>
+                            <select id="priority">
+                                <option value="low">参考（グレー）</option>
+                                <option value="normal" selected>通常（ブルー）</option>
+                                <option value="high">重要（レッド）</option>
+                            </select>
+                        </div>
+
+                        <button type="submit" class="btn">💾 保存</button>
+                    </form>
+                </div>
+
+                <!-- 投稿一覧 -->
+                <div class="panel">
+                    <h2>投稿一覧</h2>
+                    <div id="adminPostsList" class="post-list">
+                        <!-- 投稿はJavaScriptで表示 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ===== データ領域（編集可能）=====
+        const ADMIN_PASSWORD = 'admin123';
+        let POSTS_DATA = [
+            {
+                "id": 1,
+                "title": "周知掲示板へようこそ",
+                "content": "この掲示板は管理者からの重要なお知らせを表示します。\n\n管理者の方は「管理者ログイン」ボタンからログインして、投稿の管理ができます。",
+                "author": "管理者",
+                "date": "2026-01-08T10:00:00",
+                "priority": "normal"
+            }
+        ];
+        // ===== データ領域ここまで =====
+
+        let isAdminMode = false;
+
+        // ページ読み込み時
+        window.addEventListener('load', function() {
+            renderViewMode();
+        });
+
+        // Enterキーでログイン
+        document.addEventListener('DOMContentLoaded', function() {
+            const passwordInput = document.getElementById('password');
+            if (passwordInput) {
+                passwordInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        login();
+                    }
+                });
+            }
+        });
+
+        // ===== 閲覧モード =====
+        function renderViewMode() {
+            const container = document.getElementById('postsContainer');
+
+            if (!POSTS_DATA || POSTS_DATA.length === 0) {
+                container.innerHTML = '<div class="no-posts">まだ投稿がありません</div>';
+                return;
+            }
+
+            const sortedPosts = [...POSTS_DATA].sort((a, b) => {
+                return new Date(b.date) - new Date(a.date);
+            });
+
+            container.innerHTML = sortedPosts.map(post => `
+                <div class="post priority-${post.priority || 'normal'}">
+                    <div class="post-header">
+                        <div class="post-title">${escapeHtml(post.title)}</div>
+                        <div class="priority-badge ${post.priority || 'normal'}">
+                            ${getPriorityLabel(post.priority || 'normal')}
+                        </div>
+                    </div>
+                    <div class="post-content">${escapeHtml(post.content)}</div>
+                    <div class="post-footer">
+                        <div class="post-author">投稿者: ${escapeHtml(post.author || '管理者')}</div>
+                        <div class="post-date">${formatDate(post.date)}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // ===== ログイン処理 =====
+        function showLoginDialog() {
+            document.getElementById('viewMode').style.display = 'none';
+            document.getElementById('loginDialog').style.display = 'block';
+            document.getElementById('password').focus();
+        }
+
+        function cancelLogin() {
+            document.getElementById('loginDialog').style.display = 'none';
+            document.getElementById('viewMode').style.display = 'block';
+            document.getElementById('password').value = '';
+            document.getElementById('loginMessage').innerHTML = '';
+        }
+
+        function login() {
+            const password = document.getElementById('password').value;
+            const messageContainer = document.getElementById('loginMessage');
+
+            if (password === ADMIN_PASSWORD) {
+                isAdminMode = true;
+                document.getElementById('loginDialog').style.display = 'none';
+                document.getElementById('viewMode').style.display = 'none';
+                document.getElementById('adminMode').style.display = 'block';
+                document.getElementById('password').value = '';
+                renderAdminMode();
+            } else {
+                messageContainer.innerHTML = '<div class="message error">パスワードが正しくありません</div>';
+            }
+        }
+
+        function logout() {
+            if (confirm('ログアウトしますか？保存していない変更は失われます。')) {
+                isAdminMode = false;
+                document.getElementById('adminMode').style.display = 'none';
+                document.getElementById('viewMode').style.display = 'block';
+                clearForm();
+                renderViewMode();
+            }
+        }
+
+        // ===== 管理モード =====
+        function renderAdminMode() {
+            const container = document.getElementById('adminPostsList');
+
+            if (!POSTS_DATA || POSTS_DATA.length === 0) {
+                container.innerHTML = '<p style="color: #999;">投稿がありません</p>';
+                return;
+            }
+
+            const sortedPosts = [...POSTS_DATA].sort((a, b) => {
+                return new Date(b.date) - new Date(a.date);
+            });
+
+            container.innerHTML = sortedPosts.map(post => `
+                <div class="post-item priority-${post.priority || 'normal'}">
+                    <div class="post-item-title">${escapeHtml(post.title)}</div>
+                    <div class="post-item-meta">
+                        ${formatDate(post.date)} | ${escapeHtml(post.author || '管理者')} | ${getPriorityLabel(post.priority)}
+                    </div>
+                    <div class="post-item-actions">
+                        <button class="btn btn-secondary btn-small" onclick="editPost(${post.id})">✏️ 編集</button>
+                        <button class="btn btn-danger btn-small" onclick="deletePost(${post.id})">🗑️ 削除</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function savePost(event) {
+            event.preventDefault();
+
+            const title = document.getElementById('title').value.trim();
+            const content = document.getElementById('content').value.trim();
+            const author = document.getElementById('author').value.trim() || '管理者';
+            const priority = document.getElementById('priority').value;
+            const editId = document.getElementById('editId').value;
+
+            if (!title || !content) {
+                showAdminMessage('タイトルと内容は必須です', 'error');
+                return;
+            }
+
+            if (editId) {
+                // 編集
+                const post = POSTS_DATA.find(p => p.id === parseInt(editId));
+                if (post) {
+                    post.title = title;
+                    post.content = content;
+                    post.author = author;
+                    post.priority = priority;
+                    post.date = new Date().toISOString();
+                }
+                showAdminMessage('投稿を更新しました', 'success');
+            } else {
+                // 新規作成
+                const newId = POSTS_DATA.length > 0
+                    ? Math.max(...POSTS_DATA.map(p => p.id)) + 1
+                    : 1;
+
+                POSTS_DATA.push({
+                    id: newId,
+                    title,
+                    content,
+                    author,
+                    priority,
+                    date: new Date().toISOString()
+                });
+                showAdminMessage('投稿を追加しました', 'success');
+            }
+
+            clearForm();
+            renderAdminMode();
+        }
+
+        function editPost(id) {
+            const post = POSTS_DATA.find(p => p.id === id);
+            if (!post) return;
+
+            document.getElementById('editId').value = post.id;
+            document.getElementById('title').value = post.title;
+            document.getElementById('content').value = post.content;
+            document.getElementById('author').value = post.author || '管理者';
+            document.getElementById('priority').value = post.priority || 'normal';
+            document.getElementById('formTitle').textContent = '投稿を編集';
+
+            document.getElementById('postForm').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function deletePost(id) {
+            if (!confirm('この投稿を削除しますか？')) return;
+
+            POSTS_DATA = POSTS_DATA.filter(p => p.id !== id);
+            renderAdminMode();
+            showAdminMessage('投稿を削除しました', 'success');
+        }
+
+        function clearForm() {
+            document.getElementById('postForm').reset();
+            document.getElementById('editId').value = '';
+            document.getElementById('author').value = '管理者';
+            document.getElementById('formTitle').textContent = '新規投稿';
+        }
+
+        // HTMLファイルのダウンロード
+        function downloadHTML() {
+            // 現在のHTMLを取得
+            const currentHTML = document.documentElement.outerHTML;
+
+            // データ部分を更新
+            const dataRegex = /let POSTS_DATA = \[[\s\S]*?\];/;
+            const newDataString = `let POSTS_DATA = ${JSON.stringify(POSTS_DATA, null, 12)};`;
+            const updatedHTML = currentHTML.replace(dataRegex, newDataString);
+
+            // ダウンロード
+            const blob = new Blob([updatedHTML], { type: 'text/html;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'board.html';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            showAdminMessage('board.htmlをダウンロードしました。元のファイルに上書き保存してください。', 'success');
+        }
+
+        function showAdminMessage(message, type = 'success') {
+            const container = document.getElementById('adminMessage');
+            const className = type === 'error' ? 'message error' : 'message success';
+            container.innerHTML = `<div class="${className}">${message}</div>`;
+
+            setTimeout(() => {
+                container.innerHTML = '';
+            }, 5000);
+        }
+
+        // ===== ユーティリティ関数 =====
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            return `${year}/${month}/${day} ${hours}:${minutes}`;
+        }
+
+        function getPriorityLabel(priority) {
+            const labels = {
+                'high': '重要',
+                'normal': '通常',
+                'low': '参考'
+            };
+            return labels[priority] || '通常';
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
