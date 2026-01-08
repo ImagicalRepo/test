@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理画面 - 周知掲示板</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        h1 {
+            color: #333;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        /* ログインフォーム */
+        .login-container {
+            max-width: 400px;
+            margin: 100px auto;
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .login-container h2 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: bold;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 1em;
+            font-family: inherit;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #f5576c;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        .btn {
+            background: #f5576c;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: bold;
+            transition: all 0.3s;
+            width: 100%;
+        }
+
+        .btn:hover {
+            background: #e74c61;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(245, 87, 108, 0.4);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .btn-success {
+            background: #28a745;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-small {
+            padding: 8px 16px;
+            font-size: 0.9em;
+            width: auto;
+            display: inline-block;
+        }
+
+        .error-message {
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #e74c3c;
+        }
+
+        .success-message {
+            background: #efe;
+            color: #3c3;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #28a745;
+        }
+
+        /* 管理画面 */
+        #adminPanel {
+            display: none;
+        }
+
+        .controls {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .controls-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .panel {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        }
+
+        .panel h2 {
+            margin-bottom: 20px;
+            color: #333;
+            border-bottom: 3px solid #f5576c;
+            padding-bottom: 10px;
+        }
+
+        .post-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .post-item {
+            border: 2px solid #eee;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 6px solid;
+            transition: all 0.2s;
+        }
+
+        .post-item:hover {
+            border-color: #f5576c;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+        }
+
+        .post-item.priority-high {
+            border-left-color: #e74c3c;
+        }
+
+        .post-item.priority-normal {
+            border-left-color: #3498db;
+        }
+
+        .post-item.priority-low {
+            border-left-color: #95a5a6;
+        }
+
+        .post-item-title {
+            font-weight: bold;
+            font-size: 1.1em;
+            margin-bottom: 8px;
+            color: #333;
+        }
+
+        .post-item-meta {
+            font-size: 0.85em;
+            color: #888;
+            margin-bottom: 10px;
+        }
+
+        .post-item-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .instruction {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .instruction h3 {
+            color: #856404;
+            margin-bottom: 10px;
+        }
+
+        .instruction ol {
+            margin-left: 20px;
+            color: #856404;
+        }
+
+        .instruction li {
+            margin-bottom: 8px;
+        }
+
+        @media (max-width: 900px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+
+            .controls-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- ログイン画面 -->
+        <div id="loginPanel" class="login-container">
+            <h2>🔐 管理者ログイン</h2>
+            <div id="loginError"></div>
+            <div class="form-group">
+                <label for="password">パスワード</label>
+                <input type="password" id="password" placeholder="パスワードを入力">
+            </div>
+            <button class="btn" onclick="login()">ログイン</button>
+            <p style="margin-top: 20px; color: #888; font-size: 0.9em;">
+                デフォルトパスワード: <strong>admin123</strong>
+            </p>
+        </div>
+
+        <!-- 管理画面 -->
+        <div id="adminPanel">
+            <header>
+                <h1>🛠️ 管理画面</h1>
+                <p class="subtitle">周知掲示板の投稿を管理</p>
+            </header>
+
+            <div class="instruction">
+                <h3>📝 使い方</h3>
+                <ol>
+                    <li>左側のフォームで新しい投稿を作成、または既存の投稿を編集します</li>
+                    <li>右側のリストから編集・削除したい投稿を選択できます</li>
+                    <li>「data.jsonをダウンロード」ボタンで更新したファイルを保存します</li>
+                    <li><strong>重要:</strong> ダウンロードしたdata.jsonを元のフォルダに上書き保存してください</li>
+                    <li>閲覧者の画面で「更新」ボタンを押すと、新しい内容が反映されます</li>
+                </ol>
+            </div>
+
+            <div class="controls">
+                <div id="message"></div>
+                <div class="controls-grid">
+                    <button class="btn btn-secondary btn-small" onclick="loadData()">🔄 データ再読込</button>
+                    <button class="btn btn-success btn-small" onclick="downloadData()">💾 data.jsonをダウンロード</button>
+                    <button class="btn btn-secondary btn-small" onclick="clearForm()">🆕 新規投稿</button>
+                    <button class="btn btn-secondary btn-small" onclick="logout()">🚪 ログアウト</button>
+                </div>
+            </div>
+
+            <div class="main-content">
+                <!-- 投稿フォーム -->
+                <div class="panel">
+                    <h2 id="formTitle">新規投稿</h2>
+                    <form id="postForm" onsubmit="savePost(event)">
+                        <input type="hidden" id="editId" value="">
+
+                        <div class="form-group">
+                            <label for="title">タイトル *</label>
+                            <input type="text" id="title" required placeholder="投稿のタイトル">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="content">内容 *</label>
+                            <textarea id="content" required placeholder="投稿の内容を入力してください"></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="author">投稿者名</label>
+                            <input type="text" id="author" value="管理者" placeholder="投稿者名">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="priority">優先度</label>
+                            <select id="priority">
+                                <option value="low">参考（グレー）</option>
+                                <option value="normal" selected>通常（ブルー）</option>
+                                <option value="high">重要（レッド）</option>
+                            </select>
+                        </div>
+
+                        <button type="submit" class="btn">💾 保存</button>
+                    </form>
+                </div>
+
+                <!-- 投稿一覧 -->
+                <div class="panel">
+                    <h2>投稿一覧</h2>
+                    <div id="postsList" class="post-list">
+                        <p style="color: #999;">読み込み中...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const ADMIN_PASSWORD = 'admin123'; // 実際の運用では変更してください
+        const DATA_FILE = 'data.json';
+        let currentData = { posts: [] };
+        let editingId = null;
+
+        // ログイン処理
+        function login() {
+            const password = document.getElementById('password').value;
+            const errorContainer = document.getElementById('loginError');
+
+            if (password === ADMIN_PASSWORD) {
+                document.getElementById('loginPanel').style.display = 'none';
+                document.getElementById('adminPanel').style.display = 'block';
+                loadData();
+            } else {
+                errorContainer.innerHTML = '<div class="error-message">パスワードが正しくありません</div>';
+            }
+        }
+
+        // Enterキーでログイン
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('password')?.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    login();
+                }
+            });
+        });
+
+        // ログアウト
+        function logout() {
+            if (confirm('ログアウトしますか？保存していない変更は失われます。')) {
+                document.getElementById('loginPanel').style.display = 'block';
+                document.getElementById('adminPanel').style.display = 'none';
+                document.getElementById('password').value = '';
+            }
+        }
+
+        // データ読み込み
+        async function loadData() {
+            try {
+                const timestamp = new Date().getTime();
+                const response = await fetch(`${DATA_FILE}?t=${timestamp}`);
+
+                if (response.ok) {
+                    currentData = await response.json();
+                } else {
+                    // ファイルが存在しない場合は空のデータで初期化
+                    currentData = { posts: [] };
+                }
+
+                renderPostsList();
+                showMessage('データを読み込みました', 'success');
+            } catch (error) {
+                console.error('Error loading data:', error);
+                currentData = { posts: [] };
+                renderPostsList();
+                showMessage('新規データで開始します', 'success');
+            }
+        }
+
+        // 投稿一覧の表示
+        function renderPostsList() {
+            const container = document.getElementById('postsList');
+
+            if (!currentData.posts || currentData.posts.length === 0) {
+                container.innerHTML = '<p style="color: #999;">投稿がありません</p>';
+                return;
+            }
+
+            const sortedPosts = [...currentData.posts].sort((a, b) => {
+                return new Date(b.date) - new Date(a.date);
+            });
+
+            container.innerHTML = sortedPosts.map(post => `
+                <div class="post-item priority-${post.priority || 'normal'}">
+                    <div class="post-item-title">${escapeHtml(post.title)}</div>
+                    <div class="post-item-meta">
+                        ${formatDate(post.date)} | ${escapeHtml(post.author || '管理者')} | ${getPriorityLabel(post.priority)}
+                    </div>
+                    <div class="post-item-actions">
+                        <button class="btn btn-secondary btn-small" onclick="editPost(${post.id})">✏️ 編集</button>
+                        <button class="btn btn-danger btn-small" onclick="deletePost(${post.id})">🗑️ 削除</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 投稿の保存
+        function savePost(event) {
+            event.preventDefault();
+
+            const title = document.getElementById('title').value.trim();
+            const content = document.getElementById('content').value.trim();
+            const author = document.getElementById('author').value.trim() || '管理者';
+            const priority = document.getElementById('priority').value;
+            const editId = document.getElementById('editId').value;
+
+            if (!title || !content) {
+                showMessage('タイトルと内容は必須です', 'error');
+                return;
+            }
+
+            if (editId) {
+                // 編集
+                const post = currentData.posts.find(p => p.id === parseInt(editId));
+                if (post) {
+                    post.title = title;
+                    post.content = content;
+                    post.author = author;
+                    post.priority = priority;
+                    post.date = new Date().toISOString();
+                }
+                showMessage('投稿を更新しました', 'success');
+            } else {
+                // 新規作成
+                const newId = currentData.posts.length > 0
+                    ? Math.max(...currentData.posts.map(p => p.id)) + 1
+                    : 1;
+
+                currentData.posts.push({
+                    id: newId,
+                    title,
+                    content,
+                    author,
+                    priority,
+                    date: new Date().toISOString()
+                });
+                showMessage('投稿を追加しました', 'success');
+            }
+
+            clearForm();
+            renderPostsList();
+        }
+
+        // 投稿の編集
+        function editPost(id) {
+            const post = currentData.posts.find(p => p.id === id);
+            if (!post) return;
+
+            document.getElementById('editId').value = post.id;
+            document.getElementById('title').value = post.title;
+            document.getElementById('content').value = post.content;
+            document.getElementById('author').value = post.author || '管理者';
+            document.getElementById('priority').value = post.priority || 'normal';
+            document.getElementById('formTitle').textContent = '投稿を編集';
+
+            // フォームまでスクロール
+            document.getElementById('postForm').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // 投稿の削除
+        function deletePost(id) {
+            if (!confirm('この投稿を削除しますか？')) return;
+
+            currentData.posts = currentData.posts.filter(p => p.id !== id);
+            renderPostsList();
+            showMessage('投稿を削除しました', 'success');
+        }
+
+        // フォームのクリア
+        function clearForm() {
+            document.getElementById('postForm').reset();
+            document.getElementById('editId').value = '';
+            document.getElementById('author').value = '管理者';
+            document.getElementById('formTitle').textContent = '新規投稿';
+        }
+
+        // データのダウンロード
+        function downloadData() {
+            const dataStr = JSON.stringify(currentData, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'data.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            showMessage('data.jsonをダウンロードしました。元のフォルダに上書き保存してください。', 'success');
+        }
+
+        // メッセージ表示
+        function showMessage(message, type = 'success') {
+            const container = document.getElementById('message');
+            const className = type === 'error' ? 'error-message' : 'success-message';
+            container.innerHTML = `<div class="${className}">${message}</div>`;
+
+            setTimeout(() => {
+                container.innerHTML = '';
+            }, 5000);
+        }
+
+        // ユーティリティ関数
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            return `${year}/${month}/${day} ${hours}:${minutes}`;
+        }
+
+        function getPriorityLabel(priority) {
+            const labels = {
+                'high': '重要',
+                'normal': '通常',
+                'low': '参考'
+            };
+            return labels[priority] || '通常';
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
