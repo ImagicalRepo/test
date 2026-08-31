@@ -180,10 +180,17 @@
 GAS の API に依存しない純粋関数として切り出してあり、Node で検証できます。
 
 ```bash
-node tests/run_tests.js
+npm test          # コアロジックの検証（49件）
 ```
 
 2026年の実際の祝日を使って、ゴールデンウィーク・年末年始・9月の3連休をまたぐ計算を検証しています。
+
+画面の見た目は、Apps Script にデプロイしなくてもモックデータで確認できます。
+
+```bash
+npm run preview        # tests/preview/out/index.html を書き出す（ブラウザで開く）
+npm run preview:shot   # 各ビュー・各テーマを撮影し、JSエラーの有無も報告する（要 playwright）
+```
 
 | ファイル | 役割 |
 |---|---|
@@ -204,6 +211,7 @@ node tests/run_tests.js
 | `gantt.html` | スケジュール画面（ガント／業務別／月間・テーマ切替） |
 | `editor.html` | 工程テンプレート編集画面 |
 | `json.html` | テンプレートの書き出し／読み込み |
+| `tests/preview/` | 画面をモックデータで描画・撮影する確認用ハーネス |
 
 ## 注意
 

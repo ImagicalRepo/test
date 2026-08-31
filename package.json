@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "description": "基準日から逆算・順算する多段スケジュールをスプレッドシート＋ガント＋Chat通知で管理するGoogle Apps Scriptツール",
   "scripts": {
-    "test": "node tests/run_tests.js"
+    "test": "node tests/run_tests.js",
+    "preview": "node tests/preview/preview.js",
+    "preview:shot": "node tests/preview/preview.js --shot"
   },
   "license": "MIT",
   "private": true

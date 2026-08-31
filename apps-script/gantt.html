@@ -147,7 +147,7 @@
   .chip.sel { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 
   /* ============ ガント ============ */
-  .scroll { flex: 1; overflow: auto; position: relative; }
+  .scroll { flex: 1; overflow: auto; position: relative; background: var(--surface); }
   .grid { position: relative; }
   .bg-layer { position: absolute; top: 0; bottom: 0; pointer-events: none; }
   .bg-cell { position: absolute; top: 0; bottom: 0; background: var(--surface-3); }
@@ -181,6 +181,8 @@
   }
   .lane:hover .lane-label { background: var(--surface-2); }
   .lane-title { font-weight: 600; font-size: 12px; display: flex; align-items: center; gap: 6px; line-height: 1.3; }
+  .lane-title.repeat { opacity: .42; font-weight: 500; }
+  .lane-sub .period { font-weight: 700; color: var(--text); }
   .lane-sub { font-size: 10.5px; color: var(--muted); display: flex; align-items: center; gap: 9px; }
   .lane-sub a { color: var(--accent); text-decoration: none; cursor: pointer; }
   .lane-sub a:hover { text-decoration: underline; }
@@ -218,7 +220,7 @@
   .kase-anchor { font-size: 11.5px; color: var(--muted); }
   .kase-anchor a { color: var(--accent); text-decoration: none; cursor: pointer; }
   .kase-anchor a:hover { text-decoration: underline; }
-  .progress { flex: 1; min-width: 120px; height: 6px; background: var(--surface-3); border-radius: 999px; overflow: hidden; }
+  .progress { flex: 1; min-width: 120px; max-width: 320px; height: 6px; background: var(--surface-3); border-radius: 999px; overflow: hidden; }
   .progress i { display: block; height: 100%; border-radius: 999px; transition: width .6s var(--ease); }
   .kase-count { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
@@ -252,7 +254,8 @@
   .pill.done { background: var(--surface-3); }
   .pill.overdue { background: var(--danger-soft); color: var(--danger); border-color: transparent; font-weight: 700; }
   .pill.today { background: var(--warn-soft); color: var(--warn); border-color: transparent; font-weight: 700; }
-  .row-item.done .row-name { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1px; }
+  .row-item.done .row-name { color: var(--muted); }
+  .row-item.done .row-label { text-decoration: line-through; text-decoration-thickness: 1px; }
   .row-item.today { background: var(--warn-soft); }
 
   /* ============ 月間カレンダー ============ */
@@ -260,6 +263,7 @@
     display: flex; align-items: center; gap: 10px; padding: 9px 14px;
     border-bottom: 1px solid var(--border); background: var(--surface);
   }
+  .chip { white-space: nowrap; }
   .cal-title { font-size: 15px; font-weight: 700; min-width: 132px; }
   .cal-wrap { flex: 1; overflow: auto; padding: 10px 14px 20px; display: flex; flex-direction: column; }
   .cal-head { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 6px; }
@@ -282,9 +286,9 @@
   .ev {
     display: flex; align-items: center; gap: 5px; font-size: 10.5px; line-height: 1.35;
     padding: 3px 6px; border-radius: 5px; cursor: pointer;
-    animation: popIn .26s var(--ease) backwards;
-    overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    animation: popIn .26s var(--ease) backwards; overflow: hidden;
   }
+  .ev span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .ev:hover { filter: brightness(.96); transform: translateX(2px); }
   .ev i { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 6px; }
   .ev.done { opacity: .5; text-decoration: line-through; }
@@ -789,16 +793,17 @@ function drawGantt(grid) {
     return;
   }
   shown.forEach(function (lane, li) {
-    grid.appendChild(renderLane(lane, trackW, li));
+    var repeat = li > 0 && shown[li - 1].workId === lane.workId;
+    grid.appendChild(renderLane(lane, trackW, li, repeat));
   });
 }
 
-function renderLane(lane, trackW, laneIndex) {
+function renderLane(lane, trackW, laneIndex, repeat) {
   var color = hues(lane.color);
   var row = el('div', 'lane');
 
   var label = el('div', 'lane-label');
-  var title = el('div', 'lane-title');
+  var title = el('div', 'lane-title' + (repeat ? ' repeat' : ''));
   var sw = el('span', 'swatch');
   sw.style.background = color.bar;
   title.appendChild(sw);
@@ -806,7 +811,7 @@ function renderLane(lane, trackW, laneIndex) {
   label.appendChild(title);
 
   var sub = el('div', 'lane-sub');
-  sub.appendChild(el('span', '', lane.period));
+  sub.appendChild(el('span', 'period', lane.period));
   if (lane.anchorKey) {
     var a = el('a', '', lane.anchorName + ' ' + fmtShort(lane.anchorKey));
     a.title = '基準日を変更する';
@@ -947,7 +952,7 @@ function renderStep(lane, it, ii, color) {
   row.appendChild(el('div', 'row-date', fmtShort(it.dueKey)));
 
   var name = el('div', 'row-name');
-  name.appendChild(document.createTextNode(it.name));
+  name.appendChild(el('span', 'row-label', it.name));
   if (it.owner) {
     var ow = el('span', 'row-owner', '　' + it.owner);
     name.appendChild(ow);
@@ -987,7 +992,9 @@ function renderMonth(root) {
   btnNow.onclick = function () { calMonth = monthOf(DATA.today); expandedCells = {}; renderView(); };
   bar.appendChild(btnNow);
 
-  bar.appendChild(el('span', 'spacer'));
+  wrap.appendChild(bar);
+
+  var legend = el('div', 'legend');
   DATA.works.filter(function (w) { return w.enabled; }).forEach(function (w) {
     var chip = el('span', 'chip' + (hidden[w.id] ? ' off' : ''));
     var dot = el('span', 'dot');
@@ -995,9 +1002,9 @@ function renderMonth(root) {
     chip.appendChild(dot);
     chip.appendChild(document.createTextNode(w.name));
     chip.onclick = function () { hidden[w.id] = !hidden[w.id]; renderView(); };
-    bar.appendChild(chip);
+    legend.appendChild(chip);
   });
-  wrap.appendChild(bar);
+  wrap.appendChild(legend);
 
   // 日付ごとに工程を集める
   var byDate = {};
@@ -1067,7 +1074,7 @@ function renderCell(key, byDate, i) {
     var dot = el('i');
     dot.style.background = color.bar;
     ev.appendChild(dot);
-    ev.appendChild(document.createTextNode(ctx.item.name));
+    ev.appendChild(el('span', '', ctx.item.name));
     ev.title = ctx.lane.workName + ' ' + ctx.lane.period + '\n' + ctx.item.name + '\n' + ctx.item.status;
     ev.onclick = function (e) { e.stopPropagation(); openDetail(e, ctx); };
     cell.appendChild(ev);
