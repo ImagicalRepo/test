@@ -5,7 +5,7 @@
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('📅 業務スケジュール')
-    .addItem('ガント画面を開く', 'showGantt')
+    .addItem('スケジュール画面を開く', 'showGantt')
     .addSeparator()
     .addItem('工程テンプレートを編集', 'showTemplateEditor')
     .addItem('工程表を再生成', 'menuGenerate')

@@ -9,7 +9,6 @@ function getEditorData() {
   var works = readTable_(SHEET.WORK).rows.filter(function (w) {
     return String(w['業務ID']).trim();
   }).map(function (w, i) {
-    var pal = paletteFor_(w['色'], i);
     return {
       id: String(w['業務ID']).trim(),
       name: w['業務名'],
@@ -17,8 +16,7 @@ function getEditorData() {
       rule: w['基準日ルール'],
       adjust: w['基準日休日補正'],
       enabled: !/^(off|false|いいえ|無効|0)$/i.test(String(w['有効']).trim()),
-      color: w['色'] || COLOR_ORDER[i % COLOR_ORDER.length],
-      bar: pal.bar
+      color: w['色'] || COLOR_ORDER[i % COLOR_ORDER.length]
     };
   });
 

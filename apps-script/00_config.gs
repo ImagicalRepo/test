@@ -88,22 +88,8 @@ var STATUS_LIST = [STATUS.NOT_STARTED, STATUS.IN_PROGRESS, STATUS.DONE, STATUS.S
 
 var WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 
-/** 業務マスタの「色」に使える名前と表示色 */
-var COLOR_PALETTE = {
-  '青':   { bar: '#1a73e8', soft: '#d2e3fc' },
-  '緑':   { bar: '#188038', soft: '#ceead6' },
-  '橙':   { bar: '#e8710a', soft: '#feefc3' },
-  '紫':   { bar: '#8430ce', soft: '#e9d2fd' },
-  '赤':   { bar: '#d93025', soft: '#fad2cf' },
-  '水色': { bar: '#12b5cb', soft: '#cbf0f8' },
-  '桃':   { bar: '#d01884', soft: '#fdd7ef' },
-  '灰':   { bar: '#5f6368', soft: '#e8eaed' }
-};
-
+/**
+ * 業務マスタの「色」に使える名前。
+ * 実際の色は画面側がカラーテーマに合わせて決めるため、ここでは名前だけを持つ。
+ */
 var COLOR_ORDER = ['青', '緑', '橙', '紫', '赤', '水色', '桃', '灰'];
-
-function paletteFor_(name, fallbackIndex) {
-  var key = String(name || '').trim();
-  if (COLOR_PALETTE[key]) return COLOR_PALETTE[key];
-  return COLOR_PALETTE[COLOR_ORDER[(fallbackIndex || 0) % COLOR_ORDER.length]];
-}

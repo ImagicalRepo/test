@@ -29,15 +29,14 @@ function getGanttData() {
   readTable_(SHEET.WORK).rows.forEach(function (w, i) {
     var id = String(w['業務ID']).trim();
     if (!id) return;
-    var pal = paletteFor_(w['色'], i);
     var item = {
       id: id,
       name: w['業務名'],
       enabled: !/^(off|false|いいえ|無効|0)$/i.test(String(w['有効']).trim()),
       anchorName: w['基準日名称'] || '基準日',
       rule: w['基準日ルール'],
-      bar: pal.bar,
-      soft: pal.soft
+      // 実際の色は画面側でテーマに合わせて解決する。ここでは色の名前だけ渡す
+      color: String(w['色'] || '').trim() || COLOR_ORDER[i % COLOR_ORDER.length]
     };
     works.push(item);
     workById[id] = item;
@@ -72,8 +71,7 @@ function getGanttData() {
         period: period,
         anchorKey: anchorByKey[laneKey] || '',
         anchorName: work.anchorName,
-        bar: work.bar,
-        soft: work.soft,
+        color: work.color,
         from: dueKey,
         to: dueKey,
         items: []
@@ -120,7 +118,7 @@ function getGanttData() {
     to: toKey,
     works: works,
     lanes: lanes,
-    holidays: listHolidayKeys_(fromKey, toKey),
+    holidays: listHolidays_(fromKey, toKey),
     weekendDays: Object.keys(cal.weekend).map(Number),
     digest: {
       overdue: digest.overdue,
@@ -132,13 +130,14 @@ function getGanttData() {
   };
 }
 
-function listHolidayKeys_(fromKey, toKey) {
+/** 表示範囲の休日を [{key, name}] で返す（振替出勤日は休日ではないので除く） */
+function listHolidays_(fromKey, toKey) {
   var out = [];
   readTable_(SHEET.HOLIDAY).rows.forEach(function (r) {
     var k = toDateKey(r['日付']);
     if (!k || k < fromKey || k > toKey) return;
     if (String(r['種別'] || '').indexOf('出勤') >= 0) return;
-    out.push(k);
+    out.push({ key: k, name: String(r['名称'] || '') });
   });
   return out;
 }
