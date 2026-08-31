@@ -1,0 +1,10 @@
+{
+  "name": "gyomu-schedule",
+  "version": "1.0.0",
+  "description": "基準日から逆算・順算する多段スケジュールをスプレッドシート＋ガント＋Chat通知で管理するGoogle Apps Scriptツール",
+  "scripts": {
+    "test": "node tests/run_tests.js"
+  },
+  "license": "MIT",
+  "private": true
+}

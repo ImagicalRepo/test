@@ -1,0 +1,411 @@
+<!-- 工程テンプレート編集：相対日数で組み立て、実日付を即時プレビューする -->
+<style>
+  :root { --border:#e0e3e7; --text:#202124; --muted:#5f6368; --soft:#f8f9fa; --danger:#d93025; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; }
+  body {
+    font-family:"Noto Sans JP","Yu Gothic","Hiragino Sans",system-ui,sans-serif;
+    font-size:13px; color:var(--text);
+  }
+  #app { display:flex; flex-direction:column; height:100vh; }
+  header {
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    padding:10px 14px; border-bottom:1px solid var(--border); flex:0 0 auto;
+  }
+  h1 { font-size:14px; margin:0; font-weight:700; }
+  .spacer { flex:1; }
+  select, input, button, textarea {
+    font-family:inherit; font-size:12px; color:var(--text);
+    border:1px solid var(--border); border-radius:6px; padding:5px 8px; background:#fff;
+  }
+  input[type=number] { width:58px; }
+  button { cursor:pointer; }
+  button:hover { background:var(--soft); }
+  button.primary { background:#1a73e8; border-color:#1a73e8; color:#fff; }
+  button.primary:hover { background:#1765cc; }
+  button.icon { padding:3px 7px; line-height:1; }
+  button.danger { color:var(--danger); }
+
+  .body { flex:1; display:flex; min-height:0; }
+  .left { flex:1; overflow:auto; padding:12px 14px; min-width:0; }
+  .right {
+    width:320px; flex:0 0 320px; border-left:1px solid var(--border);
+    overflow:auto; padding:12px; background:var(--soft);
+  }
+
+  .work-box {
+    display:flex; flex-wrap:wrap; gap:8px; align-items:center;
+    background:var(--soft); border:1px solid var(--border); border-radius:8px;
+    padding:10px 12px; margin-bottom:12px;
+  }
+  .work-box label { font-size:11px; color:var(--muted); display:flex; flex-direction:column; gap:3px; }
+
+  table { width:100%; border-collapse:collapse; }
+  th {
+    font-size:10.5px; color:var(--muted); font-weight:700; text-align:left;
+    padding:4px 5px; border-bottom:1px solid var(--border); white-space:nowrap;
+    position:sticky; top:0; background:#fff; z-index:2;
+  }
+  td { padding:3px 5px; border-bottom:1px solid #f1f3f4; vertical-align:middle; }
+  td input[type=text] { width:100%; }
+  tr.bad td { background:#fce8e6; }
+  .grab { color:#bdc1c6; cursor:default; font-size:11px; }
+
+  .hint { font-size:11px; color:var(--muted); line-height:1.6; margin:6px 0 12px; }
+  .hint code { background:var(--soft); padding:1px 4px; border-radius:3px; }
+
+  .pv-title { font-size:11px; font-weight:700; letter-spacing:.05em; color:var(--muted); margin-bottom:8px; }
+  .pv-item {
+    background:#fff; border:1px solid var(--border); border-radius:6px;
+    padding:6px 9px; margin-bottom:5px;
+  }
+  .pv-date { font-weight:700; font-size:12px; }
+  .pv-name { font-size:11.5px; color:var(--muted); margin-top:2px; line-height:1.4; }
+  .pv-warn { color:var(--danger); font-size:11px; }
+  .pv-error {
+    background:#fce8e6; color:var(--danger); border-radius:6px; padding:9px;
+    font-size:11.5px; line-height:1.5; white-space:pre-wrap;
+  }
+  .anchor-line { display:flex; align-items:center; gap:6px; margin-bottom:10px; }
+  .anchor-line input { flex:1; }
+  #msg { font-size:12px; }
+  #msg.err { color:var(--danger); }
+</style>
+
+<div id="app">
+  <header>
+    <h1>工程テンプレートの編集</h1>
+    <select id="workSel"></select>
+    <button id="btnAddWork">＋ 業務を追加</button>
+    <span class="spacer"></span>
+    <span id="msg"></span>
+    <button id="btnSave" class="primary">保存して工程表を作り直す</button>
+  </header>
+
+  <div class="body">
+    <div class="left">
+      <div class="work-box" id="workBox"></div>
+
+      <div class="hint">
+        各工程は「どこを基準に、何日ずらすか」で定義します。基準には <b>基準日</b> のほか
+        <b>前の工程</b> も選べるので、「決裁完了は起案から3営業日後」のような連鎖もそのまま書けます。
+        基準日が動けば、ぶら下がる工程はすべて自動で動きます。
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width:26px"></th>
+            <th style="width:36%">工程名</th>
+            <th style="width:22%">基準</th>
+            <th>方向</th>
+            <th>日数</th>
+            <th>単位</th>
+            <th>休日補正</th>
+            <th>担当</th>
+            <th title="この営業日数前から通知する">通知</th>
+            <th style="width:60px"></th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div style="margin-top:10px">
+        <button id="btnAddRow">＋ 工程を追加</button>
+      </div>
+    </div>
+
+    <div class="right">
+      <div class="pv-title">実日付プレビュー</div>
+      <div class="anchor-line">
+        <input type="text" id="anchorInput" placeholder="YYYY-MM-DD">
+        <button id="btnPreview" class="icon">再計算</button>
+      </div>
+      <div id="preview"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  var DATA = null;
+  var current = null;   // 選択中の業務ID
+  var rows = [];        // 編集中の工程
+  var timer = null;
+
+  var UNITS = ['営業日', '暦日'];
+  var DIRS = ['前', '後'];
+  var ADJUSTS = ['なし', '前営業日', '翌営業日'];
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+  function opt(value, label, selected) {
+    var o = document.createElement('option');
+    o.value = value;
+    o.textContent = label === undefined ? value : label;
+    if (selected) o.selected = true;
+    return o;
+  }
+  function select(values, value, onchange, width) {
+    var s = document.createElement('select');
+    values.forEach(function (v) {
+      s.appendChild(opt(typeof v === 'object' ? v.value : v, typeof v === 'object' ? v.label : v,
+        (typeof v === 'object' ? v.value : v) === value));
+    });
+    if (width) s.style.width = width;
+    s.onchange = function () { onchange(s.value); };
+    return s;
+  }
+
+  function load() {
+    google.script.run.withSuccessHandler(function (d) {
+      DATA = d;
+      var sel = document.getElementById('workSel');
+      sel.innerHTML = '';
+      d.works.forEach(function (w) { sel.appendChild(opt(w.id, w.name + (w.enabled ? '' : '（無効）'))); });
+      sel.onchange = function () { selectWork(sel.value); };
+      if (d.works.length) selectWork(d.works[0].id);
+    }).withFailureHandler(function (e) { setMsg(e.message, true); }).getEditorData();
+  }
+
+  function work() {
+    var found = null;
+    DATA.works.forEach(function (w) { if (w.id === current) found = w; });
+    return found;
+  }
+
+  function selectWork(id) {
+    current = id;
+    document.getElementById('workSel').value = id;
+    rows = (DATA.templates[id] || []).map(function (r) { return JSON.parse(JSON.stringify(r)); });
+    var next = DATA.nextAnchors[id];
+    document.getElementById('anchorInput').value = next ? next.dateKey : DATA.today;
+    renderWorkBox();
+    renderRows();
+    preview();
+  }
+
+  function renderWorkBox() {
+    var w = work();
+    var box = document.getElementById('workBox');
+    box.innerHTML = '';
+    if (!w) return;
+
+    function field(labelText, node) {
+      var l = el('label', '', '');
+      l.textContent = '';
+      var span = el('span', '', labelText);
+      l.appendChild(span);
+      l.appendChild(node);
+      box.appendChild(l);
+    }
+
+    var name = el('input');
+    name.type = 'text'; name.value = w.name; name.style.width = '220px';
+    name.onchange = function () { w.name = name.value; saveWorkMeta(); };
+    field('業務名', name);
+
+    var anchorName = el('input');
+    anchorName.type = 'text'; anchorName.value = w.anchorName; anchorName.style.width = '110px';
+    anchorName.onchange = function () { w.anchorName = anchorName.value; renderRows(); saveWorkMeta(); };
+    field('基準日の呼び方', anchorName);
+
+    var rule = el('input');
+    rule.type = 'text'; rule.value = w.rule || ''; rule.style.width = '170px';
+    rule.placeholder = '毎月第2水';
+    rule.title = '例）毎月第2水 / 毎月15日 / 毎月末日 / 2ヶ月毎第2水 起点2026-04 / 毎年9月1日 / 手動';
+    rule.onchange = function () { w.rule = rule.value; saveWorkMeta(); };
+    field('基準日ルール', rule);
+
+    field('基準日の休日補正', select(ADJUSTS, w.adjust || '前営業日', function (v) { w.adjust = v; saveWorkMeta(); }));
+    field('色', select(DATA.colors, w.color, function (v) { w.color = v; saveWorkMeta(); }));
+    field('有効', select([{value:'ON',label:'ON'},{value:'OFF',label:'OFF'}], w.enabled ? 'ON' : 'OFF',
+      function (v) { w.enabled = (v === 'ON'); saveWorkMeta(); }));
+  }
+
+  function saveWorkMeta() {
+    var w = work();
+    setMsg('業務設定を保存中…');
+    google.script.run
+      .withSuccessHandler(function () { setMsg('業務設定を保存しました'); })
+      .withFailureHandler(function (e) { setMsg(e.message, true); })
+      .saveWork({
+        id: w.id, name: w.name, enabled: w.enabled, anchorName: w.anchorName,
+        rule: w.rule, adjust: w.adjust, color: w.color
+      });
+  }
+
+  function baseOptions(index) {
+    var w = work();
+    var list = [{ value: '', label: w.anchorName + '（基準日）' }];
+    rows.forEach(function (r, i) {
+      if (i === index) return;
+      if (!r.name) return;
+      list.push({ value: r.name, label: r.name });
+    });
+    return list;
+  }
+
+  function renderRows() {
+    var tb = document.getElementById('rows');
+    tb.innerHTML = '';
+    rows.forEach(function (r, i) {
+      var tr = document.createElement('tr');
+
+      tr.appendChild(cell(el('span', 'grab', String(i + 1))));
+
+      var name = el('input'); name.type = 'text'; name.value = r.name || '';
+      name.onchange = function () { r.name = name.value; renderRows(); schedulePreview(); };
+      tr.appendChild(cell(name));
+
+      var base = r.base || '';
+      // 基準日名称そのものが入っている場合は「基準日」扱いに寄せる
+      if (base && base === work().anchorName) base = '';
+      tr.appendChild(cell(select(baseOptions(i), base, function (v) { r.base = v; schedulePreview(); }, '100%')));
+
+      tr.appendChild(cell(select(DIRS, r.direction || '前', function (v) { r.direction = v; schedulePreview(); })));
+
+      var days = el('input'); days.type = 'number'; days.value = r.days === undefined ? 0 : r.days; days.min = 0;
+      days.onchange = function () { r.days = Number(days.value); schedulePreview(); };
+      tr.appendChild(cell(days));
+
+      tr.appendChild(cell(select(UNITS, r.unit || '営業日', function (v) { r.unit = v; schedulePreview(); })));
+      tr.appendChild(cell(select(ADJUSTS, r.adjust || '前営業日', function (v) { r.adjust = v; schedulePreview(); })));
+
+      var owner = el('input'); owner.type = 'text'; owner.value = r.owner || ''; owner.style.width = '70px';
+      owner.onchange = function () { r.owner = owner.value; };
+      tr.appendChild(cell(owner));
+
+      var rem = el('input'); rem.type = 'number'; rem.min = 0; rem.style.width = '46px';
+      rem.value = (r.remindDays === '' || r.remindDays === null || r.remindDays === undefined) ? '' : r.remindDays;
+      rem.placeholder = DATA.defaultRemind;
+      rem.onchange = function () { r.remindDays = rem.value === '' ? '' : Number(rem.value); };
+      tr.appendChild(cell(rem));
+
+      var ops = el('div');
+      ops.appendChild(iconBtn('↑', function () { move(i, -1); }));
+      ops.appendChild(iconBtn('↓', function () { move(i, 1); }));
+      var del = iconBtn('✕', function () {
+        if (!confirm('「' + (r.name || '無題') + '」を削除しますか？')) return;
+        rows.splice(i, 1);
+        renumber();
+        renderRows();
+        schedulePreview();
+      });
+      del.className = 'icon danger';
+      ops.appendChild(del);
+      tr.appendChild(cell(ops));
+
+      tr.dataset.index = i;
+      tb.appendChild(tr);
+    });
+  }
+
+  function cell(node) {
+    var td = document.createElement('td');
+    td.appendChild(node);
+    return td;
+  }
+  function iconBtn(label, fn) {
+    var b = el('button', 'icon', label);
+    b.onclick = fn;
+    return b;
+  }
+  function move(i, d) {
+    var j = i + d;
+    if (j < 0 || j >= rows.length) return;
+    var tmp = rows[i]; rows[i] = rows[j]; rows[j] = tmp;
+    renumber();
+    renderRows();
+    schedulePreview();
+  }
+  function renumber() {
+    rows.forEach(function (r, i) { r.seq = (i + 1) * 10; });
+  }
+
+  document.getElementById('btnAddRow').onclick = function () {
+    rows.push({ seq: (rows.length + 1) * 10, name: '', base: '', direction: '前', days: 1, unit: '営業日', adjust: '前営業日', owner: '', remindDays: '', note: '' });
+    renderRows();
+  };
+
+  document.getElementById('btnAddWork').onclick = function () {
+    var id = prompt('新しい業務のID（半角英数字）を入力してください。\n例）JIRITSU', '');
+    if (!id) return;
+    var name = prompt('業務名を入力してください。', id);
+    if (!name) return;
+    google.script.run.withSuccessHandler(function () {
+      setMsg('業務を追加しました');
+      load();
+    }).withFailureHandler(function (e) { setMsg(e.message, true); })
+      .saveWork({ id: id.trim(), name: name, enabled: true, anchorName: '基準日', rule: '毎月第2水', adjust: '前営業日', color: '紫' });
+  };
+
+  document.getElementById('btnPreview').onclick = preview;
+  function schedulePreview() {
+    clearTimeout(timer);
+    timer = setTimeout(preview, 350);
+  }
+
+  function preview() {
+    var anchor = document.getElementById('anchorInput').value.trim();
+    var box = document.getElementById('preview');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(anchor)) {
+      box.innerHTML = '';
+      box.appendChild(el('div', 'pv-error', '基準日を YYYY-MM-DD で入力してください。'));
+      return;
+    }
+    var payload = rows.filter(function (r) { return r.name; });
+    if (!payload.length) { box.innerHTML = ''; return; }
+
+    google.script.run.withSuccessHandler(function (res) {
+      box.innerHTML = '';
+      if (!res.ok) {
+        box.appendChild(el('div', 'pv-error', res.message));
+        return;
+      }
+      var sorted = res.items.slice().sort(function (a, b) {
+        return a.dateKey < b.dateKey ? -1 : a.dateKey > b.dateKey ? 1 : 0;
+      });
+      sorted.forEach(function (it) {
+        var d = el('div', 'pv-item');
+        var head = el('div', 'pv-date', it.dateKey.slice(5).replace('-', '/') + '（' + it.weekday + '）');
+        if (!it.isBusinessDay) {
+          var w = el('span', 'pv-warn', '　※休日');
+          head.appendChild(w);
+        }
+        d.appendChild(head);
+        d.appendChild(el('div', 'pv-name', it.name));
+        box.appendChild(d);
+      });
+    }).withFailureHandler(function (e) {
+      box.innerHTML = '';
+      box.appendChild(el('div', 'pv-error', e.message));
+    }).previewSchedule(payload, anchor, work().anchorName);
+  }
+
+  document.getElementById('btnSave').onclick = function () {
+    var btn = this;
+    btn.disabled = true;
+    setMsg('保存中…');
+    renumber();
+    google.script.run
+      .withSuccessHandler(function (res) {
+        btn.disabled = false;
+        setMsg(res.errors && res.errors.length
+          ? '保存しましたが要確認：' + res.errors.join(' / ')
+          : '保存しました（工程表 ' + res.rows + ' 行）', res.errors && res.errors.length);
+      })
+      .withFailureHandler(function (e) { btn.disabled = false; setMsg(e.message, true); })
+      .saveTemplate(current, rows.filter(function (r) { return r.name; }));
+  };
+
+  function setMsg(text, isError) {
+    var m = document.getElementById('msg');
+    m.textContent = text;
+    m.className = isError ? 'err' : '';
+  }
+
+  load();
+</script>

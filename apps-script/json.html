@@ -1,0 +1,93 @@
+<!-- テンプレートの書き出し／読み込み -->
+<style>
+  * { box-sizing:border-box; }
+  body {
+    font-family:"Noto Sans JP","Yu Gothic","Hiragino Sans",system-ui,sans-serif;
+    font-size:13px; color:#202124; margin:0; padding:14px;
+    display:flex; flex-direction:column; height:100vh;
+  }
+  h1 { font-size:14px; margin:0 0 6px; }
+  p { font-size:11.5px; color:#5f6368; line-height:1.6; margin:0 0 10px; }
+  textarea {
+    flex:1; width:100%; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px;
+    border:1px solid #e0e3e7; border-radius:8px; padding:10px; resize:none; line-height:1.5;
+  }
+  .row { display:flex; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap; }
+  button {
+    font-family:inherit; font-size:12px; cursor:pointer; padding:6px 12px;
+    border:1px solid #e0e3e7; border-radius:6px; background:#fff;
+  }
+  button.primary { background:#1a73e8; border-color:#1a73e8; color:#fff; }
+  label { font-size:12px; display:flex; align-items:center; gap:4px; }
+  #msg { font-size:12px; }
+  #msg.err { color:#d93025; }
+  .spacer { flex:1; }
+</style>
+
+<? if (mode === 'export') { ?>
+  <h1>テンプレートの書き出し</h1>
+  <p>業務マスタと工程テンプレートを JSON で書き出します。<b>個人情報は含まれません</b>。
+     このテキストをコピーして渡せば、相手のシートで同じスケジュール定義を再現できます。</p>
+<? } else { ?>
+  <h1>テンプレートの読み込み</h1>
+  <p>受け取った JSON を貼り付けて読み込みます。基準日・進捗・休日マスタはそのまま残り、
+     業務マスタと工程テンプレートだけが更新されます。</p>
+<? } ?>
+
+<textarea id="box" spellcheck="false"><?= payload ?></textarea>
+
+<div class="row">
+  <? if (mode === 'export') { ?>
+    <button class="primary" id="btnCopy">コピー</button>
+    <span class="spacer"></span>
+    <button id="btnClose">閉じる</button>
+  <? } else { ?>
+    <label><input type="radio" name="mode" value="merge" checked> 同じ業務IDだけ上書き</label>
+    <label><input type="radio" name="mode" value="replace"> 既存を全部消して入れ替え</label>
+    <span class="spacer"></span>
+    <button class="primary" id="btnImport">読み込む</button>
+  <? } ?>
+  <span id="msg"></span>
+</div>
+
+<script>
+  var isExport = <?= mode === 'export' ? 'true' : 'false' ?>;
+
+  function setMsg(t, err) {
+    var m = document.getElementById('msg');
+    m.textContent = t;
+    m.className = err ? 'err' : '';
+  }
+
+  if (isExport) {
+    document.getElementById('btnCopy').onclick = function () {
+      var box = document.getElementById('box');
+      box.select();
+      box.setSelectionRange(0, box.value.length);
+      try {
+        document.execCommand('copy');
+        setMsg('コピーしました');
+      } catch (e) {
+        setMsg('コピーできませんでした。手動で選択してください。', true);
+      }
+    };
+    document.getElementById('btnClose').onclick = function () { google.script.host.close(); };
+  } else {
+    document.getElementById('btnImport').onclick = function () {
+      var mode = document.querySelector('input[name=mode]:checked').value;
+      if (mode === 'replace' && !confirm('既存の業務マスタと工程テンプレートをすべて削除して入れ替えます。よろしいですか？')) return;
+      var btn = this;
+      btn.disabled = true;
+      setMsg('読み込み中…');
+      google.script.run
+        .withSuccessHandler(function (res) {
+          btn.disabled = false;
+          setMsg('読み込みました（工程表 ' + res.rows + ' 行）'
+            + (res.errors && res.errors.length ? ' 要確認: ' + res.errors.join(' / ') : ''),
+            res.errors && res.errors.length);
+        })
+        .withFailureHandler(function (e) { btn.disabled = false; setMsg(e.message, true); })
+        .importTemplatesJson(document.getElementById('box').value, mode);
+    };
+  }
+</script>

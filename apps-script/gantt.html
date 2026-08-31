@@ -1,0 +1,557 @@
+<!-- ガント画面：業務横断で工程の並びと重なりを見る -->
+<style>
+  :root {
+    --label-w: 260px;
+    --day-w: 22px;
+    --border: #e0e3e7;
+    --text: #202124;
+    --muted: #5f6368;
+    --bg: #ffffff;
+    --bg-soft: #f8f9fa;
+    --danger: #d93025;
+    --warn: #e37400;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: "Noto Sans JP", "Yu Gothic", "Hiragino Sans", system-ui, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    font-size: 13px;
+  }
+  #app { display: flex; flex-direction: column; height: 100vh; }
+
+  header.top {
+    display: flex; align-items: center; gap: 16px;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    flex: 0 0 auto;
+  }
+  header.top h1 { font-size: 15px; margin: 0; font-weight: 700; letter-spacing: .02em; }
+  .today-badge {
+    font-size: 12px; color: var(--muted);
+    background: var(--bg-soft); border: 1px solid var(--border);
+    padding: 3px 10px; border-radius: 999px;
+  }
+  .spacer { flex: 1; }
+  button {
+    font-family: inherit; font-size: 12px; cursor: pointer;
+    border: 1px solid var(--border); background: #fff; color: var(--text);
+    padding: 6px 12px; border-radius: 6px;
+  }
+  button:hover { background: var(--bg-soft); }
+  button.primary { background: #1a73e8; border-color: #1a73e8; color: #fff; }
+  button.primary:hover { background: #1765cc; }
+  .zoom { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .zoom button { border: none; border-radius: 0; border-left: 1px solid var(--border); }
+  .zoom button:first-child { border-left: none; }
+  .zoom button.on { background: #e8f0fe; color: #1a73e8; font-weight: 700; }
+
+  .main { display: flex; flex: 1; min-height: 0; }
+
+  /* ---- 左パネル：今日やること ---- */
+  aside {
+    width: 300px; flex: 0 0 300px; border-right: 1px solid var(--border);
+    overflow-y: auto; padding: 12px; background: var(--bg-soft);
+  }
+  .group-title {
+    font-size: 11px; font-weight: 700; letter-spacing: .06em;
+    display: flex; align-items: center; gap: 6px; margin: 14px 0 6px;
+  }
+  .group-title:first-child { margin-top: 0; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .card {
+    background: #fff; border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; margin-bottom: 6px; cursor: pointer;
+  }
+  .card:hover { border-color: #1a73e8; }
+  .card .name { font-weight: 600; line-height: 1.35; }
+  .card .meta { color: var(--muted); font-size: 11px; margin-top: 3px; line-height: 1.4; white-space: pre-line; }
+  .card.overdue { border-left: 3px solid var(--danger); }
+  .card.today { border-left: 3px solid var(--warn); }
+  .card.soon { border-left: 3px solid #1a73e8; }
+  .empty { color: var(--muted); font-size: 12px; padding: 8px 2px; }
+
+  /* ---- 凡例 ---- */
+  .legend { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--border); border-radius: 999px;
+    padding: 3px 10px; font-size: 11px; cursor: pointer; user-select: none;
+    background: #fff;
+  }
+  .chip.off { opacity: .38; }
+
+  /* ---- ガント本体 ---- */
+  .chart-wrap { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .scroll { flex: 1; overflow: auto; position: relative; }
+  .grid { position: relative; }
+  .bg-layer { position: absolute; top: 0; bottom: 0; pointer-events: none; }
+  .bg-cell { position: absolute; top: 0; bottom: 0; background: #f1f3f4; }
+  .today-line { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--danger); opacity: .75; }
+
+  .head {
+    position: sticky; top: 0; z-index: 5; background: #fff;
+    border-bottom: 1px solid var(--border);
+  }
+  .head-row { display: flex; height: 22px; }
+  .head-label {
+    position: sticky; left: 0; z-index: 6; background: #fff;
+    width: var(--label-w); flex: 0 0 var(--label-w);
+    border-right: 1px solid var(--border);
+  }
+  .month {
+    font-size: 11px; font-weight: 700; color: var(--muted);
+    border-left: 1px solid var(--border); padding-left: 6px;
+    display: flex; align-items: center; white-space: nowrap; overflow: hidden;
+  }
+  .day {
+    font-size: 10px; color: var(--muted); text-align: center;
+    line-height: 22px; flex: 0 0 auto;
+  }
+  .day.we { color: #80868b; background: #f1f3f4; }
+  .day.today { background: #fce8e6; color: var(--danger); font-weight: 700; }
+
+  .lane { display: flex; border-bottom: 1px solid #eceff1; min-height: 46px; }
+  .lane:hover { background: rgba(26,115,232,.03); }
+  .lane-label {
+    position: sticky; left: 0; z-index: 3; background: #fff;
+    width: var(--label-w); flex: 0 0 var(--label-w);
+    border-right: 1px solid var(--border);
+    padding: 6px 10px; display: flex; flex-direction: column; justify-content: center; gap: 2px;
+  }
+  .lane:hover .lane-label { background: #fbfcfe; }
+  .lane-title { font-weight: 600; font-size: 12px; display: flex; align-items: center; gap: 6px; line-height: 1.3; }
+  .lane-sub { font-size: 10.5px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .lane-sub a { color: #1a73e8; text-decoration: none; cursor: pointer; }
+  .lane-sub a:hover { text-decoration: underline; }
+  .swatch { width: 3px; height: 14px; border-radius: 2px; flex: 0 0 3px; }
+
+  .track { position: relative; flex: 1 0 auto; }
+  .span {
+    position: absolute; height: 8px; top: 50%; margin-top: -4px;
+    border-radius: 4px; opacity: .85;
+  }
+  .mark {
+    position: absolute; top: 50%; width: 13px; height: 13px; margin-top: -6.5px;
+    border-radius: 50%; border: 2px solid #fff; cursor: pointer;
+    box-shadow: 0 0 0 1px rgba(0,0,0,.12);
+  }
+  .mark:hover { transform: scale(1.35); }
+  .mark.done { background: #fff !important; box-shadow: 0 0 0 1.5px #9aa0a6; }
+  .mark.overdue { box-shadow: 0 0 0 2px var(--danger); }
+  .mark.anchor {
+    width: 15px; height: 15px; margin-top: -7.5px; border-radius: 3px;
+    transform: rotate(45deg);
+  }
+  .mark.anchor:hover { transform: rotate(45deg) scale(1.3); }
+
+  /* ---- 詳細カード ---- */
+  #detail {
+    position: fixed; z-index: 40; width: 320px;
+    background: #fff; border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: 0 6px 24px rgba(0,0,0,.18); padding: 14px; display: none;
+  }
+  #detail h3 { margin: 0 0 4px; font-size: 14px; line-height: 1.35; }
+  #detail .sub { color: var(--muted); font-size: 11.5px; margin-bottom: 10px; line-height: 1.5; white-space: pre-line; }
+  #detail .row { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  #detail .note {
+    background: var(--bg-soft); border-radius: 6px; padding: 7px 9px;
+    font-size: 11.5px; color: var(--muted); line-height: 1.5; margin-top: 8px;
+  }
+  .close-x {
+    position: absolute; top: 8px; right: 8px; border: none; background: none;
+    font-size: 16px; color: var(--muted); padding: 2px 6px;
+  }
+  #loading, #error {
+    padding: 40px; text-align: center; color: var(--muted);
+  }
+  #error { color: var(--danger); white-space: pre-wrap; text-align: left; }
+</style>
+
+<div id="app">
+  <header class="top">
+    <h1>業務スケジュール</h1>
+    <span class="today-badge" id="todayBadge">読み込み中…</span>
+    <span class="spacer"></span>
+    <span class="zoom" id="zoom">
+      <button data-w="12">小</button>
+      <button data-w="22" class="on">中</button>
+      <button data-w="34">大</button>
+    </span>
+    <button id="btnToday">今日へ</button>
+    <button id="btnReload" class="primary">再読み込み</button>
+  </header>
+
+  <div class="main">
+    <aside id="side"></aside>
+    <div class="chart-wrap">
+      <div class="legend" id="legend"></div>
+      <div class="scroll" id="scroll">
+        <div id="loading">読み込み中…</div>
+        <div class="grid" id="grid" style="display:none"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="detail"></div>
+</div>
+
+<script>
+  var DATA = null;
+  var dayW = 22;
+  var hidden = {};      // 業務IDごとの表示/非表示
+  var days = [];        // 表示範囲の日付キー
+  var indexOf = {};     // 日付キー -> 列index
+
+  // ---- 日付ユーティリティ（画面側） ----
+  var WD = ['日','月','火','水','木','金','土'];
+  function toDate(key) { var p = key.split('-'); return new Date(Date.UTC(+p[0], +p[1]-1, +p[2])); }
+  function toKey(d) {
+    var m = d.getUTCMonth()+1, day = d.getUTCDate();
+    return d.getUTCFullYear() + '-' + (m<10?'0':'') + m + '-' + (day<10?'0':'') + day;
+  }
+  function addDays(key, n) { var d = toDate(key); d.setUTCDate(d.getUTCDate()+n); return toKey(d); }
+  function fmtShort(key) { var p = key.split('-'); return (+p[1]) + '/' + (+p[2]) + '(' + WD[toDate(key).getUTCDay()] + ')'; }
+  function fmtLong(key) {
+    var p = key.split('-');
+    return p[0] + '年' + (+p[1]) + '月' + (+p[2]) + '日(' + WD[toDate(key).getUTCDay()] + ')';
+  }
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined && text !== null) e.textContent = text;
+    return e;
+  }
+
+  // ---- 読み込み ----
+  function load() {
+    document.getElementById('loading').style.display = 'block';
+    document.getElementById('loading').textContent = '読み込み中…';
+    document.getElementById('grid').style.display = 'none';
+    google.script.run
+      .withSuccessHandler(function (data) { DATA = data; render(); })
+      .withFailureHandler(function (err) {
+        document.getElementById('loading').style.display = 'none';
+        var g = document.getElementById('grid');
+        g.style.display = 'block';
+        g.innerHTML = '';
+        var e = el('div', '', '読み込みに失敗しました：\n' + err.message);
+        e.id = 'error';
+        g.appendChild(e);
+      })
+      .getGanttData();
+  }
+
+  function render() {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('grid').style.display = 'block';
+    document.getElementById('todayBadge').textContent = fmtLong(DATA.today) + ' 現在';
+
+    days = [];
+    indexOf = {};
+    var cur = DATA.from;
+    while (cur <= DATA.to && days.length < 800) {
+      indexOf[cur] = days.length;
+      days.push(cur);
+      cur = addDays(cur, 1);
+    }
+
+    renderLegend();
+    renderSide();
+    renderChart();
+  }
+
+  function renderLegend() {
+    var box = document.getElementById('legend');
+    box.innerHTML = '';
+    DATA.works.filter(function (w) { return w.enabled; }).forEach(function (w) {
+      var chip = el('span', 'chip' + (hidden[w.id] ? ' off' : ''));
+      var dot = el('span', 'dot');
+      dot.style.background = w.bar;
+      chip.appendChild(dot);
+      chip.appendChild(document.createTextNode(w.name));
+      chip.onclick = function () {
+        hidden[w.id] = !hidden[w.id];
+        renderLegend();
+        renderChart();
+      };
+      box.appendChild(chip);
+    });
+  }
+
+  // ---- 左パネル ----
+  function renderSide() {
+    var side = document.getElementById('side');
+    side.innerHTML = '';
+    var d = DATA.digest;
+    section(side, '期限超過', '#d93025', d.overdue, 'overdue');
+    section(side, '本日', '#e37400', d.today, 'today');
+    section(side, 'まもなく', '#1a73e8', d.soon, 'soon');
+    if (!d.total) side.appendChild(el('div', 'empty', '直近で対応が必要な工程はありません。'));
+  }
+
+  function section(parent, title, color, items, kind) {
+    if (!items || !items.length) return;
+    var h = el('div', 'group-title');
+    var dot = el('span', 'dot');
+    dot.style.background = color;
+    h.appendChild(dot);
+    h.appendChild(document.createTextNode(title + '　' + items.length + '件'));
+    parent.appendChild(h);
+
+    items.forEach(function (i) {
+      var c = el('div', 'card ' + kind);
+      c.appendChild(el('div', 'name', i.name));
+      var when = kind === 'today' ? '本日'
+        : kind === 'overdue' ? fmtShort(i.dueKey) + '・' + Math.abs(i.remainingBusinessDays) + '営業日超過'
+        : fmtShort(i.dueKey) + '・あと' + i.remainingBusinessDays + '営業日';
+      c.appendChild(el('div', 'meta', i.workName + ' ' + i.period + '\n' + when + (i.owner ? '　' + i.owner : '')));
+      c.onclick = function (ev) { openDetail(ev, findItem(i.workId + '|' + i.period, i.dueKey, i.name)); };
+      parent.appendChild(c);
+    });
+  }
+
+  function findItem(laneKey, dueKey, name) {
+    var lane = null;
+    DATA.lanes.forEach(function (l) { if (l.laneKey === laneKey) lane = l; });
+    if (!lane) return null;
+    var found = null;
+    lane.items.forEach(function (it) { if (it.dueKey === dueKey && it.name === name) found = it; });
+    return found ? { lane: lane, item: found } : null;
+  }
+
+  // ---- ガント ----
+  function renderChart() {
+    var grid = document.getElementById('grid');
+    grid.innerHTML = '';
+    var labelW = 260;
+    var trackW = days.length * dayW;
+    grid.style.width = (labelW + trackW) + 'px';
+    document.documentElement.style.setProperty('--day-w', dayW + 'px');
+
+    // 背景（土日祝）
+    var bg = el('div', 'bg-layer');
+    bg.style.left = labelW + 'px';
+    bg.style.width = trackW + 'px';
+    var holidaySet = {};
+    (DATA.holidays || []).forEach(function (k) { holidaySet[k] = true; });
+    var weekend = {};
+    (DATA.weekendDays || [0, 6]).forEach(function (w) { weekend[w] = true; });
+    days.forEach(function (k, i) {
+      if (!holidaySet[k] && !weekend[toDate(k).getUTCDay()]) return;
+      var c = el('div', 'bg-cell');
+      c.style.left = (i * dayW) + 'px';
+      c.style.width = dayW + 'px';
+      bg.appendChild(c);
+    });
+    if (indexOf[DATA.today] !== undefined) {
+      var line = el('div', 'today-line');
+      line.style.left = (indexOf[DATA.today] * dayW + dayW / 2) + 'px';
+      bg.appendChild(line);
+    }
+    grid.appendChild(bg);
+
+    // ヘッダー（月・日）
+    var head = el('div', 'head');
+    var monthRow = el('div', 'head-row');
+    monthRow.appendChild(el('div', 'head-label'));
+    var m = 0;
+    while (m < days.length) {
+      var ym = days[m].slice(0, 7);
+      var n = 0;
+      while (m + n < days.length && days[m + n].slice(0, 7) === ym) n++;
+      var cell = el('div', 'month', (+ym.slice(5, 7)) + '月　' + ym.slice(0, 4));
+      cell.style.width = (n * dayW) + 'px';
+      cell.style.flex = '0 0 ' + (n * dayW) + 'px';
+      monthRow.appendChild(cell);
+      m += n;
+    }
+    head.appendChild(monthRow);
+
+    var dayRow = el('div', 'head-row');
+    dayRow.appendChild(el('div', 'head-label'));
+    days.forEach(function (k) {
+      var wd = toDate(k).getUTCDay();
+      var cls = 'day';
+      if (holidaySet[k] || weekend[wd]) cls += ' we';
+      if (k === DATA.today) cls += ' today';
+      var c = el('div', cls, dayW >= 20 ? String(+k.slice(8, 10)) : (wd === 1 ? String(+k.slice(8, 10)) : ''));
+      c.style.width = dayW + 'px';
+      c.style.flex = '0 0 ' + dayW + 'px';
+      c.title = fmtLong(k);
+      dayRow.appendChild(c);
+    });
+    head.appendChild(dayRow);
+    grid.appendChild(head);
+
+    // レーン
+    var shown = DATA.lanes.filter(function (l) { return !hidden[l.workId]; });
+    if (!shown.length) {
+      grid.appendChild(el('div', 'empty', '表示できる工程がありません。［工程表を再生成］を実行するか、業務の表示を切り替えてください。'));
+      return;
+    }
+    shown.forEach(function (lane) {
+      grid.appendChild(renderLane(lane, trackW));
+    });
+  }
+
+  function renderLane(lane, trackW) {
+    var row = el('div', 'lane');
+
+    var label = el('div', 'lane-label');
+    var title = el('div', 'lane-title');
+    var sw = el('span', 'swatch');
+    sw.style.background = lane.bar;
+    title.appendChild(sw);
+    title.appendChild(document.createTextNode(lane.workName));
+    label.appendChild(title);
+
+    var sub = el('div', 'lane-sub');
+    sub.appendChild(el('span', '', lane.period));
+    if (lane.anchorKey) {
+      var a = el('a', '', lane.anchorName + ' ' + fmtShort(lane.anchorKey));
+      a.title = '基準日を変更する';
+      a.onclick = function () { changeAnchor(lane); };
+      sub.appendChild(a);
+    }
+    sub.appendChild(el('span', '', lane.doneCount + '/' + lane.items.length));
+    label.appendChild(sub);
+    row.appendChild(label);
+
+    var track = el('div', 'track');
+    track.style.width = trackW + 'px';
+
+    var fi = indexOf[lane.from], ti = indexOf[lane.to];
+    if (fi !== undefined && ti !== undefined && ti > fi) {
+      var span = el('div', 'span');
+      span.style.left = (fi * dayW + dayW / 2) + 'px';
+      span.style.width = ((ti - fi) * dayW) + 'px';
+      span.style.background = lane.soft;
+      track.appendChild(span);
+    }
+
+    lane.items.forEach(function (it) {
+      var i = indexOf[it.dueKey];
+      if (i === undefined) return;
+      var cls = 'mark';
+      if (it.isAnchor) cls += ' anchor';
+      if (it.status === '完了') cls += ' done';
+      else if (it.overdue) cls += ' overdue';
+      var mk = el('div', cls);
+      mk.style.left = (i * dayW + dayW / 2 - (it.isAnchor ? 7.5 : 6.5)) + 'px';
+      mk.style.background = lane.bar;
+      mk.title = fmtShort(it.dueKey) + '　' + it.name;
+      mk.onclick = function (ev) {
+        ev.stopPropagation();
+        openDetail(ev, { lane: lane, item: it });
+      };
+      track.appendChild(mk);
+    });
+
+    row.appendChild(track);
+    return row;
+  }
+
+  // ---- 詳細カード ----
+  function openDetail(ev, ctx) {
+    if (!ctx) return;
+    var box = document.getElementById('detail');
+    box.innerHTML = '';
+
+    var x = Math.min(ev.clientX + 12, window.innerWidth - 336);
+    var y = Math.min(ev.clientY + 12, window.innerHeight - 250);
+    box.style.left = Math.max(8, x) + 'px';
+    box.style.top = Math.max(8, y) + 'px';
+    box.style.display = 'block';
+
+    var close = el('button', 'close-x', '×');
+    close.onclick = closeDetail;
+    box.appendChild(close);
+
+    box.appendChild(el('h3', '', ctx.item.name));
+    var remain = ctx.item.remaining;
+    var remainText = ctx.item.dueKey === DATA.today ? '本日'
+      : remain < 0 ? Math.abs(remain) + '営業日超過'
+      : 'あと' + remain + '営業日';
+    box.appendChild(el('div', 'sub',
+      ctx.lane.workName + ' ' + ctx.lane.period + '\n'
+      + fmtLong(ctx.item.dueKey) + '　' + remainText
+      + (ctx.item.owner ? '\n担当：' + ctx.item.owner : '')
+      + '\n状態：' + ctx.item.status));
+
+    if (ctx.item.note) box.appendChild(el('div', 'note', ctx.item.note));
+
+    var row = el('div', 'row');
+    DATA.statusList.forEach(function (s) {
+      var b = el('button', s === '完了' ? 'primary' : '', s);
+      if (s === ctx.item.status) { b.disabled = true; b.style.opacity = .5; }
+      b.onclick = function () { setStatus(ctx, s, b); };
+      row.appendChild(b);
+    });
+    box.appendChild(row);
+  }
+
+  function closeDetail() { document.getElementById('detail').style.display = 'none'; }
+
+  function setStatus(ctx, status, btn) {
+    btn.disabled = true;
+    btn.textContent = '更新中…';
+    google.script.run
+      .withSuccessHandler(function () { closeDetail(); load(); })
+      .withFailureHandler(function (err) {
+        btn.disabled = false;
+        btn.textContent = status;
+        alert('更新に失敗しました：' + err.message);
+      })
+      .updateItemStatus(ctx.item.key, status);
+  }
+
+  function changeAnchor(lane) {
+    var input = prompt(
+      lane.workName + ' ' + lane.period + ' の' + lane.anchorName + 'を変更します。\n'
+      + '新しい日付を YYYY-MM-DD で入力してください。\n'
+      + '（この回次の工程がすべて計算し直されます）',
+      lane.anchorKey);
+    if (!input) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.trim())) {
+      alert('YYYY-MM-DD の形式で入力してください。');
+      return;
+    }
+    document.getElementById('loading').style.display = 'block';
+    document.getElementById('loading').textContent = '計算し直しています…';
+    document.getElementById('grid').style.display = 'none';
+    google.script.run
+      .withSuccessHandler(function () { load(); })
+      .withFailureHandler(function (err) {
+        alert('変更に失敗しました：' + err.message);
+        load();
+      })
+      .updateAnchorDate(lane.workId, lane.period, input.trim());
+  }
+
+  // ---- 操作 ----
+  document.getElementById('btnReload').onclick = load;
+  document.getElementById('btnToday').onclick = scrollToToday;
+  document.getElementById('zoom').onclick = function (ev) {
+    if (ev.target.tagName !== 'BUTTON') return;
+    dayW = Number(ev.target.getAttribute('data-w'));
+    Array.prototype.forEach.call(this.querySelectorAll('button'), function (b) { b.classList.remove('on'); });
+    ev.target.classList.add('on');
+    renderChart();
+    scrollToToday();
+  };
+  document.getElementById('scroll').addEventListener('click', function (ev) {
+    if (!ev.target.closest('.mark') && !ev.target.closest('#detail')) closeDetail();
+  });
+
+  function scrollToToday() {
+    var i = indexOf[DATA && DATA.today];
+    if (i === undefined) return;
+    var sc = document.getElementById('scroll');
+    sc.scrollLeft = Math.max(0, i * dayW - sc.clientWidth / 3);
+  }
+
+  load();
+  setTimeout(scrollToToday, 600);
+</script>

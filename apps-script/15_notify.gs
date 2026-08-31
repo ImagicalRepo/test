@@ -1,0 +1,104 @@
+/**
+ * Google Chat への通知
+ *
+ * Chat のスペースで［アプリと連携］→［Webhook を作成］して得た URL を
+ * 設定シートの ChatWebhookURL に貼るだけで動く。
+ */
+
+function dailyReminder() {
+  var settings = getSettings_();
+  var cal = loadBusinessCalendar_(settings);
+  var today = todayKey_();
+
+  if (settingBool_(settings, '休日は通知しない', true) && !isBusinessDay(cal, today)) {
+    log_('日次リマインド', true, '休日のためスキップ: ' + today);
+    return { skipped: true };
+  }
+
+  var digest = buildDigestFromSheet_(settings, cal, today);
+  if (!digest.total) {
+    log_('日次リマインド', true, '通知対象なし');
+    return { total: 0 };
+  }
+
+  var text = buildChatText(digest, today);
+  var res = postToChat_(settings, text);
+  log_('日次リマインド', res.ok,
+    '超過 ' + digest.overdue.length + ' / 本日 ' + digest.today.length + ' / まもなく ' + digest.soon.length
+    + (res.ok ? '' : ' / ' + res.message));
+  return { total: digest.total, posted: res.ok, message: res.message };
+}
+
+/** 工程表シートからダイジェストを組み立てる */
+function buildDigestFromSheet_(settings, cal, today) {
+  var colorByWork = {};
+  readTable_(SHEET.WORK).rows.forEach(function (w, i) {
+    colorByWork[String(w['業務ID']).trim()] = w['色'] || COLOR_ORDER[i % COLOR_ORDER.length];
+  });
+
+  var backMonths = settingNumber_(settings, '過去保持月数', 3);
+  var minKey = shiftMonthKey_(today, -backMonths);
+  var defaultRemind = settingNumber_(settings, '既定リマインド営業日前', 3);
+
+  var rows = readTable_(SHEET.SCHEDULE).rows.map(function (r) {
+    var dueKey = toDateKey(r['予定日']);
+    if (!dueKey || dueKey < minKey) return null;
+    var remind = r['リマインド営業日前'];
+    return {
+      workId: String(r['業務ID']).trim(),
+      workName: r['業務名'],
+      color: colorByWork[String(r['業務ID']).trim()],
+      period: r['回次'],
+      seq: r['工程No'],
+      name: r['工程名'],
+      dueKey: dueKey,
+      owner: r['担当'],
+      status: r['状態'],
+      note: r['備考'],
+      remindDays: (remind === '' || remind === null || remind === undefined) ? defaultRemind : Number(remind)
+    };
+  }).filter(Boolean);
+
+  return buildDigest(rows, cal, today, {
+    maxAheadBusinessDays: settingNumber_(settings, 'リマインド対象日数', 14),
+    includeDone: false
+  });
+}
+
+/** Chat Webhook へ投稿する */
+function postToChat_(settings, text) {
+  var url = settingText_(settings, 'ChatWebhookURL', '');
+  if (!url) {
+    return { ok: false, message: 'ChatWebhookURL が未設定です。設定シートに Webhook URL を貼ってください。' };
+  }
+  if (!/^https:\/\/chat\.googleapis\.com\//.test(url)) {
+    return { ok: false, message: 'ChatWebhookURL が Google Chat の Webhook URL ではありません。' };
+  }
+  try {
+    var res = UrlFetchApp.fetch(url, {
+      method: 'post',
+      contentType: 'application/json; charset=UTF-8',
+      payload: JSON.stringify({ text: text }),
+      muteHttpExceptions: true
+    });
+    var code = res.getResponseCode();
+    if (code >= 200 && code < 300) return { ok: true, message: '' };
+    return { ok: false, message: 'Chat投稿に失敗 HTTP ' + code + ': ' + res.getContentText().slice(0, 300) };
+  } catch (e) {
+    return { ok: false, message: 'Chat投稿に失敗: ' + e.message };
+  }
+}
+
+/** メニューから叩く：いまの内容でテスト投稿する */
+function sendTestNotification() {
+  var settings = getSettings_();
+  var cal = loadBusinessCalendar_(settings);
+  var today = todayKey_();
+  var digest = buildDigestFromSheet_(settings, cal, today);
+  var text = digest.total
+    ? buildChatText(digest, today)
+    : '*' + formatShortDate(today) + ' の業務スケジュール*\n\n通知対象の工程はありません。';
+  var res = postToChat_(settings, text);
+  log_('テスト通知', res.ok, res.message || '送信しました');
+  return res;
+}
