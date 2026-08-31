@@ -1,99 +1,198 @@
-<!-- 工程テンプレート編集：相対日数で組み立て、実日付を即時プレビューする -->
+<!-- 工程テンプレート編集：各工程を「文章」として読み書きし、算出日をその場に出す -->
 <style>
   :root {
     --bg:#ffffff; --surface:#ffffff; --soft:#f7f8fa; --surface-3:#eef0f3;
     --text:#202124; --muted:#5f6368; --border:#e3e6ea;
     --accent:#1a73e8; --accent-soft:#e8f0fe; --danger:#d93025;
+    --ok:#188038; --ok-soft:#e6f4ea; --warn:#b06000; --warn-soft:#fef7e0;
+    --ease:cubic-bezier(.4,0,.2,1);
   }
-  body, header, .work-box, table, td, th, input, select, button, .pv-item {
-    transition: background-color .4s cubic-bezier(.4,0,.2,1), color .4s cubic-bezier(.4,0,.2,1),
-                border-color .4s cubic-bezier(.4,0,.2,1);
-  }
-  * { box-sizing: border-box; }
+  * { box-sizing:border-box; }
   html, body { margin:0; height:100%; }
   body {
     font-family:"Noto Sans JP","Yu Gothic","Hiragino Sans",system-ui,sans-serif;
     font-size:13px; color:var(--text); background:var(--bg);
   }
+  body, header, .work-box, .step, input, select, button, .pv-item {
+    transition: background-color .35s var(--ease), color .35s var(--ease), border-color .2s var(--ease);
+  }
   #app { display:flex; flex-direction:column; height:100vh; }
+
+  /* ---------- ヘッダー ---------- */
   header {
     display:flex; align-items:center; gap:10px; flex-wrap:wrap;
-    padding:10px 14px; border-bottom:1px solid var(--border); flex:0 0 auto; background:var(--surface);
+    padding:10px 14px; border-bottom:1px solid var(--border); flex:0 0 auto;
+    background:var(--surface);
   }
-  h1 { font-size:14px; margin:0; font-weight:700; }
+  h1 { font-size:14px; margin:0; font-weight:700; white-space:nowrap; }
   .spacer { flex:1; }
-  select, input, button, textarea {
+
+  input, select, button {
     font-family:inherit; font-size:12px; color:var(--text);
-    border:1px solid var(--border); border-radius:6px; padding:5px 8px; background:var(--surface);
+    border:1px solid var(--border); border-radius:7px; padding:6px 9px;
+    background:var(--surface);
   }
-  input[type=number] { width:58px; }
-  button { cursor:pointer; }
+  input:focus, select:focus {
+    outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft);
+  }
+  button { cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
   button:hover { background:var(--soft); }
+  button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
   button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
   button.primary:hover { filter:brightness(1.08); background:var(--accent); }
-  button.icon { padding:3px 7px; line-height:1; }
-  button.danger { color:var(--danger); }
+  button.ghost { border-color:transparent; background:none; color:var(--muted); padding:5px; }
+  button.ghost:hover { background:var(--soft); color:var(--text); }
+  button.ghost.danger:hover { background:#fce8e6; color:var(--danger); }
+  button:disabled { opacity:.5; cursor:default; }
+  .icon { width:16px; height:16px; flex:0 0 16px; stroke:currentColor; fill:none;
+          stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
 
   .body { flex:1; display:flex; min-height:0; }
-  .left { flex:1; overflow:auto; padding:12px 14px; min-width:0; }
+  .left { flex:1; overflow:auto; padding:14px 16px 60px; min-width:0; background:var(--bg); }
   .right {
-    width:320px; flex:0 0 320px; border-left:1px solid var(--border);
-    overflow:auto; padding:12px; background:var(--soft);
+    width:310px; flex:0 0 310px; border-left:1px solid var(--border);
+    overflow:auto; padding:13px; background:var(--soft);
   }
-  .left { background:var(--bg); }
 
+  /* ---------- 業務設定 ---------- */
   .work-box {
-    display:flex; flex-wrap:wrap; gap:8px; align-items:center;
-    background:var(--soft); border:1px solid var(--border); border-radius:8px;
-    padding:10px 12px; margin-bottom:12px;
+    display:flex; flex-wrap:wrap; gap:9px 12px; align-items:flex-end;
+    background:var(--soft); border:1px solid var(--border); border-radius:10px;
+    padding:10px 12px; margin-bottom:13px;
   }
-  .work-box label { font-size:11px; color:var(--muted); display:flex; flex-direction:column; gap:3px; }
+  .field { display:flex; flex-direction:column; gap:4px; }
+  .field > span { font-size:10.5px; color:var(--muted); font-weight:600; letter-spacing:.02em; white-space:nowrap; }
+  .work-box select, .work-box input { padding:5px 8px; }
 
-  table { width:100%; border-collapse:collapse; table-layout:fixed; }
-  th {
-    font-size:10.5px; color:var(--muted); font-weight:700; text-align:left;
-    padding:4px 5px; border-bottom:1px solid var(--border); white-space:nowrap;
-    position:sticky; top:0; background:var(--surface); z-index:2;
+  .hint { font-size:11.5px; color:var(--muted); line-height:1.7; margin:0 0 14px; }
+  .hint b { color:var(--text); }
+
+  /* ---------- 工程カード ---------- */
+  .steps { display:flex; flex-direction:column; }
+  .step {
+    display:flex; gap:10px; align-items:flex-start;
+    border:1px solid var(--border); border-radius:10px;
+    padding:7px 9px 7px 5px; background:var(--surface); margin-bottom:5px;
+    animation:stepIn .24s var(--ease) backwards;
   }
-  td { padding:3px 5px; border-bottom:1px solid var(--surface-3); vertical-align:middle; }
-  td input[type=text] { width:100%; }
-  .name-cell { display:flex; flex-direction:column; gap:3px; }
-  .ops { display:flex; gap:3px; flex-wrap:nowrap; }
-  td select { width:100%; max-width:100%; }
-  td input[type=number] { width:100%; }
-  .note-input { font-size:11px; color:var(--muted); border-style:dashed; padding:3px 7px; }
-  .note-input:focus { color:var(--text); border-style:solid; }
-  tr.bad td { background:var(--accent-soft); }
-  .grab { color:var(--muted); opacity:.6; cursor:default; font-size:11px; }
+  .step:hover { border-color:#c9d2dd; }
+  .step.dragging { opacity:.4; }
+  .step.drop-before { box-shadow:0 -3px 0 -1px var(--accent); }
+  .step.drop-after  { box-shadow:0 3px 0 -1px var(--accent); }
+  .step.invalid { border-color:var(--danger); background:#fef6f5; }
 
-  .hint { font-size:11px; color:var(--muted); line-height:1.6; margin:6px 0 12px; }
-  .hint code { background:var(--soft); padding:1px 4px; border-radius:3px; }
+  .handle {
+    display:flex; flex-direction:column; align-items:center; gap:2px;
+    padding:3px 2px 0; color:var(--muted); cursor:grab; user-select:none;
+    border:none; background:none; border-radius:6px;
+  }
+  .handle:hover { background:var(--soft); color:var(--text); }
+  .handle:active { cursor:grabbing; }
+  .handle:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+  .handle .no {
+    font-size:10.5px; font-variant-numeric:tabular-nums; color:var(--muted);
+    background:var(--surface-3); border-radius:999px; min-width:19px; text-align:center; padding:1px 0;
+  }
+  .step-main { flex:1; min-width:0; display:flex; flex-direction:column; gap:5px; }
 
-  .pv-title { font-size:11px; font-weight:700; letter-spacing:.05em; color:var(--muted); margin-bottom:8px; }
+  .name-row { display:flex; align-items:center; gap:9px; }
+  .name-row input {
+    flex:1; min-width:0; font-size:13px; font-weight:600;
+    border-color:transparent; background:var(--soft); padding:5px 9px;
+  }
+  .name-row input:hover { border-color:var(--border); }
+  .name-row input:focus { background:var(--surface); }
+
+  .due {
+    font-size:12px; font-weight:700; font-variant-numeric:tabular-nums;
+    white-space:nowrap; padding:4px 10px; border-radius:999px;
+    background:var(--accent-soft); color:var(--accent);
+    display:inline-flex; align-items:center; gap:5px;
+  }
+  .due.anchor { background:var(--ok-soft); color:var(--ok); }
+  .due.off { background:var(--warn-soft); color:var(--warn); }
+  .due.none { background:var(--surface-3); color:var(--muted); font-weight:500; }
+
+  /* 「〔審査会〕の〔20〕〔営業日〕〔前〕」を一文として読ませる */
+  .sentence { display:flex; align-items:center; gap:5px; flex-wrap:wrap; font-size:12px; color:var(--muted); }
+  .sentence select, .sentence input { padding:4px 7px; font-size:12px; }
+  .sentence .base { max-width:220px; font-weight:600; color:var(--text); }
+  .sentence .days { width:54px; text-align:center; font-weight:600; color:var(--text); }
+  .sentence .unit, .sentence .dir { font-weight:600; color:var(--text); }
+  .sentence .chain {
+    display:inline-flex; align-items:center; gap:4px; color:var(--muted); font-size:11px;
+  }
+
+  .more { display:flex; align-items:center; gap:4px; }
+  .detail {
+    display:flex; flex-wrap:wrap; gap:9px 14px; align-items:flex-end;
+    border-top:1px dashed var(--border); padding-top:9px; margin-top:1px;
+    animation:detailIn .2s var(--ease);
+  }
+  .detail .field input, .detail .field select { font-size:11.5px; padding:5px 8px; }
+  .detail .note-field { flex:1; min-width:220px; }
+  .detail .note-field input { width:100%; }
+
+  .insert {
+    height:0; overflow:visible; position:relative; margin:-3px 0 -3px 34px;
+  }
+  .insert button {
+    position:absolute; top:-11px; left:0; font-size:11px; padding:3px 9px;
+    border-style:dashed; color:var(--muted); opacity:0; background:var(--surface);
+  }
+  .step:hover + .insert button, .insert button:focus-visible, .insert:hover button { opacity:1; }
+
+  .empty-state {
+    border:1.5px dashed var(--border); border-radius:12px; padding:34px;
+    text-align:center; color:var(--muted); line-height:1.8;
+  }
+
+  /* ---------- 右パネル ---------- */
+  .pv-title { font-size:11px; font-weight:700; letter-spacing:.05em; color:var(--muted); margin-bottom:9px; }
+  .anchor-line { display:flex; gap:6px; margin-bottom:6px; }
+  .anchor-line input { flex:1; min-width:0; }
+  .pv-summary {
+    font-size:11px; color:var(--muted); line-height:1.6;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:8px; padding:7px 9px; margin-bottom:9px;
+  }
+  .pv-list { position:relative; padding-left:15px; }
+  .pv-list::before {
+    content:''; position:absolute; left:4px; top:8px; bottom:8px; width:2px; background:var(--border);
+  }
   .pv-item {
-    background:var(--surface); border:1px solid var(--border); border-radius:6px;
-    padding:6px 9px; margin-bottom:5px;
-    animation:pvIn .26s cubic-bezier(.4,0,.2,1) backwards;
+    position:relative; background:var(--surface); border:1px solid var(--border);
+    border-radius:8px; padding:6px 9px; margin-bottom:5px;
+    animation:pvIn .24s var(--ease) backwards;
   }
-  @keyframes pvIn { from { opacity:0; transform:translateY(6px); } }
+  .pv-item::before {
+    content:''; position:absolute; left:-15px; top:13px; width:8px; height:8px;
+    border-radius:50%; background:var(--accent); border:2px solid var(--surface);
+  }
+  .pv-item.anchor::before { background:var(--ok); border-radius:2px; transform:rotate(45deg); }
+  .pv-item.gap { margin-top:12px; }
+  .pv-date { font-weight:700; font-size:12px; font-variant-numeric:tabular-nums; }
+  .pv-name { font-size:11.5px; color:var(--muted); margin-top:2px; line-height:1.45; }
+  .pv-warn { color:var(--warn); font-size:10.5px; font-weight:700; }
+  .pv-error {
+    background:var(--surface); border:1px solid var(--danger); color:var(--danger);
+    border-radius:8px; padding:9px 10px; font-size:11.5px; line-height:1.6; white-space:pre-wrap;
+  }
+
+  #msg { font-size:12px; display:inline-flex; align-items:center; gap:5px; }
+  #msg.err { color:var(--danger); }
+  #msg.ok { color:var(--ok); }
+
+  @keyframes stepIn { from { opacity:0; transform:translateY(5px); } }
+  @keyframes detailIn { from { opacity:0; transform:translateY(-3px); } }
+  @keyframes pvIn { from { opacity:0; transform:translateX(-5px); } }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration:.001ms !important; transition-duration:.001ms !important; }
   }
-  .pv-date { font-weight:700; font-size:12px; }
-  .pv-name { font-size:11.5px; color:var(--muted); margin-top:2px; line-height:1.4; }
-  .pv-warn { color:var(--danger); font-size:11px; }
-  .pv-error {
-    background:var(--soft); color:var(--danger); border-radius:6px; padding:9px; border:1px solid var(--danger);
-    font-size:11.5px; line-height:1.5; white-space:pre-wrap;
-  }
-  .anchor-line { display:flex; align-items:center; gap:6px; margin-bottom:10px; }
-  .anchor-line input { flex:1; }
-  #msg { font-size:12px; }
-  #msg.err { color:var(--danger); }
 </style>
 
 <script>
-// ガント画面で選んだカラーテーマをこの画面にも反映する
+// スケジュール画面で選んだカラーテーマをこの画面にも反映する
 (function () {
   var THEME_VARS = {
     paper:    { '--bg':'#ffffff','--surface':'#ffffff','--soft':'#f7f8fa','--surface-3':'#eef0f3','--text':'#202124','--muted':'#5f6368','--border':'#e3e6ea','--accent':'#1a73e8','--accent-soft':'#e8f0fe','--danger':'#d93025' },
@@ -103,7 +202,7 @@
     lavender: { '--bg':'#faf9fe','--surface':'#ffffff','--soft':'#efedfa','--surface-3':'#e4e0f5','--text':'#302b4a','--muted':'#6e688c','--border':'#e0dcf2','--accent':'#6b5bd2','--accent-soft':'#e8e4fb','--danger':'#c4425f' },
     sand:     { '--bg':'#fdfaf4','--surface':'#ffffff','--soft':'#f6efe1','--surface-3':'#ece2cf','--text':'#40372a','--muted':'#7b6e59','--border':'#e9dfc9','--accent':'#a2762c','--accent-soft':'#f5e9cf','--danger':'#bb4a35' },
     slate:    { '--bg':'#f7f8f9','--surface':'#ffffff','--soft':'#eef0f2','--surface-3':'#e3e6e9','--text':'#26303a','--muted':'#65717d','--border':'#dee2e6','--accent':'#46647f','--accent-soft':'#e4ebf1','--danger':'#b4443c' },
-    night:    { '--bg':'#15181d','--surface':'#1e2228','--soft':'#262b32','--surface-3':'#2f353d','--text':'#e6e9ed','--muted':'#9aa4b0','--border':'#343b45','--accent':'#8ab4f8','--accent-soft':'#2a3a52','--danger':'#f28b82' }
+    night:    { '--bg':'#15181d','--surface':'#1e2228','--soft':'#262b32','--surface-3':'#2f353d','--text':'#e6e9ed','--muted':'#9aa4b0','--border':'#343b45','--accent':'#8ab4f8','--accent-soft':'#2a3a52','--danger':'#f28b82','--ok':'#81c995','--ok-soft':'#25392c','--warn':'#fdd663','--warn-soft':'#3d3418' }
   };
   try {
     var id = localStorage.getItem('gyomu-schedule-theme');
@@ -118,53 +217,53 @@
 <div id="app">
   <header>
     <h1>工程テンプレートの編集</h1>
-    <select id="workSel"></select>
-    <button id="btnAddWork">＋ 業務を追加</button>
+    <label class="field" style="flex-direction:row;align-items:center;gap:6px">
+      <span style="font-size:11px">業務</span>
+      <select id="workSel" aria-label="編集する業務"></select>
+    </label>
+    <button id="btnAddWork">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      業務を追加
+    </button>
     <span class="spacer"></span>
-    <span id="msg"></span>
-    <button id="btnSave" class="primary">保存して工程表を作り直す</button>
+    <span id="msg" role="status" aria-live="polite"></span>
+    <button id="btnSave" class="primary">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>
+      保存して工程表を作り直す
+    </button>
   </header>
 
   <div class="body">
     <div class="left">
       <div class="work-box" id="workBox"></div>
 
-      <div class="hint">
+      <p class="hint">
         <b>業務名も工程名も基準日の呼び方も、すべて自由に設定できます。</b>
         最初に入っているのはサンプルなので、実際の要領に合わせて書き換えてください。<br>
-        各工程は「どこを基準に、何日ずらすか」で定義します。基準には <b>基準日</b> のほか
-        <b>前の工程</b> も選べるので、「決裁完了は起案から3営業日後」のような連鎖もそのまま書けます。
-        基準日が動けば、ぶら下がる工程はすべて自動で動きます。
-      </div>
+        各工程は「<b>どこを基準に、何日ずらすか</b>」の一文で決まります。基準には基準日のほか
+        <b>前の工程</b>も選べるので、「決裁完了は起案から3営業日後」のような連鎖もそのまま書けます。
+        右端の日付が、その設定で実際に何日になるかです。
+      </p>
 
-      <table>
-        <thead>
-          <tr>
-            <th style="width:26px"></th>
-            <th style="width:27%">工程名 ／ メモ</th>
-            <th style="width:25%">基準</th>
-            <th style="width:58px">方向</th>
-            <th style="width:58px">日数</th>
-            <th style="width:86px">単位</th>
-            <th style="width:98px">休日補正</th>
-            <th style="width:72px">担当</th>
-            <th style="width:58px" title="この営業日数前から通知する">通知</th>
-            <th style="width:78px"></th>
-          </tr>
-        </thead>
-        <tbody id="rows"></tbody>
-      </table>
+      <div class="steps" id="steps"></div>
+
       <div style="margin-top:10px">
-        <button id="btnAddRow">＋ 工程を追加</button>
+        <button id="btnAddRow">
+          <svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          工程を追加
+        </button>
       </div>
     </div>
 
     <div class="right">
       <div class="pv-title">実日付プレビュー</div>
       <div class="anchor-line">
-        <input type="text" id="anchorInput" placeholder="YYYY-MM-DD">
-        <button id="btnPreview" class="icon">再計算</button>
+        <input type="text" id="anchorInput" aria-label="プレビューに使う基準日" placeholder="YYYY-MM-DD">
+        <button id="btnPreview" title="再計算">
+          <svg class="icon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+        </button>
       </div>
+      <div id="pvSummary"></div>
       <div id="preview"></div>
     </div>
   </div>
@@ -174,17 +273,41 @@
   var DATA = null;
   var current = null;   // 選択中の業務ID
   var rows = [];        // 編集中の工程
+  var opened = {};      // 詳細を開いている行
+  var dueByIndex = {};  // 行ごとの算出日
   var timer = null;
+  var dragFrom = null;
 
   var UNITS = ['営業日', '暦日'];
-  var DIRS = ['前', '後'];
+  var DIRS = [{ value:'前', label:'前' }, { value:'後', label:'後' }];
   var ADJUSTS = ['なし', '前営業日', '翌営業日'];
+  var WD = ['日','月','火','水','木','金','土'];
+
+  var ICONS = {
+    grip: 'M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01',
+    chevron: 'M6 9l6 6 6-6',
+    trash: 'M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6',
+    plus: 'M12 5v14M5 12h14',
+    corner: 'M4 4v7a4 4 0 0 0 4 4h9',
+    warn: 'M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01',
+    check: 'M20 6 9 17l-5-5'
+  };
 
   function el(tag, cls, text) {
     var e = document.createElement(tag);
     if (cls) e.className = cls;
-    if (text !== undefined) e.textContent = text;
+    if (text !== undefined && text !== null) e.textContent = text;
     return e;
+  }
+  function svg(pathKey, cls) {
+    var s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    s.setAttribute('class', cls || 'icon');
+    s.setAttribute('viewBox', '0 0 24 24');
+    s.setAttribute('aria-hidden', 'true');
+    var p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    p.setAttribute('d', ICONS[pathKey]);
+    s.appendChild(p);
+    return s;
   }
   function opt(value, label, selected) {
     var o = document.createElement('option');
@@ -193,17 +316,34 @@
     if (selected) o.selected = true;
     return o;
   }
-  function select(values, value, onchange, width) {
+  function select(values, value, onchange, cls, aria) {
     var s = document.createElement('select');
+    if (cls) s.className = cls;
+    if (aria) s.setAttribute('aria-label', aria);
     values.forEach(function (v) {
-      s.appendChild(opt(typeof v === 'object' ? v.value : v, typeof v === 'object' ? v.label : v,
-        (typeof v === 'object' ? v.value : v) === value));
+      var val = typeof v === 'object' ? v.value : v;
+      var lab = typeof v === 'object' ? v.label : v;
+      s.appendChild(opt(val, lab, val === value));
     });
-    if (width) s.style.width = width;
     s.onchange = function () { onchange(s.value); };
     return s;
   }
+  function field(labelText, node) {
+    var l = el('label', 'field');
+    l.appendChild(el('span', '', labelText));
+    l.appendChild(node);
+    return l;
+  }
+  function fmtDate(key) {
+    var p = key.split('-');
+    var d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2]));
+    return (+p[1]) + '/' + (+p[2]) + '(' + WD[d.getUTCDay()] + ')';
+  }
+  function diffDays(a, b) {
+    return Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 86400000);
+  }
 
+  // ---------- 読み込み ----------
   function load() {
     google.script.run.withSuccessHandler(function (d) {
       DATA = d;
@@ -212,7 +352,7 @@
       d.works.forEach(function (w) { sel.appendChild(opt(w.id, w.name + (w.enabled ? '' : '（無効）'))); });
       sel.onchange = function () { selectWork(sel.value); };
       if (d.works.length) selectWork(d.works[0].id);
-    }).withFailureHandler(function (e) { setMsg(e.message, true); }).getEditorData();
+    }).withFailureHandler(function (e) { setMsg(e.message, 'err'); }).getEditorData();
   }
 
   function work() {
@@ -223,6 +363,7 @@
 
   function selectWork(id) {
     current = id;
+    opened = {};
     document.getElementById('workSel').value = id;
     rows = (DATA.templates[id] || []).map(function (r) { return JSON.parse(JSON.stringify(r)); });
     var next = DATA.nextAnchors[id];
@@ -232,220 +373,441 @@
     preview();
   }
 
+  // ---------- 業務設定 ----------
   function renderWorkBox() {
     var w = work();
     var box = document.getElementById('workBox');
     box.innerHTML = '';
     if (!w) return;
 
-    function field(labelText, node) {
-      var l = el('label', '', '');
-      l.textContent = '';
-      var span = el('span', '', labelText);
-      l.appendChild(span);
-      l.appendChild(node);
-      box.appendChild(l);
-    }
-
     var name = el('input');
-    name.type = 'text'; name.value = w.name; name.style.width = '220px';
+    name.type = 'text'; name.value = w.name; name.style.width = '100%';
     name.onchange = function () { w.name = name.value; saveWorkMeta(); };
-    field('業務名', name);
+    var nameField = field('業務名', name);
+    nameField.style.flex = '1 1 200px';   // 余った幅を業務名に回す
+    nameField.style.minWidth = '180px';
+    box.appendChild(nameField);
 
     var anchorName = el('input');
-    anchorName.type = 'text'; anchorName.value = w.anchorName; anchorName.style.width = '110px';
-    anchorName.onchange = function () { w.anchorName = anchorName.value; renderRows(); saveWorkMeta(); };
-    field('基準日の呼び方', anchorName);
-
-    var rule = el('input');
-    rule.type = 'text'; rule.value = w.rule || ''; rule.style.width = '170px';
-    rule.placeholder = '毎月第2水';
-    rule.title = '例）毎月第2水 / 毎月15日 / 毎月末日 / 2ヶ月毎第2水 起点2026-04 / 毎年9月1日 / 手動';
+    anchorName.type = 'text'; anchorName.value = w.anchorName; anchorName.style.width = '96px';
     anchorName.placeholder = '審査会';
     anchorName.title = 'この業務の起点の呼び方。審査会・締切日・受付開始など自由に決められます';
-    rule.onchange = function () { w.rule = rule.value; saveWorkMeta(); };
-    field('基準日ルール', rule);
+    anchorName.onchange = function () { w.anchorName = anchorName.value; renderRows(); saveWorkMeta(); };
+    box.appendChild(field('基準日の呼び方', anchorName));
 
-    field('基準日の休日補正', select(ADJUSTS, w.adjust || '前営業日', function (v) { w.adjust = v; saveWorkMeta(); }));
-    field('色', select(DATA.colors, w.color, function (v) { w.color = v; saveWorkMeta(); }));
-    field('有効', select([{value:'ON',label:'ON'},{value:'OFF',label:'OFF'}], w.enabled ? 'ON' : 'OFF',
-      function (v) { w.enabled = (v === 'ON'); saveWorkMeta(); }));
+    var rule = el('input');
+    rule.type = 'text'; rule.value = w.rule || ''; rule.style.width = '142px';
+    rule.placeholder = '毎月第2水';
+    rule.title = '例）毎月第2水 / 毎月15日 / 毎月末日 / 2ヶ月毎第2水 起点2026-04 / 毎年9月1日 / 手動';
+    rule.onchange = function () { w.rule = rule.value; saveWorkMeta(); };
+    box.appendChild(field('基準日ルール（周期）', rule));
+
+    box.appendChild(field('基準日が休日なら',
+      select(ADJUSTS, w.adjust || '前営業日', function (v) { w.adjust = v; saveWorkMeta(); })));
+    box.appendChild(field('色', select(DATA.colors, w.color, function (v) { w.color = v; saveWorkMeta(); })));
+    box.appendChild(field('有効', select(['ON', 'OFF'], w.enabled ? 'ON' : 'OFF',
+      function (v) { w.enabled = (v === 'ON'); saveWorkMeta(); })));
   }
 
   function saveWorkMeta() {
     var w = work();
-    setMsg('業務設定を保存中…');
+    setMsg('保存中…');
     google.script.run
-      .withSuccessHandler(function () { setMsg('業務設定を保存しました'); })
-      .withFailureHandler(function (e) { setMsg(e.message, true); })
-      .saveWork({
-        id: w.id, name: w.name, enabled: w.enabled, anchorName: w.anchorName,
-        rule: w.rule, adjust: w.adjust, color: w.color
-      });
+      .withSuccessHandler(function () { setMsg('業務設定を保存しました', 'ok'); })
+      .withFailureHandler(function (e) { setMsg(e.message, 'err'); })
+      .saveWork({ id:w.id, name:w.name, enabled:w.enabled, anchorName:w.anchorName,
+                  rule:w.rule, adjust:w.adjust, color:w.color });
   }
 
+  // ---------- 工程カード ----------
   function baseOptions(index) {
     var w = work();
-    var list = [{ value: '', label: w.anchorName + '（基準日）' }];
+    var list = [{ value:'', label:w.anchorName + '（基準日）' }];
     rows.forEach(function (r, i) {
-      if (i === index) return;
-      if (!r.name) return;
-      list.push({ value: r.name, label: r.name });
+      if (i === index || !r.name) return;
+      list.push({ value:r.name, label:r.name });
     });
     return list;
   }
 
+  /**
+   * 再描画で DOM を作り直すとフォーカスが外れてしまう。
+   * どの工程のどの項目を触っていたかを覚えておき、描画後に戻す。
+   */
+  function captureFocus() {
+    var a = document.activeElement;
+    if (!a || !a.closest) return null;
+    var step = a.closest('.step');
+    var role = a.getAttribute('data-focus');
+    if (!step || !role) return null;
+    var caret = (a.type === 'text' && a.selectionStart !== undefined) ? a.selectionStart : null;
+    return { index: Number(step.dataset.index), role: role, caret: caret };
+  }
+
+  function restoreFocus(k) {
+    if (!k) return;
+    var step = document.querySelectorAll('.step')[k.index];
+    if (!step) return;
+    var target = step.querySelector('[data-focus="' + k.role + '"]');
+    if (!target) return;
+    target.focus();
+    if (k.caret !== null && target.setSelectionRange) {
+      try { target.setSelectionRange(k.caret, k.caret); } catch (e) { /* 数値欄などでは無視 */ }
+    }
+  }
+
   function renderRows() {
-    var tb = document.getElementById('rows');
-    tb.innerHTML = '';
+    var keep = captureFocus();
+    var box = document.getElementById('steps');
+    box.innerHTML = '';
+    if (!rows.length) {
+      var empty = el('div', 'empty-state');
+      empty.appendChild(el('div', '', 'まだ工程がありません。'));
+      empty.appendChild(el('div', '', '［工程を追加］から、基準日の前後にやることを並べていきます。'));
+      box.appendChild(empty);
+      return;
+    }
     rows.forEach(function (r, i) {
-      var tr = document.createElement('tr');
+      box.appendChild(renderStep(r, i));
+      box.appendChild(renderInsert(i));
+    });
+    restoreFocus(keep);
+  }
 
-      tr.appendChild(cell(el('span', 'grab', String(i + 1))));
+  function renderStep(r, i) {
+    var card = el('div', 'step');
+    card.style.animationDelay = Math.min(i * 14, 260) + 'ms';
+    card.dataset.index = i;
+    card.draggable = true;
 
-      var nameBox = el('div', 'name-cell');
-      var name = el('input'); name.type = 'text'; name.value = r.name || '';
-      name.placeholder = '工程名（例：封入封緘・点検）';
-      name.onchange = function () { r.name = name.value; renderRows(); schedulePreview(); };
-      nameBox.appendChild(name);
-      var note = el('input', 'note-input'); note.type = 'text'; note.value = r.note || '';
-      note.placeholder = 'メモ（任意）　例：二人体制で突合する';
-      note.title = 'この工程で何をするか。工程表と通知の詳細に表示されます';
-      note.onchange = function () { r.note = note.value; };
-      nameBox.appendChild(note);
-      tr.appendChild(cell(nameBox));
+    // 掴んで並べ替え
+    card.ondragstart = function (ev) {
+      dragFrom = i;
+      card.classList.add('dragging');
+      ev.dataTransfer.effectAllowed = 'move';
+      ev.dataTransfer.setData('text/plain', String(i));
+    };
+    card.ondragend = function () {
+      dragFrom = null;
+      card.classList.remove('dragging');
+      clearDropMarks();
+    };
+    card.ondragover = function (ev) {
+      if (dragFrom === null || dragFrom === i) return;
+      ev.preventDefault();
+      clearDropMarks();
+      var rect = card.getBoundingClientRect();
+      card.classList.add(ev.clientY < rect.top + rect.height / 2 ? 'drop-before' : 'drop-after');
+    };
+    card.ondrop = function (ev) {
+      if (dragFrom === null) return;
+      ev.preventDefault();
+      var rect = card.getBoundingClientRect();
+      var to = i + (ev.clientY < rect.top + rect.height / 2 ? 0 : 1);
+      moveTo(dragFrom, to);
+      clearDropMarks();
+    };
 
-      var base = r.base || '';
-      // 基準日名称そのものが入っている場合は「基準日」扱いに寄せる
-      if (base && base === work().anchorName) base = '';
-      var baseSel = select(baseOptions(i), base, function (v) {
-        r.base = v;
-        baseSel.title = baseSel.options[baseSel.selectedIndex].textContent;
-        schedulePreview();
-      }, '100%');
-      if (baseSel.selectedIndex >= 0) baseSel.title = baseSel.options[baseSel.selectedIndex].textContent;
-      tr.appendChild(cell(baseSel));
+    // 掴んで動かせるが、キーボードだけでも並べ替えられるようにボタンにする
+    var handle = el('button', 'handle');
+    handle.type = 'button';
+    handle.title = 'ドラッグ、または上下キーで順番を入れ替え';
+    handle.setAttribute('aria-label', (i + 1) + '番目「' + (r.name || '無題') + '」の順番を変更。上下キーで移動します');
+    handle.appendChild(svg('grip'));
+    handle.appendChild(el('span', 'no', String(i + 1)));
+    handle.dataset.focus = 'handle';
+    handle.onkeydown = function (ev) {
+      if (ev.key === 'ArrowUp' && i > 0) { ev.preventDefault(); moveTo(i, i - 1); focusHandle(i - 1); }
+      if (ev.key === 'ArrowDown' && i < rows.length - 1) { ev.preventDefault(); moveTo(i, i + 2); focusHandle(i + 1); }
+    };
+    card.appendChild(handle);
 
-      tr.appendChild(cell(select(DIRS, r.direction || '前', function (v) { r.direction = v; schedulePreview(); })));
+    var main = el('div', 'step-main');
 
-      var days = el('input'); days.type = 'number'; days.value = r.days === undefined ? 0 : r.days; days.min = 0;
-      days.onchange = function () { r.days = Number(days.value); schedulePreview(); };
-      tr.appendChild(cell(days));
+    // 1行目：工程名 と 算出日
+    var nameRow = el('div', 'name-row');
+    var name = el('input');
+    name.type = 'text'; name.value = r.name || '';
+    name.placeholder = '工程名（例：封入封緘・点検）';
+    name.setAttribute('aria-label', (i + 1) + '番目の工程名');
+    name.dataset.focus = 'name';
+    name.onchange = function () { r.name = name.value; renderRows(); schedulePreview(); };
+    nameRow.appendChild(name);
+    nameRow.appendChild(dueBadge(i, r));
+    main.appendChild(nameRow);
 
-      tr.appendChild(cell(select(UNITS, r.unit || '営業日', function (v) { r.unit = v; schedulePreview(); })));
-      tr.appendChild(cell(select(ADJUSTS, r.adjust || '前営業日', function (v) { r.adjust = v; schedulePreview(); })));
+    // 2行目：「〔基準〕の〔N〕〔営業日〕〔前〕」という一文
+    var sen = el('div', 'sentence');
+    var base = r.base || '';
+    if (base && base === work().anchorName) base = '';
 
-      var owner = el('input'); owner.type = 'text'; owner.value = r.owner || '';
-      owner.onchange = function () { r.owner = owner.value; };
-      tr.appendChild(cell(owner));
+    var isChained = !!base;
+    if (isChained) {
+      var chain = el('span', 'chain');
+      chain.appendChild(svg('corner'));
+      sen.appendChild(chain);
+    }
 
-      var rem = el('input'); rem.type = 'number'; rem.min = 0;
-      rem.value = (r.remindDays === '' || r.remindDays === null || r.remindDays === undefined) ? '' : r.remindDays;
-      rem.placeholder = DATA.defaultRemind;
-      rem.onchange = function () { r.remindDays = rem.value === '' ? '' : Number(rem.value); };
-      tr.appendChild(cell(rem));
+    var baseSel = select(baseOptions(i), base, function (v) {
+      r.base = v;
+      renderRows();
+      schedulePreview();
+    }, 'base', '基準にする工程');
+    baseSel.dataset.focus = 'base';
+    if (baseSel.selectedIndex >= 0) baseSel.title = baseSel.options[baseSel.selectedIndex].textContent;
+    sen.appendChild(baseSel);
+    sen.appendChild(el('span', '', 'の'));
 
-      var ops = el('div', 'ops');
-      ops.appendChild(iconBtn('↑', function () { move(i, -1); }));
-      ops.appendChild(iconBtn('↓', function () { move(i, 1); }));
-      var del = iconBtn('✕', function () {
-        if (!confirm('「' + (r.name || '無題') + '」を削除しますか？')) return;
-        rows.splice(i, 1);
-        renumber();
-        renderRows();
-        schedulePreview();
-      });
-      del.className = 'icon danger';
-      ops.appendChild(del);
-      tr.appendChild(cell(ops));
+    var days = el('input', 'days');
+    days.type = 'number'; days.min = 0;
+    days.value = r.days === undefined ? 0 : r.days;
+    days.setAttribute('aria-label', 'ずらす日数');
+    days.dataset.focus = 'days';
+    days.onchange = function () { r.days = Number(days.value); schedulePreview(); };
+    sen.appendChild(days);
 
-      tr.dataset.index = i;
-      tb.appendChild(tr);
+    var unitSel = select(UNITS, r.unit || '営業日', function (v) { r.unit = v; schedulePreview(); }, 'unit', '日数の単位');
+    unitSel.dataset.focus = 'unit';
+    sen.appendChild(unitSel);
+    var dirSel = select(DIRS, r.direction || '前', function (v) { r.direction = v; schedulePreview(); }, 'dir', '基準より前か後か');
+    dirSel.dataset.focus = 'dir';
+    sen.appendChild(dirSel);
+
+    if (Number(r.days) === 0) {
+      sen.appendChild(el('span', '', '＝ 基準日と同じ日'));
+    }
+
+    sen.appendChild(el('span', 'spacer'));
+
+    var more = el('div', 'more');
+    var toggle = el('button', 'ghost');
+    toggle.type = 'button';
+    var chev = svg('chevron');
+    if (opened[i]) chev.style.transform = 'rotate(180deg)';
+    toggle.appendChild(chev);
+    toggle.appendChild(el('span', '', detailSummary(r)));
+    toggle.setAttribute('aria-expanded', opened[i] ? 'true' : 'false');
+    toggle.onclick = function () { opened[i] = !opened[i]; renderRows(); };
+    more.appendChild(toggle);
+
+    var del = el('button', 'ghost danger');
+    del.type = 'button';
+    del.title = 'この工程を削除';
+    del.setAttribute('aria-label', '「' + (r.name || '無題') + '」を削除');
+    del.appendChild(svg('trash'));
+    del.onclick = function () {
+      if (!confirm('「' + (r.name || '無題') + '」を削除しますか？')) return;
+      rows.splice(i, 1);
+      opened = {};
+      renumber(); renderRows(); schedulePreview();
+    };
+    more.appendChild(del);
+    sen.appendChild(more);
+    main.appendChild(sen);
+
+    if (opened[i]) main.appendChild(renderDetail(r));
+
+    card.appendChild(main);
+    return card;
+  }
+
+  function detailSummary(r) {
+    var parts = [];
+    if (r.owner) parts.push(r.owner);
+    var rem = (r.remindDays === '' || r.remindDays === null || r.remindDays === undefined)
+      ? DATA.defaultRemind : r.remindDays;
+    parts.push(rem + '営業日前に通知');
+    if (r.note) parts.push('メモあり');
+    return parts.join('・');
+  }
+
+  function renderDetail(r) {
+    var d = el('div', 'detail');
+
+    var owner = el('input');
+    owner.type = 'text'; owner.value = r.owner || ''; owner.style.width = '110px';
+    owner.placeholder = '未設定';
+    owner.onchange = function () { r.owner = owner.value; renderRows(); };
+    d.appendChild(field('担当', owner));
+
+    var rem = el('input');
+    rem.type = 'number'; rem.min = 0; rem.style.width = '78px';
+    rem.value = (r.remindDays === '' || r.remindDays === null || r.remindDays === undefined) ? '' : r.remindDays;
+    rem.placeholder = DATA.defaultRemind;
+    rem.onchange = function () { r.remindDays = rem.value === '' ? '' : Number(rem.value); renderRows(); };
+    d.appendChild(field('何営業日前から通知', rem));
+
+    d.appendChild(field('計算結果が休日のとき',
+      select(ADJUSTS, r.adjust || '前営業日', function (v) { r.adjust = v; schedulePreview(); })));
+
+    var noteWrap = el('div', 'field note-field');
+    noteWrap.appendChild(el('span', '', 'メモ（この工程で何をするか）'));
+    var note = el('input');
+    note.type = 'text'; note.value = r.note || '';
+    note.placeholder = '例：二人体制で突合する';
+    note.onchange = function () { r.note = note.value; renderRows(); };
+    noteWrap.appendChild(note);
+    d.appendChild(noteWrap);
+
+    return d;
+  }
+
+  function dueBadge(i, r) {
+    var due = dueByIndex[i];
+    if (!r.name) return el('span', 'due none', '工程名を入力');
+    if (!due) return el('span', 'due none', '—');
+    var cls = 'due' + (due.isAnchorDay ? ' anchor' : '') + (due.isBusinessDay ? '' : ' off');
+    var b = el('span', cls);
+    if (!due.isBusinessDay) {
+      b.appendChild(svg('warn'));
+      b.title = 'この日は休日です。「計算結果が休日のとき」の設定を確認してください';
+    }
+    b.appendChild(el('span', '', fmtDate(due.dateKey)));
+    return b;
+  }
+
+  function renderInsert(i) {
+    var wrap = el('div', 'insert');
+    var b = el('button');
+    b.type = 'button';
+    b.appendChild(svg('plus'));
+    b.appendChild(el('span', '', 'ここに工程を追加'));
+    b.onclick = function () { addRow(i + 1); };
+    wrap.appendChild(b);
+    return wrap;
+  }
+
+  /** 並べ替えたあとも同じ工程にフォーカスを残す */
+  function focusHandle(index) {
+    var handles = document.querySelectorAll('.step .handle');
+    if (handles[index]) handles[index].focus();
+  }
+
+  function clearDropMarks() {
+    Array.prototype.forEach.call(document.querySelectorAll('.step'), function (s) {
+      s.classList.remove('drop-before', 'drop-after');
     });
   }
 
-  function cell(node) {
-    var td = document.createElement('td');
-    td.appendChild(node);
-    return td;
-  }
-  function iconBtn(label, fn) {
-    var b = el('button', 'icon', label);
-    b.onclick = fn;
-    return b;
-  }
-  function move(i, d) {
-    var j = i + d;
-    if (j < 0 || j >= rows.length) return;
-    var tmp = rows[i]; rows[i] = rows[j]; rows[j] = tmp;
-    renumber();
-    renderRows();
-    schedulePreview();
-  }
-  function renumber() {
-    rows.forEach(function (r, i) { r.seq = (i + 1) * 10; });
+  function moveTo(from, to) {
+    if (to > from) to--;
+    if (from === to) return;
+    var item = rows.splice(from, 1)[0];
+    rows.splice(to, 0, item);
+    opened = {};
+    renumber(); renderRows(); schedulePreview();
   }
 
-  document.getElementById('btnAddRow').onclick = function () {
-    rows.push({ seq: (rows.length + 1) * 10, name: '', base: '', direction: '前', days: 1, unit: '営業日', adjust: '前営業日', owner: '', remindDays: '', note: '' });
+  function renumber() { rows.forEach(function (r, i) { r.seq = (i + 1) * 10; }); }
+
+  function addRow(at) {
+    var row = { seq:0, name:'', base:'', direction:'前', days:1, unit:'営業日',
+                adjust:'前営業日', owner:'', remindDays:'', note:'' };
+    if (at === undefined || at > rows.length) rows.push(row);
+    else rows.splice(at, 0, row);
+    renumber();
     renderRows();
-  };
+    var inputs = document.querySelectorAll('.step .name-row input');
+    var idx = (at === undefined || at > rows.length) ? rows.length - 1 : at;
+    if (inputs[idx]) inputs[idx].focus();
+  }
+
+  document.getElementById('btnAddRow').onclick = function () { addRow(); };
 
   document.getElementById('btnAddWork').onclick = function () {
     var id = prompt('新しい業務のID（半角英数字）を入力してください。\n例）JIRITSU', '');
     if (!id) return;
     var name = prompt('業務名を入力してください。', id);
     if (!name) return;
-    google.script.run.withSuccessHandler(function () {
-      setMsg('業務を追加しました');
-      load();
-    }).withFailureHandler(function (e) { setMsg(e.message, true); })
-      .saveWork({ id: id.trim(), name: name, enabled: true, anchorName: '基準日', rule: '毎月第2水', adjust: '前営業日', color: '紫' });
+    google.script.run
+      .withSuccessHandler(function () { setMsg('業務を追加しました', 'ok'); load(); })
+      .withFailureHandler(function (e) { setMsg(e.message, 'err'); })
+      .saveWork({ id:id.trim(), name:name, enabled:true, anchorName:'基準日',
+                  rule:'毎月第2水', adjust:'前営業日', color:'紫' });
   };
 
+  // ---------- プレビュー ----------
   document.getElementById('btnPreview').onclick = preview;
+  document.getElementById('anchorInput').onchange = preview;
+
   function schedulePreview() {
     clearTimeout(timer);
-    timer = setTimeout(preview, 350);
+    timer = setTimeout(preview, 300);
   }
 
   function preview() {
     var anchor = document.getElementById('anchorInput').value.trim();
     var box = document.getElementById('preview');
+    var sum = document.getElementById('pvSummary');
+    sum.innerHTML = '';
     if (!/^\d{4}-\d{2}-\d{2}$/.test(anchor)) {
       box.innerHTML = '';
-      box.appendChild(el('div', 'pv-error', '基準日を YYYY-MM-DD で入力してください。'));
+      box.appendChild(alertBox('基準日を YYYY-MM-DD の形式で入力してください。'));
       return;
     }
-    var payload = rows.filter(function (r) { return r.name; });
-    if (!payload.length) { box.innerHTML = ''; return; }
+    var indices = [];
+    var payload = [];
+    rows.forEach(function (r, i) {
+      if (!r.name) return;
+      indices.push(i);
+      payload.push(r);
+    });
+    if (!payload.length) { box.innerHTML = ''; dueByIndex = {}; return; }
 
     google.script.run.withSuccessHandler(function (res) {
       box.innerHTML = '';
+      dueByIndex = {};
       if (!res.ok) {
-        box.appendChild(el('div', 'pv-error', res.message));
+        box.appendChild(alertBox(res.message));
+        renderRows();
         return;
       }
+      res.items.forEach(function (it, n) {
+        dueByIndex[indices[n]] = {
+          dateKey: it.dateKey,
+          isBusinessDay: it.isBusinessDay,
+          isAnchorDay: it.dateKey === anchor
+        };
+      });
+      renderRows();
+
       var sorted = res.items.slice().sort(function (a, b) {
         return a.dateKey < b.dateKey ? -1 : a.dateKey > b.dateKey ? 1 : 0;
       });
-      sorted.forEach(function (it) {
-        var d = el('div', 'pv-item');
-        var head = el('div', 'pv-date', it.dateKey.slice(5).replace('-', '/') + '（' + it.weekday + '）');
-        if (!it.isBusinessDay) {
-          var w = el('span', 'pv-warn', '　※休日');
-          head.appendChild(w);
-        }
-        d.appendChild(head);
-        d.appendChild(el('div', 'pv-name', it.name));
-        box.appendChild(d);
+      var first = sorted[0].dateKey, last = sorted[sorted.length - 1].dateKey;
+      var s = el('div', 'pv-summary');
+      s.appendChild(el('div', '', sorted.length + '工程　' + fmtDate(first) + ' 〜 ' + fmtDate(last)));
+      s.appendChild(el('div', '', '全体で ' + (diffDays(first, last) + 1) + ' 日間'));
+      sum.appendChild(s);
+
+      var list = el('div', 'pv-list');
+      var prev = null;
+      sorted.forEach(function (it, n) {
+        var isAnchor = it.dateKey === anchor;
+        var item = el('div', 'pv-item' + (isAnchor ? ' anchor' : ''));
+        if (prev && diffDays(prev, it.dateKey) >= 7) item.classList.add('gap');
+        prev = it.dateKey;
+        item.style.animationDelay = Math.min(n * 18, 300) + 'ms';
+        var head = el('div', 'pv-date', fmtDate(it.dateKey));
+        if (!it.isBusinessDay) head.appendChild(el('span', 'pv-warn', '　※休日'));
+        item.appendChild(head);
+        item.appendChild(el('div', 'pv-name', it.name));
+        list.appendChild(item);
       });
+      box.appendChild(list);
     }).withFailureHandler(function (e) {
       box.innerHTML = '';
-      box.appendChild(el('div', 'pv-error', e.message));
+      box.appendChild(alertBox(e.message));
     }).previewSchedule(payload, anchor, work().anchorName);
   }
 
+  function alertBox(text) {
+    var b = el('div', 'pv-error', text);
+    b.setAttribute('role', 'alert');
+    return b;
+  }
+
+  // ---------- 保存 ----------
   document.getElementById('btnSave').onclick = function () {
     var btn = this;
     btn.disabled = true;
@@ -454,18 +816,20 @@
     google.script.run
       .withSuccessHandler(function (res) {
         btn.disabled = false;
-        setMsg(res.errors && res.errors.length
-          ? '保存しましたが要確認：' + res.errors.join(' / ')
-          : '保存しました（工程表 ' + res.rows + ' 行）', res.errors && res.errors.length);
+        if (res.errors && res.errors.length) setMsg('要確認：' + res.errors.join(' / '), 'err');
+        else setMsg('保存しました（工程表 ' + res.rows + ' 行）', 'ok');
       })
-      .withFailureHandler(function (e) { btn.disabled = false; setMsg(e.message, true); })
+      .withFailureHandler(function (e) { btn.disabled = false; setMsg(e.message, 'err'); })
       .saveTemplate(current, rows.filter(function (r) { return r.name; }));
   };
 
-  function setMsg(text, isError) {
+  function setMsg(text, kind) {
     var m = document.getElementById('msg');
-    m.textContent = text;
-    m.className = isError ? 'err' : '';
+    m.innerHTML = '';
+    m.className = kind || '';
+    if (kind === 'ok') m.appendChild(svg('check'));
+    if (kind === 'err') m.appendChild(svg('warn'));
+    m.appendChild(el('span', '', text));
   }
 
   load();
