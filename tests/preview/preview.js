@@ -15,17 +15,28 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..', '..');
 const OUT_DIR = path.join(__dirname, 'out');
 
+/** GAS の API に依存しないコア関数。編集画面のプレビューを本物の計算で動かすために読み込む */
+const CORE_FILES = ['00_config.gs', '01_core_date.gs', '02_core_recurrence.gs', '03_core_schedule.gs'];
+
+function wrap(pageFile, scripts) {
+  const page = fs.readFileSync(path.join(ROOT, 'apps-script', pageFile), 'utf8');
+  const head = scripts.map(src => '<script>' + src + '</' + 'script>').join('\n');
+  return '<!doctype html><html><head><meta charset="utf-8">' + head + '</head><body>'
+    + page + '</body></html>';
+}
+
 function build() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
-  const page = fs.readFileSync(path.join(ROOT, 'apps-script', 'gantt.html'), 'utf8');
-  const mock = fs.readFileSync(path.join(__dirname, 'mock.js'), 'utf8');
-  const html =
-    '<!doctype html><html><head><meta charset="utf-8">'
-    + '<script>' + mock + '</' + 'script></head><body>'
-    + page + '</body></html>';
-  const file = path.join(OUT_DIR, 'index.html');
-  fs.writeFileSync(file, html);
-  return file;
+  const read = f => fs.readFileSync(path.join(__dirname, f), 'utf8');
+  const core = CORE_FILES.map(f => fs.readFileSync(path.join(ROOT, 'apps-script', f), 'utf8'));
+
+  const main = path.join(OUT_DIR, 'index.html');
+  fs.writeFileSync(main, wrap('gantt.html', [read('mock.js')]));
+
+  const editor = path.join(OUT_DIR, 'editor.html');
+  fs.writeFileSync(editor, wrap('editor.html', core.concat([read('editor-mock.js')])));
+
+  return { main, editor };
 }
 
 const SHOTS = [
@@ -37,7 +48,7 @@ const SHOTS = [
   ['gantt-night', 'gantt', 'night']
 ];
 
-async function shoot(file) {
+async function shoot(files) {
   const { chromium } = require('playwright');
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1400, height: 880 }, deviceScaleFactor: 2 });
@@ -46,7 +57,16 @@ async function shoot(file) {
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
 
-  await page.goto('file://' + file);
+  // 工程テンプレート編集画面
+  await page.setViewportSize({ width: 1150, height: 800 });
+  await page.goto('file://' + files.editor);
+  await page.waitForTimeout(1200);
+  await page.screenshot({ path: path.join(OUT_DIR, 'editor.png') });
+  console.log('  editor.png');
+
+  // スケジュール画面
+  await page.setViewportSize({ width: 1400, height: 880 });
+  await page.goto('file://' + files.main);
   await page.waitForTimeout(900);
 
   for (const [name, v, t] of SHOTS) {
@@ -70,8 +90,10 @@ async function shoot(file) {
   console.log('\nJSエラーなし');
 }
 
-const file = build();
-console.log('プレビュー: ' + file);
+const files = build();
+console.log('プレビュー:');
+console.log('  スケジュール画面: ' + files.main);
+console.log('  工程テンプレート編集: ' + files.editor);
 if (process.argv.includes('--shot')) {
-  shoot(file).catch(e => { console.error(e.message); process.exit(1); });
+  shoot(files).catch(e => { console.error(e.message); process.exit(1); });
 }

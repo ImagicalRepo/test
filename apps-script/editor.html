@@ -49,7 +49,7 @@
   }
   .work-box label { font-size:11px; color:var(--muted); display:flex; flex-direction:column; gap:3px; }
 
-  table { width:100%; border-collapse:collapse; }
+  table { width:100%; border-collapse:collapse; table-layout:fixed; }
   th {
     font-size:10.5px; color:var(--muted); font-weight:700; text-align:left;
     padding:4px 5px; border-bottom:1px solid var(--border); white-space:nowrap;
@@ -57,6 +57,12 @@
   }
   td { padding:3px 5px; border-bottom:1px solid var(--surface-3); vertical-align:middle; }
   td input[type=text] { width:100%; }
+  .name-cell { display:flex; flex-direction:column; gap:3px; }
+  .ops { display:flex; gap:3px; flex-wrap:nowrap; }
+  td select { width:100%; max-width:100%; }
+  td input[type=number] { width:100%; }
+  .note-input { font-size:11px; color:var(--muted); border-style:dashed; padding:3px 7px; }
+  .note-input:focus { color:var(--text); border-style:solid; }
   tr.bad td { background:var(--accent-soft); }
   .grab { color:var(--muted); opacity:.6; cursor:default; font-size:11px; }
 
@@ -124,6 +130,8 @@
       <div class="work-box" id="workBox"></div>
 
       <div class="hint">
+        <b>業務名も工程名も基準日の呼び方も、すべて自由に設定できます。</b>
+        最初に入っているのはサンプルなので、実際の要領に合わせて書き換えてください。<br>
         各工程は「どこを基準に、何日ずらすか」で定義します。基準には <b>基準日</b> のほか
         <b>前の工程</b> も選べるので、「決裁完了は起案から3営業日後」のような連鎖もそのまま書けます。
         基準日が動けば、ぶら下がる工程はすべて自動で動きます。
@@ -133,15 +141,15 @@
         <thead>
           <tr>
             <th style="width:26px"></th>
-            <th style="width:36%">工程名</th>
-            <th style="width:22%">基準</th>
-            <th>方向</th>
-            <th>日数</th>
-            <th>単位</th>
-            <th>休日補正</th>
-            <th>担当</th>
-            <th title="この営業日数前から通知する">通知</th>
-            <th style="width:60px"></th>
+            <th style="width:27%">工程名 ／ メモ</th>
+            <th style="width:25%">基準</th>
+            <th style="width:58px">方向</th>
+            <th style="width:58px">日数</th>
+            <th style="width:86px">単位</th>
+            <th style="width:98px">休日補正</th>
+            <th style="width:72px">担当</th>
+            <th style="width:58px" title="この営業日数前から通知する">通知</th>
+            <th style="width:78px"></th>
           </tr>
         </thead>
         <tbody id="rows"></tbody>
@@ -253,6 +261,8 @@
     rule.type = 'text'; rule.value = w.rule || ''; rule.style.width = '170px';
     rule.placeholder = '毎月第2水';
     rule.title = '例）毎月第2水 / 毎月15日 / 毎月末日 / 2ヶ月毎第2水 起点2026-04 / 毎年9月1日 / 手動';
+    anchorName.placeholder = '審査会';
+    anchorName.title = 'この業務の起点の呼び方。審査会・締切日・受付開始など自由に決められます';
     rule.onchange = function () { w.rule = rule.value; saveWorkMeta(); };
     field('基準日ルール', rule);
 
@@ -293,14 +303,28 @@
 
       tr.appendChild(cell(el('span', 'grab', String(i + 1))));
 
+      var nameBox = el('div', 'name-cell');
       var name = el('input'); name.type = 'text'; name.value = r.name || '';
+      name.placeholder = '工程名（例：封入封緘・点検）';
       name.onchange = function () { r.name = name.value; renderRows(); schedulePreview(); };
-      tr.appendChild(cell(name));
+      nameBox.appendChild(name);
+      var note = el('input', 'note-input'); note.type = 'text'; note.value = r.note || '';
+      note.placeholder = 'メモ（任意）　例：二人体制で突合する';
+      note.title = 'この工程で何をするか。工程表と通知の詳細に表示されます';
+      note.onchange = function () { r.note = note.value; };
+      nameBox.appendChild(note);
+      tr.appendChild(cell(nameBox));
 
       var base = r.base || '';
       // 基準日名称そのものが入っている場合は「基準日」扱いに寄せる
       if (base && base === work().anchorName) base = '';
-      tr.appendChild(cell(select(baseOptions(i), base, function (v) { r.base = v; schedulePreview(); }, '100%')));
+      var baseSel = select(baseOptions(i), base, function (v) {
+        r.base = v;
+        baseSel.title = baseSel.options[baseSel.selectedIndex].textContent;
+        schedulePreview();
+      }, '100%');
+      if (baseSel.selectedIndex >= 0) baseSel.title = baseSel.options[baseSel.selectedIndex].textContent;
+      tr.appendChild(cell(baseSel));
 
       tr.appendChild(cell(select(DIRS, r.direction || '前', function (v) { r.direction = v; schedulePreview(); })));
 
@@ -311,17 +335,17 @@
       tr.appendChild(cell(select(UNITS, r.unit || '営業日', function (v) { r.unit = v; schedulePreview(); })));
       tr.appendChild(cell(select(ADJUSTS, r.adjust || '前営業日', function (v) { r.adjust = v; schedulePreview(); })));
 
-      var owner = el('input'); owner.type = 'text'; owner.value = r.owner || ''; owner.style.width = '70px';
+      var owner = el('input'); owner.type = 'text'; owner.value = r.owner || '';
       owner.onchange = function () { r.owner = owner.value; };
       tr.appendChild(cell(owner));
 
-      var rem = el('input'); rem.type = 'number'; rem.min = 0; rem.style.width = '46px';
+      var rem = el('input'); rem.type = 'number'; rem.min = 0;
       rem.value = (r.remindDays === '' || r.remindDays === null || r.remindDays === undefined) ? '' : r.remindDays;
       rem.placeholder = DATA.defaultRemind;
       rem.onchange = function () { r.remindDays = rem.value === '' ? '' : Number(rem.value); };
       tr.appendChild(cell(rem));
 
-      var ops = el('div');
+      var ops = el('div', 'ops');
       ops.appendChild(iconBtn('↑', function () { move(i, -1); }));
       ops.appendChild(iconBtn('↓', function () { move(i, 1); }));
       var del = iconBtn('✕', function () {
