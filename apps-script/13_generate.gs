@@ -22,6 +22,8 @@ function generateSchedules() {
     return String(w['業務ID']).trim() && !/^(off|false|いいえ|無効|0)$/i.test(String(w['有効']).trim());
   });
   var errors = [];
+  // 工程が未登録の業務。エラーではなく「まだ作っていないだけ」なので分けて扱う
+  var notices = {};
 
   // ---- 1. 基準日の自動展開 ----
   var anchorTable = readTable_(SHEET.ANCHOR);
@@ -86,7 +88,8 @@ function generateSchedules() {
     if (String(a['状態']).trim() === '中止') return;
     var tpl = templates[workId];
     if (!tpl || !tpl.length) {
-      errors.push('[' + workId + '] 工程テンプレートが登録されていません');
+      // 業務を作った直後は工程が空なのが普通なので、失敗としては扱わない
+      notices[workId] = true;
       return;
     }
     var anchorKey = toDateKey(a['基準日']);
@@ -105,6 +108,9 @@ function generateSchedules() {
         || {};
       var fixed = /^(on|true|はい|固定|1)$/i.test(String(old['日程固定'] || '').trim());
       var dueKey = fixed && toDateKey(old['予定日']) ? toDateKey(old['予定日']) : row.dateKey;
+      var endKey = fixed && toDateKey(old['予定日'])
+        ? toDateKey(old['終了日'])
+        : (row.endKey || '');
       var remind = row.remindDays === '' || row.remindDays === null || row.remindDays === undefined
         ? defaultRemind : Number(row.remindDays);
       var status = old['状態'] || STATUS.NOT_STARTED;
@@ -118,6 +124,7 @@ function generateSchedules() {
         '工程No': row.seq,
         '工程名': row.name,
         '予定日': keyToSheetDate_(dueKey),
+        '終了日': endKey ? keyToSheetDate_(endKey) : '',
         '曜日': WEEKDAY_LABELS[dayOfWeek(dueKey)],
         '残営業日': countFrom(dueKey),
         '担当': old['担当'] || row.owner || '',
@@ -156,11 +163,18 @@ function generateSchedules() {
   replaceTable_(SHEET.SCHEDULE, newRows);
   applyScheduleCheckboxes_();
 
+  var pending = Object.keys(notices);
   log_('工程表生成', errors.length === 0,
     '基準日追加 ' + newAnchors.length + '件 / 工程 ' + newRows.length + '行'
+    + (pending.length ? ' / 工程が未登録: ' + pending.join(', ') : '')
     + (errors.length ? ' / エラー: ' + errors.join(' | ') : ''));
 
-  return { anchorsAdded: newAnchors.length, rows: newRows.length, errors: errors };
+  return {
+    anchorsAdded: newAnchors.length,
+    rows: newRows.length,
+    errors: errors,
+    pendingWorks: pending
+  };
 }
 
 /**
@@ -219,9 +233,14 @@ function groupTemplates_(rows) {
     map[id].push({
       seq: r['工程No'],
       name: String(r['工程名']).trim(),
+      mode: r['日付種別'],
       base: r['基準'],
       direction: r['方向'],
       days: r['日数'] === '' || r['日数'] === null ? 0 : r['日数'],
+      endDirection: r['終了方向'],
+      endDays: r['終了日数'],
+      startDate: toDateKey(r['開始日']),
+      endDate: toDateKey(r['終了日']),
       unit: r['単位'],
       adjust: r['休日補正'],
       owner: r['担当'],
@@ -238,7 +257,10 @@ function groupTemplates_(rows) {
 function cloneTemplateRows_(rows) {
   return rows.map(function (r) {
     return {
-      seq: r.seq, name: r.name, base: r.base, direction: r.direction, days: r.days,
+      seq: r.seq, name: r.name, mode: r.mode, base: r.base,
+      direction: r.direction, days: r.days,
+      endDirection: r.endDirection, endDays: r.endDays,
+      startDate: r.startDate, endDate: r.endDate,
       unit: r.unit, adjust: r.adjust, owner: r.owner, remindDays: r.remindDays, note: r.note
     };
   });

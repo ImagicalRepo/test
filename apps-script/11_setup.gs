@@ -61,8 +61,16 @@ function applyFormats_() {
   var sh = sched.sheet;
   var rowCount = Math.max(sh.getMaxRows() - 1, 1);
 
-  ['予定日', '完了日', '基準日'].forEach(function (name) {
+  ['予定日', '終了日', '完了日', '基準日'].forEach(function (name) {
     if (idx[name]) sh.getRange(2, idx[name], rowCount).setNumberFormat('yyyy/mm/dd');
+  });
+  var tplFmt = readTable_(SHEET.TEMPLATE);
+  var tfIdx = headerIndex_(tplFmt.headers);
+  ['開始日', '終了日'].forEach(function (name) {
+    if (tfIdx[name]) {
+      tplFmt.sheet.getRange(2, tfIdx[name], Math.max(tplFmt.sheet.getMaxRows() - 1, 1))
+        .setNumberFormat('yyyy/mm/dd');
+    }
   });
   var anchor = readTable_(SHEET.ANCHOR);
   var aidx = headerIndex_(anchor.headers);

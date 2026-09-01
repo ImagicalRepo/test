@@ -349,6 +349,116 @@ check('基準日名称でも基準日として参照できる', () => {
   eq(rows[0].dateKey, '2026-09-10');
 });
 
+// ---------------------------------------------------------------
+group('日付を直接指定する工程');
+
+check('開始日をそのまま使う', () => {
+  const rows = G.computeSchedule([
+    { seq: 10, name: '棚卸し', mode: '日付指定', startDate: '2026-09-14' }
+  ], '2026-09-09', cal, '審査会');
+  eq(rows[0].dateKey, '2026-09-14');
+  eq(rows[0].endKey, '', '終了日が無ければ単日');
+});
+
+check('開始日と終了日で期間になる', () => {
+  const rows = G.computeSchedule([
+    { seq: 10, name: '窓口受付', mode: '日付指定', startDate: '2026-09-01', endDate: '2026-09-30' }
+  ], '2026-09-09', cal, '審査会');
+  eq(rows[0].dateKey, '2026-09-01');
+  eq(rows[0].endKey, '2026-09-30');
+});
+
+check('休日でも指定した日をそのまま使う', () => {
+  const rows = G.computeSchedule([
+    { seq: 10, name: '休日窓口', mode: '日付指定', startDate: '2026-09-05' }
+  ], '2026-09-09', cal, '審査会');
+  eq(rows[0].dateKey, '2026-09-05', '土曜でも動かさない');
+});
+
+check('開始日が空ならエラーにする', () => {
+  throws(() => G.computeSchedule([
+    { seq: 10, name: '未入力', mode: '日付指定', startDate: '' }
+  ], '2026-09-09', cal, '審査会'), /開始日が入っていません/);
+});
+
+check('終了日が開始日より前ならエラーにする', () => {
+  throws(() => G.computeSchedule([
+    { seq: 10, name: '逆転', mode: '日付指定', startDate: '2026-09-10', endDate: '2026-09-01' }
+  ], '2026-09-09', cal, '審査会'), /終了日が開始日より前/);
+});
+
+check('日付指定の工程を基準にできる（期間の終わりが基準になる）', () => {
+  const rows = G.computeSchedule([
+    { seq: 10, name: '受付期間', mode: '日付指定', startDate: '2026-09-01', endDate: '2026-09-30' },
+    { seq: 20, name: '集計', base: '受付期間', direction: '後', days: 1, unit: '営業日', adjust: 'なし' }
+  ], '2026-09-09', cal, '審査会');
+  eq(rows[1].dateKey, '2026-10-01', '9/30の翌営業日');
+});
+
+check('日付種別の表記ゆれを吸収する', () => {
+  eq(G.normalizeMode(''), 'relative');
+  eq(G.normalizeMode('起点から'), 'relative');
+  eq(G.normalizeMode('日付指定'), 'fixed');
+  eq(G.normalizeMode('指定日'), 'fixed');
+  throws(() => G.normalizeMode('てきとう'), /日付種別の指定が不正/);
+});
+
+// ---------------------------------------------------------------
+group('期間を持つ工程（起点からの相対）');
+
+check('開始と終了をそれぞれ算出する', () => {
+  // 審査会の20営業日前から10営業日前までが受付期間
+  const rows = G.computeSchedule([
+    { seq: 10, name: '受付期間', base: '', direction: '前', days: 20,
+      endDirection: '前', endDays: 10, unit: '営業日', adjust: 'なし' }
+  ], '2026-09-09', cal, '審査会');
+  eq(rows[0].dateKey, '2026-08-12');
+  eq(rows[0].endKey, '2026-08-26');
+});
+
+check('終了日数が空なら単日のまま', () => {
+  const rows = G.computeSchedule([
+    { seq: 10, name: '締切', base: '', direction: '前', days: 20, endDays: '', unit: '営業日', adjust: 'なし' }
+  ], '2026-09-09', cal, '審査会');
+  eq(rows[0].endKey, '');
+});
+
+check('終了が開始と同じ日なら単日として扱う', () => {
+  const rows = G.computeSchedule([
+    { seq: 10, name: '同日', base: '', direction: '前', days: 5,
+      endDirection: '前', endDays: 5, unit: '営業日', adjust: 'なし' }
+  ], '2026-09-09', cal, '審査会');
+  eq(rows[0].endKey, '');
+});
+
+check('終了が開始より前ならエラーにする', () => {
+  throws(() => G.computeSchedule([
+    { seq: 10, name: '逆転', base: '', direction: '前', days: 5,
+      endDirection: '前', endDays: 10, unit: '営業日', adjust: 'なし' }
+  ], '2026-09-09', cal, '審査会'), /終了が開始より前/);
+});
+
+check('暦日指定の期間も算出できる', () => {
+  const rows = G.computeSchedule([
+    { seq: 10, name: '受付', base: '', direction: '後', days: 0,
+      endDirection: '後', endDays: 60, unit: '暦日', adjust: 'なし' }
+  ], '2026-09-01', cal, '受付開始');
+  eq(rows[0].dateKey, '2026-09-01');
+  eq(rows[0].endKey, '2026-10-31');
+});
+
+check('期間を持つ工程の終わりを次の工程の基準にできる', () => {
+  const rows = G.computeSchedule([
+    { seq: 10, name: '受付期間', base: '', direction: '後', days: 0,
+      endDirection: '後', endDays: 60, unit: '暦日', adjust: 'なし' },
+    { seq: 20, name: '締切後の点検', base: '受付期間', direction: '後', days: 1, unit: '営業日', adjust: 'なし' }
+  ], '2026-09-01', cal, '受付開始');
+  eq(rows[1].dateKey, '2026-11-02', '10/31(土)の翌営業日');
+});
+
+// ---------------------------------------------------------------
+group('工程スケジュールの算出（続き）');
+
 check('循環参照を検出する', () => {
   throws(() => G.computeSchedule([
     { seq: 10, name: 'A', base: 'B', direction: '後', days: 1, unit: '営業日', adjust: 'なし' },

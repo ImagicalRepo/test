@@ -38,12 +38,18 @@ function isAnchorRef(value) {
 /**
  * テンプレートを 1 案件分の日程に展開する。
  *
+ * 工程の日付の決め方は2通りある。
+ *   起点から … 基準（起点の日、または別の工程）からの相対日数で決める
+ *   日付指定 … 起点と無関係に、日付そのものを指定する
+ * どちらも「終了」を入れると期間になる（例：受付期間、点検作業の3日間）。
+ *
  * @param {Array<Object>} rows 工程テンプレート行
- *        {seq, name, base, direction, days, unit, adjust, owner, remindDays, note}
+ *        {seq, name, mode, base, direction, days, endDirection, endDays,
+ *         startDate, endDate, unit, adjust, owner, remindDays, note}
  * @param {string} anchorKey 基準日（審査会日など）の dateKey
  * @param {Object} cal 営業日カレンダー
  * @param {string} anchorName 基準日の別名（業務マスタの「基準日名称」）。base 欄でこの名前も基準日として扱う
- * @return {Array<Object>} rows に dateKey を加えたもの（入力順）
+ * @return {Array<Object>} rows に dateKey（開始）と endKey（終了・任意）を加えたもの（入力順）
  */
 function computeSchedule(rows, anchorKey, cal, anchorName) {
   if (!rows || !rows.length) return [];
@@ -67,6 +73,16 @@ function computeSchedule(rows, anchorKey, cal, anchorName) {
     var next = [];
     for (var i = 0; i < pending.length; i++) {
       var row = pending[i];
+
+      // 日付そのものを指定する工程は、基準を解決する必要がない
+      if (normalizeMode(row.mode) === 'fixed') {
+        applyFixedDates(cal, row);
+        // 後続の工程は、期間の終わりを基準にできる
+        resolved[normalizeText(row.name)] = row.endKey || row.dateKey;
+        progressed = true;
+        continue;
+      }
+
       var baseText = normalizeText(row.base);
       var baseKey = null;
 
@@ -83,7 +99,8 @@ function computeSchedule(rows, anchorKey, cal, anchorName) {
         continue;
       }
       row.dateKey = offsetFrom(cal, baseKey, row);
-      resolved[normalizeText(row.name)] = row.dateKey;
+      row.endKey = computeEndKey(cal, baseKey, row);
+      resolved[normalizeText(row.name)] = row.endKey || row.dateKey;
       progressed = true;
     }
     if (!progressed) {
@@ -94,6 +111,55 @@ function computeSchedule(rows, anchorKey, cal, anchorName) {
   }
 
   return rows;
+}
+
+/** 日付の決め方の表記ゆれを吸収 */
+function normalizeMode(value) {
+  var s = normalizeText(value);
+  if (!s || /^(起点から|相対|基準から|RELATIVE)$/i.test(s)) return 'relative';
+  if (/^(日付指定|指定日|直接指定|固定|FIXED)$/i.test(s)) return 'fixed';
+  throw new Error('日付種別の指定が不正です: ' + value + '（起点から / 日付指定）');
+}
+
+/** 日付を直接指定した工程の開始・終了を決める */
+function applyFixedDates(cal, row) {
+  var start = String(row.startDate || '').trim();
+  if (!start) {
+    throw new Error('「' + row.name + '」は日付指定ですが、開始日が入っていません');
+  }
+  keyToDate(start);
+  row.dateKey = start;
+
+  var end = String(row.endDate || '').trim();
+  if (!end) {
+    row.endKey = '';
+    return;
+  }
+  keyToDate(end);
+  if (end < start) {
+    throw new Error('「' + row.name + '」の終了日が開始日より前です（' + start + ' 〜 ' + end + '）');
+  }
+  row.endKey = end;
+}
+
+/** 期間の終わり（起点からの相対指定）。終了日数が空なら単日として '' を返す */
+function computeEndKey(cal, baseKey, row) {
+  var raw = row.endDays;
+  if (raw === '' || raw === null || raw === undefined) return '';
+  var endRow = {
+    name: row.name,
+    direction: row.endDirection === '' || row.endDirection === undefined || row.endDirection === null
+      ? row.direction : row.endDirection,
+    days: raw,
+    unit: row.unit,
+    adjust: row.adjust
+  };
+  var endKey = offsetFrom(cal, baseKey, endRow);
+  if (endKey < row.dateKey) {
+    throw new Error('「' + row.name + '」の終了が開始より前になります（'
+      + row.dateKey + ' 〜 ' + endKey + '）');
+  }
+  return endKey === row.dateKey ? '' : endKey;
 }
 
 /** 基準日から 1 工程分ずらす */

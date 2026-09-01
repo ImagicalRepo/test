@@ -157,6 +157,9 @@
   .sentence select, .sentence input { padding:4px 7px; font-size:12px; }
   .sentence .base { max-width:220px; font-weight:600; color:var(--text); }
   .sentence .days { width:54px; text-align:center; font-weight:600; color:var(--text); }
+  .sentence .dateinput { font-weight:600; color:var(--text); padding:3px 6px; }
+  .sentence .mode { font-weight:600; color:var(--text); }
+  .linklike.small { font-size:11px; white-space:nowrap; }
   .sentence .unit, .sentence .dir { font-weight:600; color:var(--text); }
   .sentence .chain {
     display:inline-flex; align-items:center; gap:4px; color:var(--muted); font-size:11px;
@@ -376,6 +379,17 @@
     l.appendChild(node);
     return l;
   }
+  /** 日付を直接指定する工程か */
+  function isFixed(r) {
+    return String(r.mode || '') === '日付指定';
+  }
+
+  /** 期間（開始〜終了）を持つ工程か */
+  function hasRange(r) {
+    if (isFixed(r)) return !!r.endDate;
+    return r.endDays !== '' && r.endDays !== null && r.endDays !== undefined;
+  }
+
   function fmtDate(key) {
     var p = key.split('-');
     var d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2]));
@@ -816,46 +830,113 @@
     nameRow.appendChild(dueBadge(i, r));
     main.appendChild(nameRow);
 
-    // 2行目：「〔基準〕の〔N〕〔営業日〕〔前〕」という一文
+    // 2行目：日付の決め方を一文として書く
     var sen = el('div', 'sentence');
-    var base = r.base || '';
-    if (base && base === work().anchorName) base = '';
+    var fixed = isFixed(r);
+    var ranged = hasRange(r);
 
-    var isChained = !!base;
-    if (isChained) {
-      var chain = el('span', 'chain');
-      chain.appendChild(svg('corner'));
-      sen.appendChild(chain);
-    }
-
-    var baseSel = select(baseOptions(i), base, function (v) {
-      r.base = v;
+    var modeSel = select([
+      { value: '起点から', label: '起点から' },
+      { value: '日付指定', label: '日付指定' }
+    ], fixed ? '日付指定' : '起点から', function (v) {
+      r.mode = v;
+      if (v === '日付指定' && !r.startDate) r.startDate = DATA.today;
       renderRows();
       schedulePreview();
-    }, 'base', '基準にする工程');
-    baseSel.dataset.focus = 'base';
-    if (baseSel.selectedIndex >= 0) baseSel.title = baseSel.options[baseSel.selectedIndex].textContent;
-    sen.appendChild(baseSel);
-    sen.appendChild(el('span', '', 'の'));
+    }, 'mode', '日付の決め方');
+    modeSel.dataset.focus = 'mode';
+    sen.appendChild(modeSel);
 
-    var days = el('input', 'days');
-    days.type = 'number'; days.min = 0;
-    days.value = r.days === undefined ? 0 : r.days;
-    days.setAttribute('aria-label', 'ずらす日数');
-    days.dataset.focus = 'days';
-    days.onchange = function () { r.days = Number(days.value); schedulePreview(); };
-    sen.appendChild(days);
+    if (fixed) {
+      var sd = el('input', 'dateinput');
+      sd.type = 'date'; sd.value = r.startDate || '';
+      sd.setAttribute('aria-label', 'この工程を行う日');
+      sd.dataset.focus = 'startDate';
+      sd.onchange = function () { r.startDate = sd.value; schedulePreview(); };
+      sen.appendChild(sd);
 
-    var unitSel = select(UNITS, r.unit || '営業日', function (v) { r.unit = v; schedulePreview(); }, 'unit', '日数の単位');
-    unitSel.dataset.focus = 'unit';
-    sen.appendChild(unitSel);
-    var dirSel = select(DIRS, r.direction || '前', function (v) { r.direction = v; schedulePreview(); }, 'dir', '基準より前か後か');
-    dirSel.dataset.focus = 'dir';
-    sen.appendChild(dirSel);
+      if (ranged) {
+        sen.appendChild(el('span', '', '〜'));
+        var ed = el('input', 'dateinput');
+        ed.type = 'date'; ed.value = r.endDate || '';
+        ed.min = r.startDate || '';
+        ed.setAttribute('aria-label', '終了日');
+        ed.dataset.focus = 'endDate';
+        ed.onchange = function () { r.endDate = ed.value; schedulePreview(); };
+        sen.appendChild(ed);
+      }
+    } else {
+      var base = r.base || '';
+      if (base && base === work().anchorName) base = '';
+      if (base) {
+        var chain = el('span', 'chain');
+        chain.appendChild(svg('corner'));
+        sen.appendChild(chain);
+      }
 
-    if (Number(r.days) === 0) {
-      sen.appendChild(el('span', '', '＝ 基準日と同じ日'));
+      var baseSel = select(baseOptions(i), base, function (v) {
+        r.base = v;
+        renderRows();
+        schedulePreview();
+      }, 'base', '基準にする工程');
+      baseSel.dataset.focus = 'base';
+      if (baseSel.selectedIndex >= 0) baseSel.title = baseSel.options[baseSel.selectedIndex].textContent;
+      sen.appendChild(baseSel);
+      sen.appendChild(el('span', '', 'の'));
+
+      var days = el('input', 'days');
+      days.type = 'number'; days.min = 0;
+      days.value = r.days === undefined ? 0 : r.days;
+      days.setAttribute('aria-label', 'ずらす日数');
+      days.dataset.focus = 'days';
+      days.onchange = function () { r.days = Number(days.value); schedulePreview(); };
+      sen.appendChild(days);
+
+      var unitSel = select(UNITS, r.unit || '営業日', function (v) { r.unit = v; schedulePreview(); }, 'unit', '日数の単位');
+      unitSel.dataset.focus = 'unit';
+      sen.appendChild(unitSel);
+      var dirSel = select(DIRS, r.direction || '前', function (v) { r.direction = v; schedulePreview(); }, 'dir', '基準より前か後か');
+      dirSel.dataset.focus = 'dir';
+      sen.appendChild(dirSel);
+
+      if (ranged) {
+        sen.appendChild(el('span', '', 'から'));
+        var ends = el('input', 'days');
+        ends.type = 'number'; ends.min = 0;
+        ends.value = r.endDays === '' || r.endDays === undefined ? 0 : r.endDays;
+        ends.setAttribute('aria-label', '終了までの日数');
+        ends.dataset.focus = 'endDays';
+        ends.onchange = function () { r.endDays = Number(ends.value); schedulePreview(); };
+        sen.appendChild(ends);
+        var endDir = select(DIRS, r.endDirection || r.direction || '前',
+          function (v) { r.endDirection = v; schedulePreview(); }, 'dir', '終了は基準より前か後か');
+        endDir.dataset.focus = 'endDir';
+        sen.appendChild(endDir);
+        sen.appendChild(el('span', '', 'まで'));
+      } else if (Number(r.days) === 0) {
+        sen.appendChild(el('span', '', '＝ 起点と同じ日'));
+      }
     }
+
+    // 単日と期間の切り替え
+    var rangeBtn = el('button', 'linklike small');
+    rangeBtn.type = 'button';
+    rangeBtn.textContent = ranged ? '単日に戻す' : '期間にする';
+    rangeBtn.title = ranged ? 'この工程を1日だけにする' : 'この工程を「◯日から◯日まで」にする';
+    rangeBtn.onclick = function () {
+      if (ranged) {
+        r.endDays = '';
+        r.endDate = '';
+      } else if (isFixed(r)) {
+        r.endDate = r.startDate || DATA.today;
+      } else {
+        r.endDays = Math.max(0, (Number(r.days) || 0) - 1);
+        r.endDirection = r.direction || '前';
+      }
+      renderRows();
+      schedulePreview();
+    };
+    sen.appendChild(rangeBtn);
 
     sen.appendChild(el('span', 'spacer'));
 
@@ -942,7 +1023,9 @@
       b.appendChild(svg('warn'));
       b.title = 'この日は休日です。「計算結果が休日のとき」の設定を確認してください';
     }
-    b.appendChild(el('span', '', fmtDate(due.dateKey)));
+    b.appendChild(el('span', '', due.endKey
+      ? fmtDate(due.dateKey) + '〜' + fmtDate(due.endKey)
+      : fmtDate(due.dateKey)));
     return b;
   }
 
@@ -981,8 +1064,9 @@
   function renumber() { rows.forEach(function (r, i) { r.seq = (i + 1) * 10; }); }
 
   function addRow(at) {
-    var row = { seq:0, name:'', base:'', direction:'前', days:1, unit:'営業日',
-                adjust:'前営業日', owner:'', remindDays:'', note:'' };
+    var row = { seq:0, name:'', mode:'起点から', base:'', direction:'前', days:1,
+                endDirection:'', endDays:'', startDate:'', endDate:'',
+                unit:'営業日', adjust:'前営業日', owner:'', remindDays:'', note:'' };
     if (at === undefined || at > rows.length) rows.push(row);
     else rows.splice(at, 0, row);
     renumber();
@@ -1060,8 +1144,9 @@
       res.items.forEach(function (it, n) {
         dueByIndex[indices[n]] = {
           dateKey: it.dateKey,
+          endKey: it.endKey || '',
           isBusinessDay: it.isBusinessDay,
-          isAnchorDay: it.dateKey === anchor
+          isAnchorDay: it.dateKey === anchor && !it.endKey
         };
       });
       renderRows();
@@ -1083,7 +1168,9 @@
         if (prev && diffDays(prev, it.dateKey) >= 7) item.classList.add('gap');
         prev = it.dateKey;
         item.style.animationDelay = Math.min(n * 18, 300) + 'ms';
-        var head = el('div', 'pv-date', fmtDate(it.dateKey));
+        var head = el('div', 'pv-date', it.endKey
+          ? fmtDate(it.dateKey) + ' 〜 ' + fmtDate(it.endKey)
+          : fmtDate(it.dateKey));
         if (!it.isBusinessDay) head.appendChild(el('span', 'pv-warn', '　※休日'));
         item.appendChild(head);
         item.appendChild(el('div', 'pv-name', it.name));

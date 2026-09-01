@@ -12,8 +12,21 @@
   var cal = createBusinessCalendar({ holidays: HOLIDAYS_2026 });
 
   function tpl(seq, name, base, dir, days, unit, remind, note) {
-    return { seq: seq, name: name, base: base, direction: dir, days: days, unit: unit,
+    return { seq: seq, name: name, mode: '起点から', base: base, direction: dir, days: days,
+             endDirection: '', endDays: '', startDate: '', endDate: '', unit: unit,
              adjust: '前営業日', owner: '', remindDays: remind, note: note || '' };
+  }
+  /** 起点からの期間 */
+  function span(seq, name, dir, days, endDir, endDays, unit, remind) {
+    var r = tpl(seq, name, '', dir, days, unit, remind, '');
+    r.endDirection = endDir; r.endDays = endDays;
+    return r;
+  }
+  /** 日付を直接指定 */
+  function fixed(seq, name, start, end, remind) {
+    var r = tpl(seq, name, '', '前', 0, '営業日', remind, '');
+    r.mode = '日付指定'; r.startDate = start; r.endDate = end || '';
+    return r;
   }
 
   var EDITOR_DATA = {
@@ -38,7 +51,10 @@
         tpl(110,'受給者証・通知書の印刷','決裁完了（見込）','後',1,'営業日',1,''),
         tpl(120,'封入封緘・点検','受給者証・通知書の印刷','後',1,'営業日',1,'二人体制で突合'),
         tpl(130,'受給者証の発送','封入封緘・点検','後',1,'営業日',1,'到達日を意識して逆算する'),
-        tpl(140,'台帳更新・報告用データ反映','受給者証の発送','後',2,'営業日',2,'')
+        tpl(140,'台帳更新・報告用データ反映','受給者証の発送','後',2,'営業日',2,''),
+        span(150,'窓口受付期間','前',20,'前',10,'営業日',3),
+        fixed(160,'年1回の全件点検','2026-09-14','',2),
+        fixed(170,'研修期間','2026-09-28','2026-09-30',3)
       ],
       KOSIN: [tpl(10,'更新案内の一斉発送','','前',10,'営業日',3,''), tpl(20,'更新申請 受付開始','','後',0,'営業日',1,'')],
       SHOMAN: [tpl(10,'申請受付分の締切','','前',15,'営業日',3,''), tpl(20,'審査会','','後',0,'営業日',1,'')]
@@ -71,14 +87,17 @@
     previewSchedule: function (rows, anchorKey, anchorName) {
       var input = (rows || []).map(function (r, i) {
         return { seq: r.seq === '' || r.seq === undefined ? (i + 1) * 10 : r.seq,
-                 name: r.name, base: r.base, direction: r.direction, days: r.days,
+                 name: r.name, mode: r.mode, base: r.base, direction: r.direction, days: r.days,
+                 endDirection: r.endDirection, endDays: r.endDays,
+                 startDate: r.startDate, endDate: r.endDate,
                  unit: r.unit, adjust: r.adjust };
       });
       try {
         var computed = computeSchedule(input, anchorKey, cal, anchorName);
         return { ok: true, items: computed.map(function (r) {
-          return { seq: r.seq, name: r.name, dateKey: r.dateKey,
+          return { seq: r.seq, name: r.name, dateKey: r.dateKey, endKey: r.endKey || '',
                    weekday: WEEKDAY_LABELS[dayOfWeek(r.dateKey)],
+                   endWeekday: r.endKey ? WEEKDAY_LABELS[dayOfWeek(r.endKey)] : '',
                    isBusinessDay: isBusinessDay(cal, r.dateKey) };
         }) };
       } catch (e) {

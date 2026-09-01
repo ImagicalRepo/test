@@ -28,9 +28,15 @@ function getEditorData() {
     templates[id].push({
       seq: r['工程No'],
       name: String(r['工程名'] || ''),
+      mode: normalizeMode(r['日付種別']) === 'fixed' ? '日付指定' : '起点から',
       base: String(r['基準'] || ''),
       direction: String(r['方向'] || '前'),
       days: r['日数'] === '' || r['日数'] === null ? 0 : Number(r['日数']),
+      endDirection: String(r['終了方向'] || ''),
+      endDays: (r['終了日数'] === '' || r['終了日数'] === null || r['終了日数'] === undefined)
+        ? '' : Number(r['終了日数']),
+      startDate: toDateKey(r['開始日']),
+      endDate: toDateKey(r['終了日']),
       unit: String(r['単位'] || '営業日'),
       adjust: String(r['休日補正'] || '前営業日'),
       owner: String(r['担当'] || ''),
@@ -89,7 +95,9 @@ function previewSchedule(rows, anchorKey, anchorName) {
   var input = (rows || []).map(function (r, i) {
     return {
       seq: r.seq === '' || r.seq === undefined ? (i + 1) * 10 : r.seq,
-      name: r.name, base: r.base, direction: r.direction, days: r.days,
+      name: r.name, mode: r.mode, base: r.base, direction: r.direction, days: r.days,
+      endDirection: r.endDirection, endDays: r.endDays,
+      startDate: r.startDate, endDate: r.endDate,
       unit: r.unit, adjust: r.adjust, owner: r.owner, remindDays: r.remindDays, note: r.note
     };
   });
@@ -99,8 +107,9 @@ function previewSchedule(rows, anchorKey, anchorName) {
       ok: true,
       items: computed.map(function (r) {
         return {
-          seq: r.seq, name: r.name, dateKey: r.dateKey,
+          seq: r.seq, name: r.name, dateKey: r.dateKey, endKey: r.endKey || '',
           weekday: WEEKDAY_LABELS[dayOfWeek(r.dateKey)],
+          endWeekday: r.endKey ? WEEKDAY_LABELS[dayOfWeek(r.endKey)] : '',
           isBusinessDay: isBusinessDay(cal, r.dateKey)
         };
       })
@@ -128,9 +137,14 @@ function saveTemplate(workId, rows) {
       '業務ID': workId,
       '工程No': r.seq === '' || r.seq === undefined || r.seq === null ? (i + 1) * 10 : Number(r.seq),
       '工程名': name,
+      '日付種別': normalizeMode(r.mode) === 'fixed' ? '日付指定' : '起点から',
       '基準': String(r.base || ''),
       '方向': String(r.direction || '前'),
       '日数': Number(r.days) || 0,
+      '終了方向': String(r.endDirection || ''),
+      '終了日数': (r.endDays === '' || r.endDays === null || r.endDays === undefined) ? '' : Number(r.endDays),
+      '開始日': r.startDate ? keyToSheetDate_(r.startDate) : '',
+      '終了日': r.endDate ? keyToSheetDate_(r.endDate) : '',
       '単位': String(r.unit || '営業日'),
       '休日補正': String(r.adjust || '前営業日'),
       '担当': String(r.owner || ''),
@@ -144,8 +158,11 @@ function saveTemplate(workId, rows) {
   var cal = loadBusinessCalendar_();
   computeSchedule(added.map(function (r) {
     return {
-      seq: r['工程No'], name: r['工程名'], base: r['基準'], direction: r['方向'],
-      days: r['日数'], unit: r['単位'], adjust: r['休日補正']
+      seq: r['工程No'], name: r['工程名'], mode: r['日付種別'],
+      base: r['基準'], direction: r['方向'], days: r['日数'],
+      endDirection: r['終了方向'], endDays: r['終了日数'],
+      startDate: toDateKey(r['開始日']), endDate: toDateKey(r['終了日']),
+      unit: r['単位'], adjust: r['休日補正']
     };
   }), todayKey_(), cal, work ? work['基準日名称'] : '');
 
@@ -158,8 +175,12 @@ function saveTemplate(workId, rows) {
   replaceTable_(SHEET.TEMPLATE, merged);
   applyValidations_();
   var result = generateSchedules();
-  log_('テンプレート保存', result.errors.length === 0, workId + ' / ' + added.length + '工程');
-  return result;
+
+  // 他の業務のエラーまで見せると「保存できたのに失敗した」ように見えるため、
+  // いま保存した業務に関係するものだけを返す
+  var mine = result.errors.filter(function (m) { return m.indexOf('[' + workId) === 0; });
+  log_('テンプレート保存', mine.length === 0, workId + ' / ' + added.length + '工程');
+  return { anchorsAdded: result.anchorsAdded, rows: result.rows, errors: mine };
 }
 
 function findWork_(workId) {

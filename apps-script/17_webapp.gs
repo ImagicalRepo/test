@@ -80,8 +80,10 @@ function getGanttData() {
     var workId = String(r['業務ID']).trim();
     var period = periodText_(r['回次']);
     var dueKey = toDateKey(r['予定日']);
+    var endKey = toDateKey(r['終了日']);
     if (!workId || !dueKey) return;
-    if (dueKey < fromKey || dueKey > toKey) return;
+    // 期間を持つ工程は、期間のどこかが表示範囲に掛かっていれば出す
+    if ((endKey || dueKey) < fromKey || dueKey > toKey) return;
     var work = workById[workId];
     if (!work || !work.enabled) return;
 
@@ -104,20 +106,23 @@ function getGanttData() {
       lanes.push(lane);
     }
     if (dueKey < lane.from) lane.from = dueKey;
-    if (dueKey > lane.to) lane.to = dueKey;
+    if ((endKey || dueKey) > lane.to) lane.to = endKey || dueKey;
 
     var status = String(r['状態'] || STATUS.NOT_STARTED).trim();
+    // 期間を持つ工程は、期限（終了日）を過ぎて初めて遅延とみなす
+    var deadline = endKey || dueKey;
     lane.items.push({
       key: String(r['キー']).trim(),
       seq: Number(r['工程No']) || 0,
       name: String(r['工程名'] || ''),
       dueKey: dueKey,
+      endKey: endKey,
       weekday: WEEKDAY_LABELS[dayOfWeek(dueKey)],
       status: status,
       owner: String(r['担当'] || ''),
       note: String(r['備考'] || ''),
       isAnchor: dueKey === (anchorByKey[laneKey] || ''),
-      overdue: dueKey < today && status !== STATUS.DONE && status !== STATUS.SKIP,
+      overdue: deadline < today && status !== STATUS.DONE && status !== STATUS.SKIP,
       remaining: countFrom(dueKey)
     });
   });

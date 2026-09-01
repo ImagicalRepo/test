@@ -199,6 +199,11 @@
     position: absolute; height: 8px; top: 50%; margin-top: -4px; border-radius: 4px;
     transform-origin: left center; animation: growX .5s var(--ease) backwards;
   }
+  body.printing .lane { align-items: flex-end; }
+  body.printing .mark, body.printing .range, body.printing .span {
+    top: auto !important; bottom: 5px; margin-top: 0 !important;
+  }
+  body.printing .lane-label { align-self: flex-end; padding-bottom: 4px; }
   .mark {
     position: absolute; top: 50%; width: 13px; height: 13px; margin-top: -6.5px;
     border-radius: 50%; border: 2px solid var(--surface); cursor: pointer;
@@ -211,6 +216,16 @@
   .mark.overdue { box-shadow: 0 0 0 2px var(--danger); }
   .mark.anchor { width: 15px; height: 15px; margin-top: -7.5px; border-radius: 3px; transform: rotate(45deg); }
   .mark.anchor:hover { transform: rotate(45deg) scale(1.35); }
+
+  /* 「この日からこの日まで」の工程 */
+  .range {
+    position: absolute; height: 11px; top: 50%; margin-top: -5.5px;
+    border-radius: 6px; opacity: .55; cursor: pointer;
+    transform-origin: left center; animation: growX .5s var(--ease) backwards;
+  }
+  .range:hover { opacity: .8; }
+  .range.done { opacity: .25; }
+  .range.overdue { box-shadow: 0 0 0 1.5px var(--danger); }
 
   /* ============ 業務別ビュー ============ */
   .work-scroll { flex: 1; overflow-y: auto; padding: 14px 16px 40px; }
@@ -251,6 +266,7 @@
     font-size: 11.5px; font-variant-numeric: tabular-nums; width: 76px; flex: 0 0 76px;
     color: var(--muted); font-weight: 600;
   }
+  .row-date.wide { width: 148px; flex: 0 0 148px; }
   .row-name { flex: 1; font-size: 12.5px; line-height: 1.4; min-width: 0; }
   .row-owner { font-size: 11px; color: var(--muted); }
   .pill {
@@ -356,6 +372,58 @@
     border-radius: 50%; margin: 0 auto 12px; animation: spin .8s linear infinite;
   }
 
+  /* ============ 印刷 ============ */
+  /* 画面では出さず、紙にだけ出す見出し */
+  .print-head { display: none; }
+
+  .plabel {
+    position: absolute; font-size: 8.5px; line-height: 1.3; white-space: nowrap;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 4px;
+    padding: 1px 4px; color: var(--text); pointer-events: none;
+  }
+  .plabel .pdate {
+    font-weight: 700; font-variant-numeric: tabular-nums; margin-right: 4px;
+    color: var(--muted);
+  }
+  .pleader { position: absolute; width: 1px; background: var(--border); pointer-events: none; }
+
+  @page { size: A4 landscape; margin: 8mm; }
+
+  @media print {
+    /* 背景色を紙にも出す（工程の色分けが意味を持つため） */
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+    html, body { height: auto; background: #fff; }
+    #app { height: auto; display: block; }
+    .main { display: block; }
+    .content { overflow: visible; }
+
+    /* 操作部と「今日やること」は紙には要らない */
+    header.top, aside, #detail, .theme-pop, .insert { display: none !important; }
+    .legend .chip { pointer-events: none; }
+
+    .view { animation: none; display: block; }
+    .scroll, .work-scroll, .cal-wrap { overflow: visible !important; height: auto !important; }
+    .grid { width: auto !important; }
+    /* sticky は解くが、土日の網掛けより上に描くため位置指定は残す
+       （static にすると背景レイヤーが上に来て、月名が読めなくなる） */
+    .head, .head-label, .lane-label { position: relative !important; }
+
+    .print-head {
+      display: block; margin: 0 0 8px; padding: 0 2px 6px;
+      border-bottom: 1.5px solid var(--text);
+    }
+    .print-head .t { font-size: 14px; font-weight: 700; }
+    .print-head .m { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+    /* ガント：吹き出しを出すぶん行を高くし、ページ内で割れないようにする */
+    .lane { break-inside: avoid; page-break-inside: avoid; }
+    .kase { break-inside: avoid; page-break-inside: avoid; box-shadow: none; }
+    .cell { break-inside: avoid; }
+    .mark, .range, .span { animation: none !important; }
+    .card, .kase, .row-item, .step { animation: none !important; }
+  }
+
   /* ============ アニメーション ============ */
   @keyframes viewIn { from { opacity: 0; transform: translateY(7px); } }
   @keyframes slideIn { from { opacity: 0; transform: translateY(8px); } }
@@ -408,6 +476,7 @@
     </span>
 
     <a id="linkEditor" class="applink" target="_blank" rel="noopener" hidden>工程を編集</a>
+    <button id="btnPrint">印刷</button>
     <button id="btnReload" class="primary">再読み込み</button>
   </header>
 
@@ -596,6 +665,8 @@ function toKey(d) {
 }
 function addDays(k, n) { var d = toDate(k); d.setUTCDate(d.getUTCDate() + n); return toKey(d); }
 function fmtShort(k) { var p = k.split('-'); return (+p[1]) + '/' + (+p[2]) + '(' + WD[toDate(k).getUTCDay()] + ')'; }
+/** 印刷の吹き出し用に、曜日を省いた短い日付 */
+function shortMD(k) { var p = k.split('-'); return (+p[1]) + '/' + (+p[2]); }
 function fmtLong(k) {
   var p = k.split('-');
   return p[0] + '年' + (+p[1]) + '月' + (+p[2]) + '日(' + WD[toDate(k).getUTCDay()] + ')';
@@ -956,6 +1027,21 @@ function renderLane(lane, trackW, laneIndex, repeat) {
   lane.items.forEach(function (it, ii) {
     var i = indexOf[it.dueKey];
     if (i === undefined) return;
+
+    // 期間を持つ工程は、開始から終了までを帯で描く
+    if (it.endKey) {
+      var ei = indexOf[it.endKey];
+      if (ei === undefined) ei = days.length - 1;
+      var bar = el('div', 'range' + (it.status === '完了' ? ' done' : '') + (it.overdue ? ' overdue' : ''));
+      bar.style.left = (i * dayW + dayW / 2) + 'px';
+      bar.style.width = Math.max((ei - i) * dayW, 6) + 'px';
+      bar.style.background = color.bar;
+      bar.style.animationDelay = delay(laneIndex * 3 + ii, 14, 500);
+      bar.title = fmtShort(it.dueKey) + '〜' + fmtShort(it.endKey) + '　' + it.name;
+      bar.onclick = function (ev) { ev.stopPropagation(); openDetail(ev, { lane: lane, item: it }); };
+      track.appendChild(bar);
+    }
+
     var cls = 'mark';
     if (it.isAnchor) cls += ' anchor';
     if (it.status === '完了') cls += ' done';
@@ -964,9 +1050,21 @@ function renderLane(lane, trackW, laneIndex, repeat) {
     mk.style.left = (i * dayW + dayW / 2 - (it.isAnchor ? 7.5 : 6.5)) + 'px';
     mk.style.background = color.bar;
     mk.style.animationDelay = delay(laneIndex * 3 + ii, 14, 500);
-    mk.title = fmtShort(it.dueKey) + '　' + it.name;
+    mk.title = (it.endKey ? fmtShort(it.dueKey) + '〜' + fmtShort(it.endKey) : fmtShort(it.dueKey))
+      + '　' + it.name;
     mk.onclick = function (ev) { ev.stopPropagation(); openDetail(ev, { lane: lane, item: it }); };
     track.appendChild(mk);
+
+    if (printing) {
+      var lab = el('div', 'plabel');
+      lab.appendChild(el('span', 'pdate', it.endKey
+        ? shortMD(it.dueKey) + '〜' + shortMD(it.endKey)
+        : shortMD(it.dueKey)));
+      lab.appendChild(document.createTextNode(it.name));
+      lab.dataset.x = String(i * dayW + dayW / 2);
+      lab.style.borderColor = color.bar;
+      track.appendChild(lab);
+    }
   });
 
   row.appendChild(track);
@@ -1067,7 +1165,9 @@ function renderStep(lane, it, ii, color) {
   rail.appendChild(dot);
   row.appendChild(rail);
 
-  row.appendChild(el('div', 'row-date', fmtShort(it.dueKey)));
+  var dateCell = el('div', 'row-date' + (it.endKey ? ' wide' : ''),
+    it.endKey ? fmtShort(it.dueKey) + '〜' + fmtShort(it.endKey) : fmtShort(it.dueKey));
+  row.appendChild(dateCell);
 
   var name = el('div', 'row-name');
   name.appendChild(el('span', 'row-label', it.name));
@@ -1130,7 +1230,12 @@ function renderMonth(root) {
     if (hidden[lane.workId]) return;
     lane.items.forEach(function (it) {
       if (!byDate[it.dueKey]) byDate[it.dueKey] = [];
-      byDate[it.dueKey].push({ lane: lane, item: it });
+      // 期間を持つ工程は、開始日と終了日の両方に出す（間の日は埋めない）
+      byDate[it.dueKey].push({ lane: lane, item: it, edge: it.endKey ? 'start' : '' });
+      if (it.endKey && it.endKey !== it.dueKey) {
+        if (!byDate[it.endKey]) byDate[it.endKey] = [];
+        byDate[it.endKey].push({ lane: lane, item: it, edge: 'end' });
+      }
     });
   });
   Object.keys(byDate).forEach(function (k) {
@@ -1200,8 +1305,13 @@ function renderCell(key, byDate, i) {
     var dot = el('i');
     dot.style.background = color.bar;
     ev.appendChild(dot);
-    ev.appendChild(el('span', '', ctx.item.name));
-    ev.title = ctx.lane.workName + ' ' + ctx.lane.period + '\n' + ctx.item.name + '\n' + ctx.item.status;
+    var label = ctx.item.name;
+    if (ctx.edge === 'start') label = label + ' 〜';
+    else if (ctx.edge === 'end') label = '〜 ' + label;
+    ev.appendChild(el('span', '', label));
+    ev.title = ctx.lane.workName + ' ' + ctx.lane.period + '\n' + ctx.item.name
+      + (ctx.item.endKey ? '\n' + fmtShort(ctx.item.dueKey) + '〜' + fmtShort(ctx.item.endKey) : '')
+      + '\n' + ctx.item.status;
     ev.onclick = function (e) { e.stopPropagation(); openDetail(e, ctx); };
     cell.appendChild(ev);
   });
@@ -1235,9 +1345,12 @@ function openDetail(ev, ctx) {
   var r = ctx.item.remaining;
   var remainText = ctx.item.dueKey === DATA.today ? '本日'
     : r < 0 ? Math.abs(r) + '営業日超過' : 'あと' + r + '営業日';
+  var whenText = ctx.item.endKey
+    ? fmtLong(ctx.item.dueKey) + ' 〜 ' + fmtLong(ctx.item.endKey)
+    : fmtLong(ctx.item.dueKey) + '　' + remainText;
   box.appendChild(el('div', 'sub',
     ctx.lane.workName + ' ' + ctx.lane.period + '\n'
-    + fmtLong(ctx.item.dueKey) + '　' + remainText
+    + whenText
     + (ctx.item.owner ? '\n担当：' + ctx.item.owner : '')
     + '\n状態：' + ctx.item.status));
 
@@ -1301,6 +1414,114 @@ function changeAnchor(lane) {
 }
 
 // =====================================================================
+// 印刷
+//   ガントは、丸に重ねている工程名を吹き出しとして出した状態で刷る。
+//   日付が近い工程どうしで吹き出しが重ならないよう、段を分けて配置する。
+// =====================================================================
+var printing = false;
+var savedDayW = null;
+
+/** A4横に収まる1日あたりの幅を求める */
+function printDayW() {
+  var budget = 1040 - 190;                       // 用紙幅 - ラベル列
+  var fit = Math.floor(budget / Math.max(days.length, 1));
+  return Math.max(3, Math.min(dayW, fit));
+}
+
+/** 紙の先頭に付ける見出し */
+function printHeader() {
+  var head = el('div', 'print-head');
+  var title = view === 'gantt' ? '業務スケジュール（ガント）'
+    : view === 'work' ? '業務別スケジュール'
+    : '月間スケジュール';
+  head.appendChild(el('div', 't', title));
+  var meta = view === 'month'
+    ? (+calMonth.slice(5, 7)) + '月　' + calMonth.slice(0, 4)
+    : fmtLong(DATA.from) + ' 〜 ' + fmtLong(DATA.to);
+  head.appendChild(el('div', 'm', meta + '　／　出力日 ' + fmtLong(DATA.today)));
+  return head;
+}
+
+/**
+ * 吹き出しを段組みして重なりを避ける。
+ * 左端をマーカーに合わせ、同じ段の直前の吹き出しと重なるなら1段上げる。
+ */
+function layoutPrintLabels() {
+  var laneEls = document.querySelectorAll('#grid .lane');
+  Array.prototype.forEach.call(laneEls, function (laneEl) {
+    var track = laneEl.querySelector('.track');
+    if (!track) return;
+    var labels = Array.prototype.slice.call(track.querySelectorAll('.plabel'));
+    if (!labels.length) return;
+
+    var trackW = track.offsetWidth;
+    var boxes = labels.map(function (lab) {
+      var x = Number(lab.dataset.x);
+      var w = lab.offsetWidth;
+      return { el: lab, left: Math.max(0, Math.min(x, trackW - w)), w: w, x: x };
+    }).sort(function (a, b) { return a.left - b.left; });
+
+    var levelEnd = [];
+    var maxLevel = 0;
+    boxes.forEach(function (b) {
+      var level = 0;
+      while (levelEnd[level] !== undefined && levelEnd[level] + 3 > b.left) level++;
+      levelEnd[level] = b.left + b.w;
+      b.level = level;
+      if (level > maxLevel) maxLevel = level;
+    });
+
+    // 段の間隔は吹き出しの実際の高さから決める。
+    // 決め打ちにすると、文字サイズや行間の違いでわずかに接触してしまう。
+    var lineH = Math.max(12, (boxes[0].el.offsetHeight || 12) + 3);
+    var baseBottom = 16;                     // マーカーの上に空ける高さ
+    var needed = baseBottom + (maxLevel + 1) * lineH + 6;
+    laneEl.style.minHeight = needed + 'px';
+
+    boxes.forEach(function (b) {
+      b.el.style.left = b.left + 'px';
+      b.el.style.bottom = (baseBottom + b.level * lineH) + 'px';
+      // 吹き出しからマーカーへ細い線を引く
+      var leader = el('div', 'pleader');
+      leader.style.left = b.x + 'px';
+      leader.style.bottom = '10px';
+      leader.style.height = (baseBottom + b.level * lineH - 10) + 'px';
+      track.appendChild(leader);
+    });
+  });
+}
+
+function startPrint() {
+  printing = true;
+  document.body.classList.add('printing');
+
+  var content = document.getElementById('content');
+  var view0 = content.querySelector('.view');
+  if (view0 && !view0.querySelector('.print-head')) {
+    view0.insertBefore(printHeader(), view0.firstChild);
+  }
+
+  if (view === 'gantt') {
+    savedDayW = dayW;
+    dayW = printDayW();
+    drawGantt(document.getElementById('grid'));
+    // 印刷時はマーカーを行の下に寄せ、上に吹き出しを積む
+    layoutPrintLabels();
+  }
+  window.print();
+}
+
+function endPrint() {
+  if (!printing) return;
+  printing = false;
+  document.body.classList.remove('printing');
+  if (savedDayW !== null) { dayW = savedDayW; savedDayW = null; }
+  renderView();
+}
+
+window.addEventListener('afterprint', endPrint);
+
+// =====================================================================
 // 操作
 // =====================================================================
 document.getElementById('tabs').onclick = function (ev) {
@@ -1323,6 +1544,7 @@ document.getElementById('zoom').onclick = function (ev) {
   if (DATA) { drawGantt(document.getElementById('grid')); setTimeout(scrollToToday, 40); }
 };
 
+document.getElementById('btnPrint').onclick = startPrint;
 document.getElementById('btnReload').onclick = function () { load(); };
 document.getElementById('btnToday').onclick = scrollToToday;
 

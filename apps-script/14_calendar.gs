@@ -37,6 +37,7 @@ function syncCalendar() {
   t.rows.forEach(function (r) {
     var eventId = String(r['イベントID'] || '').trim();
     var dueKey = toDateKey(r['予定日']);
+    var endKey = toDateKey(r['終了日']);
     var status = String(r['状態'] || '').trim();
     var title = '【' + r['業務名'] + ' ' + r['回次'] + '】' + r['工程名'];
     var wanted = dueKey && dueKey >= fromKey && status !== STATUS.SKIP;
@@ -51,6 +52,8 @@ function syncCalendar() {
     }
 
     var date = keyToSheetDate_(dueKey);
+    // 終日イベントの終了日は「翌日」を渡す必要がある
+    var endDate = endKey ? keyToSheetDate_(addCalendarDays(endKey, 1)) : null;
     var desc = [
       '担当: ' + (r['担当'] || '—'),
       '状態: ' + status,
@@ -65,12 +68,15 @@ function syncCalendar() {
       if (event.getTitle() !== title) event.setTitle(title);
       var start = event.getAllDayStartDate();
       if (!start || Utilities.formatDate(start, 'Asia/Tokyo', 'yyyy-MM-dd') !== dueKey) {
-        event.setAllDayDate(date);
+        if (endDate) event.setAllDayDates(date, endDate);
+        else event.setAllDayDate(date);
       }
       event.setDescription(desc);
       updated++;
     } else {
-      event = cal.createAllDayEvent(title, date, { description: desc });
+      event = endDate
+        ? cal.createAllDayEvent(title, date, endDate, { description: desc })
+        : cal.createAllDayEvent(title, date, { description: desc });
       eventId = event.getId();
       created++;
     }
