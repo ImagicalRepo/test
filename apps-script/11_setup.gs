@@ -67,6 +67,9 @@ function applyFormats_() {
   var anchor = readTable_(SHEET.ANCHOR);
   var aidx = headerIndex_(anchor.headers);
   if (aidx['基準日']) anchor.sheet.getRange(2, aidx['基準日'], Math.max(anchor.sheet.getMaxRows() - 1, 1)).setNumberFormat('yyyy/mm/dd');
+  // 「2026-09」のような回次は、放っておくとスプレッドシートが日付に変換してしまう
+  if (aidx['回次']) anchor.sheet.getRange(2, aidx['回次'], Math.max(anchor.sheet.getMaxRows() - 1, 1)).setNumberFormat('@');
+  if (idx['回次']) sh.getRange(2, idx['回次'], rowCount).setNumberFormat('@');
   var hol = readTable_(SHEET.HOLIDAY);
   var hidx = headerIndex_(hol.headers);
   if (hidx['日付']) hol.sheet.getRange(2, hidx['日付'], Math.max(hol.sheet.getMaxRows() - 1, 1)).setNumberFormat('yyyy/mm/dd');

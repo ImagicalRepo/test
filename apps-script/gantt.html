@@ -588,6 +588,58 @@ function el(tag, cls, text) {
 // =====================================================================
 // 読み込み
 // =====================================================================
+var watchdog = null;
+
+/**
+ * 失敗したことを必ず画面に出す。
+ * 以前は画面側で例外が出ると「読み込み中…」の表示のまま止まり、原因が分からなかった。
+ */
+function showFatal(title, detail) {
+  if (watchdog) { clearTimeout(watchdog); watchdog = null; }
+  var c = document.getElementById('content');
+  c.innerHTML = '';
+  var box = el('div', 'msg-box error');
+  box.setAttribute('role', 'alert');
+  box.appendChild(el('div', '', title));
+  if (detail) box.appendChild(el('pre', 'detail', detail));
+  box.appendChild(el('div', 'hintline',
+    'スプレッドシートのメニュー［📅 業務スケジュール］→［動作診断］を実行すると、'
+    + 'どこで止まっているかを詳しく確認できます。'));
+  c.appendChild(box);
+}
+
+/** 受け取ったデータが画面の期待どおりかを確かめる */
+function validate(data) {
+  if (data === null || data === undefined) {
+    return 'データが空で返ってきました（' + (data === null ? 'null' : 'undefined') + '）';
+  }
+  if (typeof data !== 'object') return 'データが ' + typeof data + ' 型で返ってきました';
+  var required = ['today', 'from', 'to', 'works', 'lanes', 'statusList'];
+  for (var i = 0; i < required.length; i++) {
+    if (data[required[i]] === undefined) return '「' + required[i] + '」が含まれていません';
+  }
+  if (typeof data.today !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(data.today)) {
+    return '「today」の形式が想定と違います：' + JSON.stringify(data.today);
+  }
+  if (!isArray(data.lanes) || !isArray(data.works)) return '「works / lanes」が配列ではありません';
+  return null;
+}
+
+function isArray(v) {
+  return Object.prototype.toString.call(v) === '[object Array]';
+}
+
+/** 受信内容を確認用に短く文字列化する */
+function preview(data) {
+  try {
+    var text = JSON.stringify(data);
+    if (text === undefined) return String(data);
+    return text.length > 600 ? text.slice(0, 600) + ' …（以下略）' : text;
+  } catch (e) {
+    return String(data);
+  }
+}
+
 function load(silent) {
   if (!silent) {
     var c = document.getElementById('content');
@@ -598,12 +650,34 @@ function load(silent) {
     l.appendChild(document.createTextNode('読み込み中…'));
     c.appendChild(l);
   }
+
+  if (watchdog) clearTimeout(watchdog);
+  watchdog = setTimeout(function () {
+    showFatal('サーバーからの応答がありません（90秒経過）。',
+      '工程の件数が多すぎる可能性があります。\n'
+      + '［設定］シートの「先読み月数」を小さくして、［工程表を再生成］を実行してみてください。');
+  }, 90000);
+
   google.script.run
-    .withSuccessHandler(function (data) { DATA = data; onData(); })
+    .withSuccessHandler(function (data) {
+      if (watchdog) { clearTimeout(watchdog); watchdog = null; }
+      // 検証そのものが失敗することもあるので、受信後の処理はまとめて保護する
+      try {
+        var problem = validate(data);
+        if (problem) {
+          showFatal('受け取ったデータが想定と違います。',
+            problem + '\n\n受信内容の先頭:\n' + preview(data));
+          return;
+        }
+        DATA = data;
+        onData();
+      } catch (e) {
+        showFatal('画面の描画中にエラーが発生しました。',
+          (e && e.message ? e.message : String(e)) + '\n\n' + (e && e.stack ? e.stack : ''));
+      }
+    })
     .withFailureHandler(function (err) {
-      var c = document.getElementById('content');
-      c.innerHTML = '';
-      c.appendChild(el('div', 'msg-box error', '読み込みに失敗しました：\n' + err.message));
+      showFatal('サーバー側の処理が失敗しました。', err && err.message ? err.message : String(err));
     })
     .getGanttData();
 }
@@ -1168,7 +1242,9 @@ function changeAnchor(lane) {
   c.appendChild(l);
   google.script.run
     .withSuccessHandler(function () { load(true); })
-    .withFailureHandler(function (err) { alert('変更に失敗しました：' + err.message); load(); })
+    .withFailureHandler(function (err) {
+      showFatal('基準日の変更に失敗しました。', err && err.message ? err.message : String(err));
+    })
     .updateAnchorDate(lane.workId, lane.period, input.trim());
 }
 

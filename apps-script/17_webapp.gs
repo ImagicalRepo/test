@@ -31,10 +31,10 @@ function getGanttData() {
     if (!id) return;
     var item = {
       id: id,
-      name: w['業務名'],
+      name: String(w['業務名'] || id),
       enabled: !/^(off|false|いいえ|無効|0)$/i.test(String(w['有効']).trim()),
-      anchorName: w['基準日名称'] || '基準日',
-      rule: w['基準日ルール'],
+      anchorName: String(w['基準日名称'] || '基準日'),
+      rule: String(w['基準日ルール'] || ''),
       // 実際の色は画面側でテーマに合わせて解決する。ここでは色の名前だけ渡す
       color: String(w['色'] || '').trim() || COLOR_ORDER[i % COLOR_ORDER.length]
     };
@@ -49,6 +49,9 @@ function getGanttData() {
     if (!id || !period) return;
     anchorByKey[id + '|' + period] = toDateKey(a['基準日']);
   });
+
+  // 工程ごとに営業日数を数え直すと件数に比例して遅くなるため、表を先に作る
+  var countFrom = createBusinessDayCounter(cal, today, fromKey, toKey);
 
   var laneMap = {};
   var lanes = [];
@@ -86,15 +89,15 @@ function getGanttData() {
     lane.items.push({
       key: String(r['キー']).trim(),
       seq: Number(r['工程No']) || 0,
-      name: r['工程名'],
+      name: String(r['工程名'] || ''),
       dueKey: dueKey,
       weekday: WEEKDAY_LABELS[dayOfWeek(dueKey)],
       status: status,
-      owner: r['担当'] || '',
-      note: r['備考'] || '',
+      owner: String(r['担当'] || ''),
+      note: String(r['備考'] || ''),
       isAnchor: dueKey === (anchorByKey[laneKey] || ''),
       overdue: dueKey < today && status !== STATUS.DONE && status !== STATUS.SKIP,
-      remaining: countBusinessDays(cal, today, dueKey)
+      remaining: countFrom(dueKey)
     });
   });
 
@@ -112,7 +115,7 @@ function getGanttData() {
 
   var digest = buildDigestFromSheet_(settings, cal, today);
 
-  return {
+  var payload = {
     today: today,
     from: fromKey,
     to: toKey,
@@ -128,6 +131,10 @@ function getGanttData() {
     },
     statusList: STATUS_LIST
   };
+
+  // 画面へ渡せるのは素の値だけ。シートから来た Date などが混ざっていても
+  // 転送時に失敗しないよう、ここで確実に素のオブジェクトへ落とす。
+  return JSON.parse(JSON.stringify(payload));
 }
 
 /** 表示範囲の休日を [{key, name}] で返す（振替出勤日は休日ではないので除く） */

@@ -188,6 +188,20 @@ check('補正モードの表記ゆれを吸収する', () => {
   throws(() => G.normalizeAdjustMode('てきとう'), /休日補正の指定が不正/);
 });
 
+check('営業日数の表は1件ずつの計算と完全に一致する', () => {
+  const origin = '2026-09-09';
+  const counter = G.createBusinessDayCounter(cal, origin, '2026-06-01', '2026-12-31');
+  let cur = '2026-06-01';
+  let checked = 0;
+  while (cur <= '2026-12-31') {
+    eq(counter(cur), G.countBusinessDays(cal, origin, cur), cur);
+    cur = G.addCalendarDays(cur, 1);
+    checked++;
+  }
+  eq(checked > 200, true, '検査した日数');
+  eq(counter('2027-06-01'), G.countBusinessDays(cal, origin, '2027-06-01'), '範囲外は元の計算に委譲する');
+});
+
 check('営業日数を数える（符号つき）', () => {
   eq(G.countBusinessDays(cal, '2026-09-09', '2026-09-11'), 2);
   eq(G.countBusinessDays(cal, '2026-09-11', '2026-09-09'), -2);

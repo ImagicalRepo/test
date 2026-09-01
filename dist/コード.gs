@@ -4,7 +4,7 @@
  * このファイルは apps-script/*.gs をまとめたものです。
  * 編集はリポジトリ側の各ファイルで行い、node tools/bundle.js で作り直してください。
  *
- * 収録: 00_config.gs, 01_core_date.gs, 02_core_recurrence.gs, 03_core_schedule.gs, 04_core_digest.gs, 10_sheet_io.gs, 11_setup.gs, 12_holidays.gs, 13_generate.gs, 14_calendar.gs, 15_notify.gs, 16_menu.gs, 17_webapp.gs, 18_template_editor.gs
+ * 収録: 00_config.gs, 01_core_date.gs, 02_core_recurrence.gs, 03_core_schedule.gs, 04_core_digest.gs, 10_sheet_io.gs, 11_setup.gs, 12_holidays.gs, 13_generate.gs, 14_calendar.gs, 15_notify.gs, 16_menu.gs, 17_webapp.gs, 18_template_editor.gs, 19_diagnostics.gs
  */
 
 // ===========================================================================
@@ -248,6 +248,44 @@ function countBusinessDays(cal, fromKey, toKey) {
     if (isBusinessDay(cal, cur)) count += step;
   }
   return count;
+}
+
+/**
+ * 起点日から各日までの営業日数をまとめて求める表を作る。
+ *
+ * countBusinessDays は1回の呼び出しで日をひとつずつ辿るため、
+ * 何百件もの工程それぞれについて呼ぶと表示範囲の広さに比例して遅くなる。
+ * 範囲を一度だけ走査して表を作っておき、以後は参照するだけにする。
+ *
+ * @return {function(string): number} dateKey を渡すと営業日数を返す関数
+ *         （表の範囲外の日付は countBusinessDays にそのまま委譲する）
+ */
+function createBusinessDayCounter(cal, originKey, minKey, maxKey) {
+  var table = {};
+  table[originKey] = 0;
+
+  var cur = originKey;
+  var count = 0;
+  var guard = 0;
+  while (cur < maxKey && guard++ < 4000) {
+    cur = addCalendarDays(cur, 1);
+    if (isBusinessDay(cal, cur)) count++;
+    table[cur] = count;
+  }
+
+  cur = originKey;
+  count = 0;
+  guard = 0;
+  while (cur > minKey && guard++ < 4000) {
+    cur = addCalendarDays(cur, -1);
+    if (isBusinessDay(cal, cur)) count--;
+    table[cur] = count;
+  }
+
+  return function (key) {
+    var v = table[key];
+    return v === undefined ? countBusinessDays(cal, originKey, key) : v;
+  };
 }
 
 /** 休日補正モードの表記ゆれを吸収（'前営業日' -> 'prev' 等） */
@@ -599,6 +637,8 @@ function buildDigest(rows, cal, todayKey, opts) {
   opts = opts || {};
   var maxAhead = opts.maxAheadBusinessDays === undefined ? 14 : Number(opts.maxAheadBusinessDays);
   var includeDone = !!opts.includeDone;
+  // 呼び出し側が営業日数の表を用意していればそれを使う（件数が多いときに効く）
+  var countFrom = opts.counter || function (key) { return countBusinessDays(cal, todayKey, key); };
 
   var overdue = [], today = [], soon = [];
 
@@ -607,7 +647,7 @@ function buildDigest(rows, cal, todayKey, opts) {
     var status = String(r.status || '').trim();
     if (!includeDone && (status === STATUS.DONE || status === STATUS.SKIP)) return;
 
-    var remaining = countBusinessDays(cal, todayKey, r.dueKey);
+    var remaining = countFrom(r.dueKey);
     var item = {
       workId: r.workId,
       workName: r.workName,
@@ -717,13 +757,18 @@ function chatLine_(item, kind) {
  */
 
 var SS_ID_PROP = 'SPREADSHEET_ID';
+var SS_CACHE_ = null;
 
 /**
  * 対象スプレッドシートを返す。
  * Webアプリ（doGet）からは getActive() が使えない場合があるため、
  * 初期セットアップ時に控えておいたIDでフォールバックする。
+ *
+ * 1回の実行中に何十回も呼ばれるので、取得結果を保持しておく。
  */
 function ss_() {
+  if (SS_CACHE_) return SS_CACHE_;
+
   var active = null;
   try {
     active = SpreadsheetApp.getActive();
@@ -731,14 +776,19 @@ function ss_() {
     active = null;
   }
   if (active) {
+    SS_CACHE_ = active;
     try {
-      PropertiesService.getScriptProperties().setProperty(SS_ID_PROP, active.getId());
+      var props = PropertiesService.getScriptProperties();
+      if (props.getProperty(SS_ID_PROP) !== active.getId()) {
+        props.setProperty(SS_ID_PROP, active.getId());
+      }
     } catch (e) { /* 権限がなければ黙って諦める */ }
     return active;
   }
   var id = PropertiesService.getScriptProperties().getProperty(SS_ID_PROP);
   if (!id) throw new Error('対象のスプレッドシートを特定できません。スプレッドシートから［初期セットアップ］を1回実行してください。');
-  return SpreadsheetApp.openById(id);
+  SS_CACHE_ = SpreadsheetApp.openById(id);
+  return SS_CACHE_;
 }
 
 /** 実行ログを1行追記する（失敗しても本処理は止めない） */
@@ -970,6 +1020,9 @@ function applyFormats_() {
   var anchor = readTable_(SHEET.ANCHOR);
   var aidx = headerIndex_(anchor.headers);
   if (aidx['基準日']) anchor.sheet.getRange(2, aidx['基準日'], Math.max(anchor.sheet.getMaxRows() - 1, 1)).setNumberFormat('yyyy/mm/dd');
+  // 「2026-09」のような回次は、放っておくとスプレッドシートが日付に変換してしまう
+  if (aidx['回次']) anchor.sheet.getRange(2, aidx['回次'], Math.max(anchor.sheet.getMaxRows() - 1, 1)).setNumberFormat('@');
+  if (idx['回次']) sh.getRange(2, idx['回次'], rowCount).setNumberFormat('@');
   var hol = readTable_(SHEET.HOLIDAY);
   var hidx = headerIndex_(hol.headers);
   if (hidx['日付']) hol.sheet.getRange(2, hidx['日付'], Math.max(hol.sheet.getMaxRows() - 1, 1)).setNumberFormat('yyyy/mm/dd');
@@ -1356,6 +1409,9 @@ function generateSchedules() {
   var workById = {};
   works.forEach(function (w) { workById[String(w['業務ID']).trim()] = w; });
 
+  // 生成する行数だけ営業日数を数えることになるので、ここでも表を使う
+  var countFrom = createBusinessDayCounter(cal, today, shiftMonthKey_(fromKey, -1), shiftMonthKey_(toKey, 1));
+
   var oldRows = readTable_(SHEET.SCHEDULE).rows;
   var oldByKey = {};
   oldRows.forEach(function (r) {
@@ -1404,7 +1460,7 @@ function generateSchedules() {
         '工程名': row.name,
         '予定日': keyToSheetDate_(dueKey),
         '曜日': WEEKDAY_LABELS[dayOfWeek(dueKey)],
-        '残営業日': countBusinessDays(cal, today, dueKey),
+        '残営業日': countFrom(dueKey),
         '担当': old['担当'] || row.owner || '',
         '状態': status,
         '完了日': old['完了日'] || '',
@@ -1640,22 +1696,29 @@ function buildDigestFromSheet_(settings, cal, today) {
     var remind = r['リマインド営業日前'];
     return {
       workId: String(r['業務ID']).trim(),
-      workName: r['業務名'],
+      workName: String(r['業務名'] || ''),
       color: colorByWork[String(r['業務ID']).trim()],
-      period: r['回次'],
-      seq: r['工程No'],
-      name: r['工程名'],
+      period: String(r['回次'] || ''),
+      seq: Number(r['工程No']) || 0,
+      name: String(r['工程名'] || ''),
       dueKey: dueKey,
-      owner: r['担当'],
-      status: r['状態'],
-      note: r['備考'],
+      owner: String(r['担当'] || ''),
+      status: String(r['状態'] || ''),
+      note: String(r['備考'] || ''),
       remindDays: (remind === '' || remind === null || remind === undefined) ? defaultRemind : Number(remind)
     };
   }).filter(Boolean);
 
+  var minSeen = today, maxSeen = today;
+  rows.forEach(function (r) {
+    if (r.dueKey < minSeen) minSeen = r.dueKey;
+    if (r.dueKey > maxSeen) maxSeen = r.dueKey;
+  });
+
   return buildDigest(rows, cal, today, {
     maxAheadBusinessDays: settingNumber_(settings, 'リマインド対象日数', 14),
-    includeDone: false
+    includeDone: false,
+    counter: createBusinessDayCounter(cal, today, minSeen, maxSeen)
   });
 }
 
@@ -1716,6 +1779,7 @@ function onOpen() {
     .addItem('休日を取り込む', 'menuSyncHolidays')
     .addSeparator()
     .addItem('Chatにテスト通知', 'menuTestNotify')
+    .addItem('動作診断', 'menuDiagnostics')
     .addItem('通知トリガーを再設定', 'menuInstallTriggers')
     .addSeparator()
     .addSubMenu(SpreadsheetApp.getUi().createMenu('テンプレートの受け渡し')
@@ -1871,10 +1935,10 @@ function getGanttData() {
     if (!id) return;
     var item = {
       id: id,
-      name: w['業務名'],
+      name: String(w['業務名'] || id),
       enabled: !/^(off|false|いいえ|無効|0)$/i.test(String(w['有効']).trim()),
-      anchorName: w['基準日名称'] || '基準日',
-      rule: w['基準日ルール'],
+      anchorName: String(w['基準日名称'] || '基準日'),
+      rule: String(w['基準日ルール'] || ''),
       // 実際の色は画面側でテーマに合わせて解決する。ここでは色の名前だけ渡す
       color: String(w['色'] || '').trim() || COLOR_ORDER[i % COLOR_ORDER.length]
     };
@@ -1889,6 +1953,9 @@ function getGanttData() {
     if (!id || !period) return;
     anchorByKey[id + '|' + period] = toDateKey(a['基準日']);
   });
+
+  // 工程ごとに営業日数を数え直すと件数に比例して遅くなるため、表を先に作る
+  var countFrom = createBusinessDayCounter(cal, today, fromKey, toKey);
 
   var laneMap = {};
   var lanes = [];
@@ -1926,15 +1993,15 @@ function getGanttData() {
     lane.items.push({
       key: String(r['キー']).trim(),
       seq: Number(r['工程No']) || 0,
-      name: r['工程名'],
+      name: String(r['工程名'] || ''),
       dueKey: dueKey,
       weekday: WEEKDAY_LABELS[dayOfWeek(dueKey)],
       status: status,
-      owner: r['担当'] || '',
-      note: r['備考'] || '',
+      owner: String(r['担当'] || ''),
+      note: String(r['備考'] || ''),
       isAnchor: dueKey === (anchorByKey[laneKey] || ''),
       overdue: dueKey < today && status !== STATUS.DONE && status !== STATUS.SKIP,
-      remaining: countBusinessDays(cal, today, dueKey)
+      remaining: countFrom(dueKey)
     });
   });
 
@@ -1952,7 +2019,7 @@ function getGanttData() {
 
   var digest = buildDigestFromSheet_(settings, cal, today);
 
-  return {
+  var payload = {
     today: today,
     from: fromKey,
     to: toKey,
@@ -1968,6 +2035,10 @@ function getGanttData() {
     },
     statusList: STATUS_LIST
   };
+
+  // 画面へ渡せるのは素の値だけ。シートから来た Date などが混ざっていても
+  // 転送時に失敗しないよう、ここで確実に素のオブジェクトへ落とす。
+  return JSON.parse(JSON.stringify(payload));
 }
 
 /** 表示範囲の休日を [{key, name}] で返す（振替出勤日は休日ではないので除く） */
@@ -2323,4 +2394,112 @@ function showTemplateImport() {
   tpl.mode = 'import';
   tpl.payload = '';
   SpreadsheetApp.getUi().showModalDialog(tpl.evaluate().setWidth(720).setHeight(620), 'テンプレートの読み込み');
+}
+
+
+// ===========================================================================
+// 19_diagnostics.gs
+// ===========================================================================
+
+/**
+ * 動作診断
+ *
+ * 画面が開かない・通知が来ないといったときに、どこで止まっているかを切り分ける。
+ * メニュー［動作診断］から実行するか、エディタで runDiagnostics を直接実行する。
+ */
+
+function runDiagnostics() {
+  var lines = [];
+  var total = 0;
+
+  function step(name, fn) {
+    var start = new Date().getTime();
+    var result, ok = true;
+    try {
+      result = fn();
+    } catch (e) {
+      ok = false;
+      result = e.message;
+    }
+    var ms = new Date().getTime() - start;
+    total += ms;
+    lines.push((ok ? 'OK ' : 'NG ') + pad_(name, 22) + pad_(ms + 'ms', 8) + result);
+    return ok;
+  }
+
+  step('スプレッドシート', function () {
+    var s = ss_();
+    return s.getName() + '（' + s.getSpreadsheetTimeZone() + '）';
+  });
+
+  [SHEET.SETTINGS, SHEET.WORK, SHEET.TEMPLATE, SHEET.ANCHOR, SHEET.SCHEDULE, SHEET.HOLIDAY].forEach(function (name) {
+    step('シート: ' + name, function () {
+      return readTable_(name).rows.length + ' 行';
+    });
+  });
+
+  step('営業日カレンダー', function () {
+    var cal = loadBusinessCalendar_();
+    var today = todayKey_();
+    return '本日 ' + today + ' は' + (isBusinessDay(cal, today) ? '営業日' : '休日');
+  });
+
+  var payload = null;
+  step('画面データの取得', function () {
+    payload = getGanttData();
+    return '業務 ' + payload.works.length
+      + ' / レーン ' + payload.lanes.length
+      + ' / 通知 ' + payload.digest.total + ' 件';
+  });
+
+  if (payload) {
+    step('データ量', function () {
+      var size = JSON.stringify(payload).length;
+      var工程 = payload.lanes.reduce(function (n, l) { return n + l.items.length; }, 0);
+      return Math.round(size / 1024) + ' KB / 工程 ' + 工程 + ' 件'
+        + (size > 3000000 ? '　※大きすぎます。設定シートの先読み月数を減らしてください' : '');
+    });
+    step('表示範囲', function () {
+      return payload.from + ' 〜 ' + payload.to + '（本日 ' + payload.today + '）';
+    });
+  }
+
+  step('Chat通知の設定', function () {
+    var url = settingText_(getSettings_(), 'ChatWebhookURL', '');
+    if (!url) return '未設定（通知は送られません）';
+    return /^https:\/\/chat\.googleapis\.com\//.test(url) ? '設定済み' : '形式が正しくありません';
+  });
+
+  step('トリガー', function () {
+    var names = ScriptApp.getProjectTriggers().map(function (t) { return t.getHandlerFunction(); });
+    return names.length ? names.join(', ') : 'なし（［通知トリガーを再設定］を実行してください）';
+  });
+
+  var text = lines.join('\n') + '\n\n合計 ' + total + 'ms';
+  console.log(text);
+  log_('動作診断', lines.filter(function (l) { return l.indexOf('NG') === 0; }).length === 0, text.replace(/\n/g, ' / '));
+  return text;
+}
+
+function pad_(s, n) {
+  s = String(s);
+  while (s.length < n) s += ' ';
+  return s;
+}
+
+/** メニューから実行し、結果をダイアログで表示する */
+function menuDiagnostics() {
+  var ui = SpreadsheetApp.getUi();
+  var text;
+  try {
+    text = runDiagnostics();
+  } catch (e) {
+    text = '診断そのものが失敗しました:\n' + e.message + '\n\n' + (e.stack || '');
+  }
+  var html = HtmlService.createHtmlOutput(
+    '<pre style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;'
+    + 'line-height:1.6;white-space:pre-wrap;margin:0">'
+    + text.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    + '</pre>').setWidth(640).setHeight(520);
+  ui.showModalDialog(html, '動作診断');
 }

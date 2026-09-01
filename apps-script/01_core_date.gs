@@ -136,6 +136,44 @@ function countBusinessDays(cal, fromKey, toKey) {
   return count;
 }
 
+/**
+ * 起点日から各日までの営業日数をまとめて求める表を作る。
+ *
+ * countBusinessDays は1回の呼び出しで日をひとつずつ辿るため、
+ * 何百件もの工程それぞれについて呼ぶと表示範囲の広さに比例して遅くなる。
+ * 範囲を一度だけ走査して表を作っておき、以後は参照するだけにする。
+ *
+ * @return {function(string): number} dateKey を渡すと営業日数を返す関数
+ *         （表の範囲外の日付は countBusinessDays にそのまま委譲する）
+ */
+function createBusinessDayCounter(cal, originKey, minKey, maxKey) {
+  var table = {};
+  table[originKey] = 0;
+
+  var cur = originKey;
+  var count = 0;
+  var guard = 0;
+  while (cur < maxKey && guard++ < 4000) {
+    cur = addCalendarDays(cur, 1);
+    if (isBusinessDay(cal, cur)) count++;
+    table[cur] = count;
+  }
+
+  cur = originKey;
+  count = 0;
+  guard = 0;
+  while (cur > minKey && guard++ < 4000) {
+    cur = addCalendarDays(cur, -1);
+    if (isBusinessDay(cal, cur)) count--;
+    table[cur] = count;
+  }
+
+  return function (key) {
+    var v = table[key];
+    return v === undefined ? countBusinessDays(cal, originKey, key) : v;
+  };
+}
+
 /** 休日補正モードの表記ゆれを吸収（'前営業日' -> 'prev' 等） */
 function normalizeAdjustMode(value) {
   var s = normalizeText(value);

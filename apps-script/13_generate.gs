@@ -58,6 +58,9 @@ function generateSchedules() {
   var workById = {};
   works.forEach(function (w) { workById[String(w['業務ID']).trim()] = w; });
 
+  // 生成する行数だけ営業日数を数えることになるので、ここでも表を使う
+  var countFrom = createBusinessDayCounter(cal, today, shiftMonthKey_(fromKey, -1), shiftMonthKey_(toKey, 1));
+
   var oldRows = readTable_(SHEET.SCHEDULE).rows;
   var oldByKey = {};
   oldRows.forEach(function (r) {
@@ -106,7 +109,7 @@ function generateSchedules() {
         '工程名': row.name,
         '予定日': keyToSheetDate_(dueKey),
         '曜日': WEEKDAY_LABELS[dayOfWeek(dueKey)],
-        '残営業日': countBusinessDays(cal, today, dueKey),
+        '残営業日': countFrom(dueKey),
         '担当': old['担当'] || row.owner || '',
         '状態': status,
         '完了日': old['完了日'] || '',

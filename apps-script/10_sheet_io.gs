@@ -3,13 +3,18 @@
  */
 
 var SS_ID_PROP = 'SPREADSHEET_ID';
+var SS_CACHE_ = null;
 
 /**
  * 対象スプレッドシートを返す。
  * Webアプリ（doGet）からは getActive() が使えない場合があるため、
  * 初期セットアップ時に控えておいたIDでフォールバックする。
+ *
+ * 1回の実行中に何十回も呼ばれるので、取得結果を保持しておく。
  */
 function ss_() {
+  if (SS_CACHE_) return SS_CACHE_;
+
   var active = null;
   try {
     active = SpreadsheetApp.getActive();
@@ -17,14 +22,19 @@ function ss_() {
     active = null;
   }
   if (active) {
+    SS_CACHE_ = active;
     try {
-      PropertiesService.getScriptProperties().setProperty(SS_ID_PROP, active.getId());
+      var props = PropertiesService.getScriptProperties();
+      if (props.getProperty(SS_ID_PROP) !== active.getId()) {
+        props.setProperty(SS_ID_PROP, active.getId());
+      }
     } catch (e) { /* 権限がなければ黙って諦める */ }
     return active;
   }
   var id = PropertiesService.getScriptProperties().getProperty(SS_ID_PROP);
   if (!id) throw new Error('対象のスプレッドシートを特定できません。スプレッドシートから［初期セットアップ］を1回実行してください。');
-  return SpreadsheetApp.openById(id);
+  SS_CACHE_ = SpreadsheetApp.openById(id);
+  return SS_CACHE_;
 }
 
 /** 実行ログを1行追記する（失敗しても本処理は止めない） */

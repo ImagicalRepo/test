@@ -12,6 +12,7 @@ function onOpen() {
     .addItem('休日を取り込む', 'menuSyncHolidays')
     .addSeparator()
     .addItem('Chatにテスト通知', 'menuTestNotify')
+    .addItem('動作診断', 'menuDiagnostics')
     .addItem('通知トリガーを再設定', 'menuInstallTriggers')
     .addSeparator()
     .addSubMenu(SpreadsheetApp.getUi().createMenu('テンプレートの受け渡し')

@@ -46,22 +46,29 @@ function buildDigestFromSheet_(settings, cal, today) {
     var remind = r['リマインド営業日前'];
     return {
       workId: String(r['業務ID']).trim(),
-      workName: r['業務名'],
+      workName: String(r['業務名'] || ''),
       color: colorByWork[String(r['業務ID']).trim()],
-      period: r['回次'],
-      seq: r['工程No'],
-      name: r['工程名'],
+      period: String(r['回次'] || ''),
+      seq: Number(r['工程No']) || 0,
+      name: String(r['工程名'] || ''),
       dueKey: dueKey,
-      owner: r['担当'],
-      status: r['状態'],
-      note: r['備考'],
+      owner: String(r['担当'] || ''),
+      status: String(r['状態'] || ''),
+      note: String(r['備考'] || ''),
       remindDays: (remind === '' || remind === null || remind === undefined) ? defaultRemind : Number(remind)
     };
   }).filter(Boolean);
 
+  var minSeen = today, maxSeen = today;
+  rows.forEach(function (r) {
+    if (r.dueKey < minSeen) minSeen = r.dueKey;
+    if (r.dueKey > maxSeen) maxSeen = r.dueKey;
+  });
+
   return buildDigest(rows, cal, today, {
     maxAheadBusinessDays: settingNumber_(settings, 'リマインド対象日数', 14),
-    includeDone: false
+    includeDone: false,
+    counter: createBusinessDayCounter(cal, today, minSeen, maxSeen)
   });
 }
 

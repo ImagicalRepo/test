@@ -16,6 +16,8 @@ function buildDigest(rows, cal, todayKey, opts) {
   opts = opts || {};
   var maxAhead = opts.maxAheadBusinessDays === undefined ? 14 : Number(opts.maxAheadBusinessDays);
   var includeDone = !!opts.includeDone;
+  // 呼び出し側が営業日数の表を用意していればそれを使う（件数が多いときに効く）
+  var countFrom = opts.counter || function (key) { return countBusinessDays(cal, todayKey, key); };
 
   var overdue = [], today = [], soon = [];
 
@@ -24,7 +26,7 @@ function buildDigest(rows, cal, todayKey, opts) {
     var status = String(r.status || '').trim();
     if (!includeDone && (status === STATUS.DONE || status === STATUS.SKIP)) return;
 
-    var remaining = countBusinessDays(cal, todayKey, r.dueKey);
+    var remaining = countFrom(r.dueKey);
     var item = {
       workId: r.workId,
       workName: r.workName,
