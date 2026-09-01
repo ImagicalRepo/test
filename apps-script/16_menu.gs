@@ -69,13 +69,19 @@ function showAppUrl() {
 
   var body;
   if (url) {
+    var editorUrl = url + '?page=editor';
     body =
       '<div style="font-family:system-ui,sans-serif;font-size:13px;line-height:1.8;color:#202124">'
-      + '<p>このURLを開くと、スケジュール画面だけを別のタブで表示できます。<br>'
+      + '<p>次のURLを開くと、それぞれの画面だけを別のタブで表示できます。<br>'
       + 'ウィンドウの大きさは自由に変えられます。ブックマークしておくと便利です。</p>'
-      + '<p><a href="' + url + '" target="_blank" rel="noopener"'
+      + '<p style="margin-bottom:4px"><b>スケジュール画面</b><br>'
+      + '<a href="' + url + '" target="_blank" rel="noopener"'
       + ' style="word-break:break-all;color:#1a73e8">' + url + '</a></p>'
+      + '<p style="margin-bottom:4px"><b>工程テンプレートの編集</b><br>'
+      + '<a href="' + editorUrl + '" target="_blank" rel="noopener"'
+      + ' style="word-break:break-all;color:#1a73e8">' + editorUrl + '</a></p>'
       + '<p style="color:#5f6368;font-size:12px">'
+      + '違いは末尾の <code>?page=editor</code> だけです。<br>'
       + 'コードを更新したときは、エディタの［デプロイ］→［デプロイを管理］→ 鉛筆マーク →'
       + ' バージョンを「新しいバージョン」にして再デプロイしてください。</p></div>';
   } else {
@@ -93,8 +99,8 @@ function showAppUrl() {
       + '<p style="color:#5f6368;font-size:12px">'
       + '公開後にもう一度このメニューを開くと、URL がここに表示されます。</p></div>';
   }
-  ui.showModalDialog(HtmlService.createHtmlOutput(body).setWidth(520).setHeight(340),
-    'スケジュール画面を別ウィンドウで開く');
+  ui.showModalDialog(HtmlService.createHtmlOutput(body).setWidth(560).setHeight(420),
+    '別ウィンドウで開く');
 }
 
 function menuSetup() {

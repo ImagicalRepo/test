@@ -49,7 +49,8 @@
       SHOMAN: { dateKey: '2026-09-22', period: '2026-09' }
     },
     defaultRemind: 3,
-    colors: ['青','緑','橙','紫','赤','水色','桃','灰']
+    colors: ['青','緑','橙','紫','赤','水色','桃','灰'],
+    scheduleUrl: ''  // ウェブアプリ公開時のみ値が入る（既定は非表示）
   };
 
   var handlers = {

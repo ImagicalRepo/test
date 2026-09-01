@@ -5,11 +5,32 @@
  * Webアプリとしてデプロイして単独のURLで開くこともできる。
  */
 
-function doGet() {
-  return HtmlService.createTemplateFromFile('gantt')
+/**
+ * ウェブアプリの入口。
+ *   ...（パラメータなし） スケジュール画面
+ *   ...?page=editor      工程テンプレートの編集画面
+ * どちらもブラウザのタブで開くので、大きさは自由に変えられる。
+ */
+function doGet(e) {
+  var page = (e && e.parameter && e.parameter.page) || 'schedule';
+  var file = page === 'editor' ? 'editor' : 'gantt';
+  var title = page === 'editor' ? '工程テンプレートの編集' : '業務スケジュール';
+  return HtmlService.createTemplateFromFile(file)
     .evaluate()
-    .setTitle('業務スケジュール')
+    .setTitle(title)
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
+/** ウェブアプリとして公開済みならその URL を返す（未公開なら空文字） */
+function webAppUrl_(page) {
+  var base = '';
+  try {
+    base = ScriptApp.getService().getUrl() || '';
+  } catch (e) {
+    base = '';
+  }
+  if (!base) return '';
+  return page ? base + '?page=' + encodeURIComponent(page) : base;
 }
 
 function include_(name) {
@@ -129,7 +150,9 @@ function getGanttData() {
       soon: digest.soon,
       total: digest.total
     },
-    statusList: STATUS_LIST
+    statusList: STATUS_LIST,
+    // 公開済みなら、画面から編集画面へ直接移動できるようにする
+    editorUrl: webAppUrl_('editor')
   };
 
   // 画面へ渡せるのは素の値だけ。シートから来た Date などが混ざっていても

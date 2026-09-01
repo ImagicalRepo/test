@@ -94,6 +94,7 @@ window.MOCK_DATA = {
   lanes: LANES,
   holidays: HOLIDAYS,
   weekendDays: [0,6],
+  editorUrl: '',   // ウェブアプリ公開時のみ値が入る（既定は非表示）
   digest: {
     overdue: digestItems([
       {workId:'NAN',workName:'指定難病 医療費助成',color:'青',period:'2026-09',seq:50,name:'審査委員へ資料送付',dueKey:'2026-08-31',owner:'田中',status:'未着手',remainingBusinessDays:-6},
