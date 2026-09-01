@@ -52,8 +52,8 @@ function runDiagnostics() {
   if (payload) {
     step('データ量', function () {
       var size = JSON.stringify(payload).length;
-      var工程 = payload.lanes.reduce(function (n, l) { return n + l.items.length; }, 0);
-      return Math.round(size / 1024) + ' KB / 工程 ' + 工程 + ' 件'
+      var stepCount = payload.lanes.reduce(function (n, l) { return n + l.items.length; }, 0);
+      return Math.round(size / 1024) + ' KB / 工程 ' + stepCount + ' 件'
         + (size > 3000000 ? '　※大きすぎます。設定シートの先読み月数を減らしてください' : '');
     });
     step('表示範囲', function () {
