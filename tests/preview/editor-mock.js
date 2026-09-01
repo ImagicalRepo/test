@@ -48,6 +48,19 @@
       KOSIN: { dateKey: '2026-09-01', period: '2026' },
       SHOMAN: { dateKey: '2026-09-22', period: '2026-09' }
     },
+    anchors: {
+      NAN: [
+        { period:'2026-08', dateKey:'2026-08-12', source:'自動', past:true },
+        { period:'2026-09', dateKey:'2026-09-09', source:'自動', past:false },
+        { period:'2026-10', dateKey:'2026-10-14', source:'自動', past:false },
+        { period:'2026-11', dateKey:'2026-11-11', source:'自動', past:false }
+      ],
+      KOSIN: [{ period:'2026', dateKey:'2026-09-01', source:'自動', past:false }],
+      SHOMAN: [
+        { period:'2026-09', dateKey:'2026-09-22', source:'自動', past:false },
+        { period:'2026-10', dateKey:'2026-10-27', source:'自動', past:false }
+      ]
+    },
     defaultRemind: 3,
     colors: ['青','緑','橙','紫','赤','水色','桃','灰'],
     scheduleUrl: ''  // ウェブアプリ公開時のみ値が入る（既定は非表示）

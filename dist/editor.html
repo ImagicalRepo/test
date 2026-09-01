@@ -69,6 +69,29 @@
     border:1px solid var(--border); border-radius:7px; padding:6px 11px;
   }
   .applink:hover { background:var(--soft); }
+  .rule-line { display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
+  .unit-text { font-size:11.5px; color:var(--muted); }
+
+  .anchor-box { margin:0 0 14px; }
+  .anchor-head { display:flex; align-items:baseline; gap:10px; margin-bottom:6px; flex-wrap:wrap; }
+  .anchor-title { font-size:11px; font-weight:700; color:var(--muted); letter-spacing:.02em; }
+  .anchor-note { font-size:11px; color:var(--muted); }
+  .anchor-chips { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .anchor-chip {
+    display:inline-flex; align-items:center; gap:3px;
+    border:1px solid var(--border); border-radius:999px; padding:4px 6px 4px 11px;
+    font-size:11.5px; font-variant-numeric:tabular-nums; background:var(--surface);
+  }
+  .anchor-chip.past { opacity:.5; }
+  .chip-x {
+    border:none; background:none; color:var(--muted); font-size:14px;
+    line-height:1; padding:0 3px; border-radius:50%;
+  }
+  .chip-x:hover { background:var(--soft); color:var(--danger); }
+  .anchor-empty { font-size:11.5px; color:var(--muted); }
+  .anchor-add { display:inline-flex; align-items:center; gap:5px; }
+  .anchor-add input { font-size:11.5px; padding:4px 7px; }
+
   .hint { font-size:11.5px; color:var(--muted); line-height:1.7; margin:0 0 14px; }
   .hint b { color:var(--text); }
 
@@ -242,11 +265,14 @@
   <div class="body">
     <div class="left">
       <div class="work-box" id="workBox"></div>
+      <div class="anchor-box" id="anchorBox"></div>
 
       <p class="hint">
-        <b>業務名も工程名も基準日の呼び方も、すべて自由に設定できます。</b>
-        最初に入っているのはサンプルなので、実際の要領に合わせて書き換えてください。<br>
-        各工程は「<b>どこを基準に、何日ずらすか</b>」の一文で決まります。基準には基準日のほか
+        <b>起点の日は、その業務で一番動かせない日のことです。</b>
+        審査会のような会議日でなくても、<b>締切日・発送日・受付開始日</b>など、
+        すでに決まっている日を選べば構いません。決まった周期がなければ
+        「決まっていない」にして、下の［起点の日］に日付を足していきます。<br>
+        各工程は「<b>どこを基準に、何日ずらすか</b>」の一文で決まります。基準には
         <b>前の工程</b>も選べるので、「決裁完了は起案から3営業日後」のような連鎖もそのまま書けます。
         右端の日付が、その設定で実際に何日になるかです。
       </p>
@@ -388,6 +414,7 @@
     current = null;
     rows = [];
     document.getElementById('workBox').innerHTML = '';
+    document.getElementById('anchorBox').innerHTML = '';
     document.getElementById('preview').innerHTML = '';
     document.getElementById('pvSummary').innerHTML = '';
     document.getElementById('btnSave').disabled = true;
@@ -418,8 +445,74 @@
     var next = DATA.nextAnchors[id];
     document.getElementById('anchorInput').value = next ? next.dateKey : DATA.today;
     renderWorkBox();
+    renderAnchors();
     renderRows();
     preview();
+  }
+
+  /** その業務の「起点の日」を並べ、手で足したり消したりできるようにする */
+  function renderAnchors() {
+    var box = document.getElementById('anchorBox');
+    box.innerHTML = '';
+    if (!current) return;
+    var w = work();
+    var list = (DATA.anchors && DATA.anchors[current]) || [];
+    var manual = parseRule(w.rule).kind === 'manual';
+
+    var head = el('div', 'anchor-head');
+    head.appendChild(el('span', 'anchor-title', '起点の日（' + (w.anchorName || '基準日') + '）'));
+    head.appendChild(el('span', 'anchor-note', manual
+      ? '決まった周期がないので、ここに日付を足してください'
+      : '周期から自動で並びます。臨時の回はここに足せます'));
+    box.appendChild(head);
+
+    var chips = el('div', 'anchor-chips');
+    var future = list.filter(function (a) { return !a.past; });
+    var shown = future.length ? future.slice(0, 12) : list.slice(-6);
+    if (!shown.length) {
+      chips.appendChild(el('span', 'anchor-empty', 'まだ登録されていません'));
+    }
+    shown.forEach(function (a) {
+      var chip = el('span', 'anchor-chip' + (a.past ? ' past' : ''));
+      chip.appendChild(el('span', '', fmtDate(a.dateKey)));
+      var del = el('button', 'chip-x');
+      del.type = 'button';
+      del.title = 'この日を削除';
+      del.setAttribute('aria-label', fmtDate(a.dateKey) + ' を削除');
+      del.textContent = '×';
+      del.onclick = function () {
+        if (!confirm(fmtDate(a.dateKey) + ' を削除します。この回の工程も消えます。よろしいですか？')) return;
+        setMsg('削除中…');
+        google.script.run
+          .withSuccessHandler(function () { setMsg('削除しました', 'ok'); load(); })
+          .withFailureHandler(function (e) { setMsg(e.message, 'err'); })
+          .deleteAnchor(current, a.period);
+      };
+      chip.appendChild(del);
+      chips.appendChild(chip);
+    });
+
+    var add = el('span', 'anchor-add');
+    var input = el('input');
+    input.type = 'date';
+    input.setAttribute('aria-label', '追加する起点の日');
+    add.appendChild(input);
+    var btn = el('button');
+    btn.type = 'button';
+    btn.appendChild(svg('plus'));
+    btn.appendChild(el('span', '', '追加'));
+    btn.onclick = function () {
+      var v = input.value;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) { setMsg('日付を選んでください', 'err'); return; }
+      setMsg('追加中…');
+      google.script.run
+        .withSuccessHandler(function () { setMsg('起点の日を追加しました', 'ok'); load(); })
+        .withFailureHandler(function (e) { setMsg(e.message, 'err'); })
+        .addAnchor(current, v);
+    };
+    add.appendChild(btn);
+    chips.appendChild(add);
+    box.appendChild(chips);
   }
 
   // ---------- 業務設定 ----------
@@ -440,22 +533,111 @@
     var anchorName = el('input');
     anchorName.type = 'text'; anchorName.value = w.anchorName; anchorName.style.width = '96px';
     anchorName.placeholder = '審査会';
-    anchorName.title = 'この業務の起点の呼び方。審査会・締切日・受付開始など自由に決められます';
+    anchorName.title = 'この業務の起点の呼び方。審査会・締切日・発送日・受付開始など自由に決められます';
     anchorName.onchange = function () { w.anchorName = anchorName.value; renderRows(); saveWorkMeta(); };
-    box.appendChild(field('基準日の呼び方', anchorName));
+    box.appendChild(field('起点の日の呼び方', anchorName));
 
-    var rule = el('input');
-    rule.type = 'text'; rule.value = w.rule || ''; rule.style.width = '142px';
-    rule.placeholder = '毎月第2水';
-    rule.title = '例）毎月第2水 / 毎月15日 / 毎月末日 / 2ヶ月毎第2水 起点2026-04 / 毎年9月1日 / 手動';
-    rule.onchange = function () { w.rule = rule.value; saveWorkMeta(); };
-    box.appendChild(field('基準日ルール（周期）', rule));
+    box.appendChild(buildRuleField(w));
 
-    box.appendChild(field('基準日が休日なら',
+    box.appendChild(field('起点が休日なら',
       select(ADJUSTS, w.adjust || '前営業日', function (v) { w.adjust = v; saveWorkMeta(); })));
     box.appendChild(field('色', select(DATA.colors, w.color, function (v) { w.color = v; saveWorkMeta(); })));
     box.appendChild(field('有効', select(['ON', 'OFF'], w.enabled ? 'ON' : 'OFF',
       function (v) { w.enabled = (v === 'ON'); saveWorkMeta(); })));
+  }
+
+  var NTHS = [
+    { value: '1', label: '第1' }, { value: '2', label: '第2' }, { value: '3', label: '第3' },
+    { value: '4', label: '第4' }, { value: '5', label: '第5' }, { value: '最終', label: '最終' }
+  ];
+  var WDAYS = ['月', '火', '水', '木', '金', '土', '日'];
+
+  /** ルール文字列を、画面で組み立てられる形に分解する */
+  function parseRule(rule) {
+    var s = String(rule || '').replace(/[　\s]/g, '');
+    if (!s || /^(手動|なし)$/.test(s)) return { kind: 'manual' };
+    var m = /^毎月第?(最終|[1-5])([月火水木金土日])曜?日?$/.exec(s);
+    if (m) return { kind: 'monthlyNth', nth: m[1], wday: m[2] };
+    if (/^毎月(末|末日|最終日)$/.test(s)) return { kind: 'monthlyLast' };
+    m = /^毎月(\d{1,2})日?$/.exec(s);
+    if (m) return { kind: 'monthlyDay', day: m[1] };
+    m = /^毎年(\d{1,2})月(\d{1,2})日?$/.exec(s);
+    if (m) return { kind: 'yearly', month: m[1], day: m[2] };
+    return { kind: 'custom', text: rule };
+  }
+
+  function buildRule(spec) {
+    if (spec.kind === 'manual') return '手動';
+    if (spec.kind === 'monthlyNth') return '毎月第' + spec.nth + spec.wday;
+    if (spec.kind === 'monthlyLast') return '毎月末日';
+    if (spec.kind === 'monthlyDay') return '毎月' + spec.day + '日';
+    if (spec.kind === 'yearly') return '毎年' + spec.month + '月' + spec.day + '日';
+    return spec.text || '手動';
+  }
+
+  /** 「起点の日はいつ来るか」を選ぶ欄 */
+  function buildRuleField(w) {
+    var wrap = el('label', 'field');
+    wrap.appendChild(el('span', '', '起点の日はいつ？'));
+    var line = el('div', 'rule-line');
+    wrap.appendChild(line);
+
+    var spec = parseRule(w.rule);
+
+    function commit() {
+      w.rule = buildRule(spec);
+      renderWorkBox();
+      saveWorkMeta();
+      renderAnchors();
+    }
+    function num(value, width, min, max, onchange) {
+      var i = el('input');
+      i.type = 'number'; i.value = value; i.min = min; i.max = max;
+      i.style.width = width;
+      i.onchange = function () { onchange(i.value); };
+      return i;
+    }
+
+    line.appendChild(select([
+      { value: 'monthlyNth', label: '毎月・第N曜日' },
+      { value: 'monthlyDay', label: '毎月・決まった日' },
+      { value: 'monthlyLast', label: '毎月・末日' },
+      { value: 'yearly', label: '年に1回' },
+      { value: 'manual', label: '決まっていない（その都度入力）' },
+      { value: 'custom', label: 'そのほか（自由入力）' }
+    ], spec.kind, function (v) {
+      var next = { kind: v };
+      if (v === 'monthlyNth') { next.nth = spec.nth || '2'; next.wday = spec.wday || '水'; }
+      if (v === 'monthlyDay') next.day = spec.day || '15';
+      if (v === 'yearly') { next.month = spec.month || '4'; next.day = spec.day || '1'; }
+      if (v === 'custom') next.text = spec.text || w.rule || '';
+      spec = next;
+      commit();
+    }));
+
+    if (spec.kind === 'monthlyNth') {
+      line.appendChild(select(NTHS, spec.nth, function (v) { spec.nth = v; commit(); }));
+      line.appendChild(select(WDAYS, spec.wday, function (v) { spec.wday = v; commit(); }));
+      line.appendChild(el('span', 'unit-text', '曜日'));
+    } else if (spec.kind === 'monthlyDay') {
+      line.appendChild(num(spec.day, '58px', 1, 31, function (v) { spec.day = v; commit(); }));
+      line.appendChild(el('span', 'unit-text', '日'));
+    } else if (spec.kind === 'yearly') {
+      line.appendChild(num(spec.month, '54px', 1, 12, function (v) { spec.month = v; commit(); }));
+      line.appendChild(el('span', 'unit-text', '月'));
+      line.appendChild(num(spec.day, '54px', 1, 31, function (v) { spec.day = v; commit(); }));
+      line.appendChild(el('span', 'unit-text', '日'));
+    } else if (spec.kind === 'custom') {
+      var t = el('input');
+      t.type = 'text'; t.value = spec.text || ''; t.style.width = '190px';
+      t.placeholder = '2ヶ月毎第2水 起点2026-04';
+      t.title = '例）2ヶ月毎第2水 起点2026-04';
+      t.onchange = function () { spec.text = t.value; commit(); };
+      line.appendChild(t);
+    } else {
+      line.appendChild(el('span', 'unit-text', '下の「起点の日」で日付を足します'));
+    }
+    return wrap;
   }
 
   function saveWorkMeta() {

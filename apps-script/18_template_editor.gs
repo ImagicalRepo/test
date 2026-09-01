@@ -43,13 +43,25 @@ function getEditorData() {
   });
 
   var nextAnchors = {};
+  var anchorsByWork = {};
   readTable_(SHEET.ANCHOR).rows.forEach(function (a) {
     var id = String(a['業務ID']).trim();
     var key = toDateKey(a['基準日']);
-    if (!id || !key || key < today) return;
+    if (!id || !key) return;
+    if (!anchorsByWork[id]) anchorsByWork[id] = [];
+    anchorsByWork[id].push({
+      period: periodText_(a['回次']),
+      dateKey: key,
+      source: String(a['生成元'] || '').trim(),
+      past: key < today
+    });
+    if (key < today) return;
     if (!nextAnchors[id] || key < nextAnchors[id].dateKey) {
       nextAnchors[id] = { dateKey: key, period: periodText_(a['回次']) };
     }
+  });
+  Object.keys(anchorsByWork).forEach(function (id) {
+    anchorsByWork[id].sort(function (a, b) { return a.dateKey < b.dateKey ? -1 : 1; });
   });
 
   return {
@@ -57,6 +69,7 @@ function getEditorData() {
     works: works,
     templates: templates,
     nextAnchors: nextAnchors,
+    anchors: anchorsByWork,
     defaultRemind: settingNumber_(settings, '既定リマインド営業日前', 3),
     colors: COLOR_ORDER,
     scheduleUrl: webAppUrl_('')
@@ -186,6 +199,48 @@ function saveWork(work) {
     appendRows_(SHEET.WORK, [values]);
   }
   applyValidations_();
+  return generateSchedules();
+}
+
+/**
+ * 起点の日を手で1件足す。
+ *
+ * 決まった周期がない業務（基準日ルールが「手動」）はこれで日付を登録する。
+ * 回次は日付そのものにする。月に複数回あっても重ならず、一覧でも読みやすい。
+ */
+function addAnchor(workId, dateKey) {
+  workId = String(workId).trim();
+  if (!workId) throw new Error('業務が選ばれていません');
+  keyToDate(dateKey); // 形式チェック
+
+  var t = readTable_(SHEET.ANCHOR);
+  for (var i = 0; i < t.rows.length; i++) {
+    if (String(t.rows[i]['業務ID']).trim() === workId && toDateKey(t.rows[i]['基準日']) === dateKey) {
+      throw new Error('その日付はすでに登録されています：' + dateKey);
+    }
+  }
+  appendRows_(SHEET.ANCHOR, [{
+    '業務ID': workId, '回次': dateKey, '基準日': keyToSheetDate_(dateKey),
+    '生成元': '手動', '状態': '予定', '備考': ''
+  }]);
+  applyFormats_();
+  return generateSchedules();
+}
+
+/** 起点の日を1件消す（その回次の工程も次の再生成で消える） */
+function deleteAnchor(workId, period) {
+  workId = String(workId).trim();
+  period = String(period).trim();
+  var t = readTable_(SHEET.ANCHOR);
+  var target = null;
+  for (var i = 0; i < t.rows.length; i++) {
+    if (String(t.rows[i]['業務ID']).trim() === workId && periodText_(t.rows[i]['回次']) === period) {
+      target = t.rows[i];
+      break;
+    }
+  }
+  if (!target) throw new Error('該当する起点の日が見つかりません：' + period);
+  t.sheet.deleteRow(target._row);
   return generateSchedules();
 }
 
