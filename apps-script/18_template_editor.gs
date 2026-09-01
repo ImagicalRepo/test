@@ -48,14 +48,16 @@ function getEditorData() {
     var id = String(a['業務ID']).trim();
     var key = toDateKey(a['基準日']);
     if (!id || !key) return;
+    var cancelled = String(a['状態'] || '').trim() === '中止';
     if (!anchorsByWork[id]) anchorsByWork[id] = [];
     anchorsByWork[id].push({
       period: periodText_(a['回次']),
       dateKey: key,
       source: String(a['生成元'] || '').trim(),
+      cancelled: cancelled,
       past: key < today
     });
-    if (key < today) return;
+    if (key < today || cancelled) return;
     if (!nextAnchors[id] || key < nextAnchors[id].dateKey) {
       nextAnchors[id] = { dateKey: key, period: periodText_(a['回次']) };
     }
@@ -240,8 +242,32 @@ function deleteAnchor(workId, period) {
     }
   }
   if (!target) throw new Error('該当する起点の日が見つかりません：' + period);
-  t.sheet.deleteRow(target._row);
+
+  // 自動で並べている業務は、行ごと消しても次の再生成でルールから作り直されてしまう。
+  // 「中止」として残すことで、その回だけを確実に除外できる（あとで戻すこともできる）。
+  var idx = headerIndex_(t.headers);
+  if (String(target['生成元'] || '').trim() === '自動' && idx['状態']) {
+    t.sheet.getRange(target._row, idx['状態']).setValue('中止');
+  } else {
+    t.sheet.deleteRow(target._row);
+  }
   return generateSchedules();
+}
+
+/** 「中止」にした起点の日を元に戻す */
+function restoreAnchor(workId, period) {
+  workId = String(workId).trim();
+  period = String(period).trim();
+  var t = readTable_(SHEET.ANCHOR);
+  var idx = headerIndex_(t.headers);
+  for (var i = 0; i < t.rows.length; i++) {
+    var r = t.rows[i];
+    if (String(r['業務ID']).trim() === workId && periodText_(r['回次']) === period) {
+      if (idx['状態']) t.sheet.getRange(r._row, idx['状態']).setValue('予定');
+      return generateSchedules();
+    }
+  }
+  throw new Error('該当する起点の日が見つかりません：' + period);
 }
 
 // ---- テンプレートの受け渡し（JSON） ----

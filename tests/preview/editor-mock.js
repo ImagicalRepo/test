@@ -50,10 +50,10 @@
     },
     anchors: {
       NAN: [
-        { period:'2026-08', dateKey:'2026-08-12', source:'自動', past:true },
-        { period:'2026-09', dateKey:'2026-09-09', source:'自動', past:false },
-        { period:'2026-10', dateKey:'2026-10-14', source:'自動', past:false },
-        { period:'2026-11', dateKey:'2026-11-11', source:'自動', past:false }
+        { period:'2026-08', dateKey:'2026-08-12', source:'自動', cancelled:false, past:true },
+        { period:'2026-09', dateKey:'2026-09-09', source:'自動', cancelled:false, past:false },
+        { period:'2026-10', dateKey:'2026-10-14', source:'自動', cancelled:true,  past:false },
+        { period:'2026-11', dateKey:'2026-11-11', source:'自動', cancelled:false, past:false }
       ],
       KOSIN: [{ period:'2026', dateKey:'2026-09-01', source:'自動', past:false }],
       SHOMAN: [

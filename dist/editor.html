@@ -83,6 +83,11 @@
     font-size:11.5px; font-variant-numeric:tabular-nums; background:var(--surface);
   }
   .anchor-chip.past { opacity:.5; }
+  .anchor-chip.cancelled {
+    opacity:.6; border-style:dashed; text-decoration:line-through;
+    text-decoration-thickness:1px;
+  }
+  .anchor-chip.cancelled .chip-x { text-decoration:none; }
   .chip-x {
     border:none; background:none; color:var(--muted); font-size:14px;
     line-height:1; padding:0 3px; border-radius:50%;
@@ -475,8 +480,9 @@
     box.appendChild(head);
 
     var chips = el('div', 'anchor-chips');
-    var future = list.filter(function (a) { return !a.past; });
-    var shown = future.length ? future.slice(0, 12) : list.slice(-6);
+    var future = list.filter(function (a) { return !a.past && !a.cancelled; });
+    var shown = future.length ? future.slice(0, 12)
+      : list.filter(function (a) { return !a.cancelled; }).slice(-6);
     if (!shown.length) {
       chips.appendChild(el('span', 'anchor-empty', 'まだ登録されていません'));
     }
@@ -485,18 +491,39 @@
       chip.appendChild(el('span', '', fmtDate(a.dateKey)));
       var del = el('button', 'chip-x');
       del.type = 'button';
-      del.title = 'この日を削除';
-      del.setAttribute('aria-label', fmtDate(a.dateKey) + ' を削除');
+      del.title = 'この日を外す';
+      del.setAttribute('aria-label', fmtDate(a.dateKey) + ' を外す');
       del.textContent = '×';
       del.onclick = function () {
-        if (!confirm(fmtDate(a.dateKey) + ' を削除します。この回の工程も消えます。よろしいですか？')) return;
-        setMsg('削除中…');
+        if (!confirm(fmtDate(a.dateKey) + ' を外します。この回の工程も消えます。よろしいですか？')) return;
+        setMsg('処理中…');
         google.script.run
-          .withSuccessHandler(function () { setMsg('削除しました', 'ok'); load(); })
+          .withSuccessHandler(function () { setMsg('外しました', 'ok'); load(); })
           .withFailureHandler(function (e) { setMsg(e.message, 'err'); })
           .deleteAnchor(current, a.period);
       };
       chip.appendChild(del);
+      chips.appendChild(chip);
+    });
+
+    // 自動で並ぶ業務から外した日は、ルールで作り直されないよう「中止」として残る
+    list.filter(function (a) { return a.cancelled && !a.past; }).slice(0, 8).forEach(function (a) {
+      var chip = el('span', 'anchor-chip cancelled');
+      chip.title = 'この回は外してあります（自動でも作り直されません）';
+      chip.appendChild(el('span', '', fmtDate(a.dateKey)));
+      var back = el('button', 'chip-x');
+      back.type = 'button';
+      back.title = 'この日を戻す';
+      back.setAttribute('aria-label', fmtDate(a.dateKey) + ' を戻す');
+      back.textContent = '↩';
+      back.onclick = function () {
+        setMsg('処理中…');
+        google.script.run
+          .withSuccessHandler(function () { setMsg('戻しました', 'ok'); load(); })
+          .withFailureHandler(function (e) { setMsg(e.message, 'err'); })
+          .restoreAnchor(current, a.period);
+      };
+      chip.appendChild(back);
       chips.appendChild(chip);
     });
 
