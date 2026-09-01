@@ -265,16 +265,43 @@
   }
   .chip { white-space: nowrap; }
   .cal-title { font-size: 15px; font-weight: 700; min-width: 132px; }
-  .cal-wrap { flex: 1; overflow: auto; padding: 10px 14px 20px; display: flex; flex-direction: column; }
+  /* 月グリッドは縦スクロールさせず、画面の高さに合わせて行を分け合う */
+  .cal-wrap {
+    flex: 1; min-height: 0; overflow: hidden;
+    padding: 10px 14px 12px; display: flex; flex-direction: column;
+  }
   .cal-head { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 6px; }
   .cal-head div { text-align: center; font-size: 11px; font-weight: 700; color: var(--muted); padding: 3px 0; }
   .cal-head div.sun { color: #d93025; }
   .cal-head div.sat { color: #1a73e8; }
-  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; flex: 1; }
+  .cal-grid {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px;
+    flex: 1; min-height: 0; grid-auto-rows: minmax(0, 1fr);
+  }
   .cell {
     background: var(--surface); border: 1px solid var(--border); border-radius: 9px;
-    padding: 5px 6px; min-height: 92px; display: flex; flex-direction: column; gap: 3px;
-    animation: cellIn .3s var(--ease) backwards; overflow: hidden;
+    padding: 5px 6px; min-height: 0; display: flex; flex-direction: column; gap: 3px;
+    animation: cellIn .3s var(--ease) backwards; overflow-y: auto; overflow-x: hidden;
+  }
+  .cell::-webkit-scrollbar { width: 5px; }
+  .cell::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .cell-head { position: sticky; top: -5px; background: inherit; padding-top: 1px; }
+
+  /* 画面が低いときは余白と文字を詰めて、1か月ぶんを収める */
+  @media (max-height: 780px) {
+    .cal-wrap { padding: 6px 10px 8px; }
+    .cal-grid, .cal-head { gap: 4px; }
+    .cell { padding: 3px 5px; border-radius: 7px; }
+    .cell-num { font-size: 11px; }
+    .ev { font-size: 10px; padding: 2px 5px; }
+    .legend { padding: 6px 10px; }
+    .cal-bar { padding: 6px 10px; }
+    header.top { padding: 6px 12px; }
+  }
+  @media (max-height: 640px) {
+    .cal-head div { font-size: 10px; padding: 1px 0; }
+    .ev { font-size: 9.5px; line-height: 1.25; }
+    .cell-hol { display: none; }
   }
   .cell.out { opacity: .4; }
   .cell.we { background: var(--surface-2); }
@@ -1122,6 +1149,14 @@ function renderMonth(root) {
   });
 }
 
+/** セルの高さに応じて、畳んだ状態で見せる件数を決める */
+function cellChipLimit() {
+  var h = window.innerHeight || 800;
+  if (h < 620) return 1;
+  if (h < 780) return 2;
+  return 3;
+}
+
 function renderCell(key, byDate, i) {
   var inMonth = monthOf(key) === calMonth;
   var cls = 'cell';
@@ -1137,7 +1172,7 @@ function renderCell(key, byDate, i) {
   cell.appendChild(head);
 
   var list = byDate[key] || [];
-  var limit = expandedCells[key] ? list.length : 3;
+  var limit = expandedCells[key] ? list.length : cellChipLimit();
   list.slice(0, limit).forEach(function (ctx, n) {
     var color = hues(ctx.lane.color);
     var done = ctx.item.status === '完了';
@@ -1287,7 +1322,14 @@ document.addEventListener('click', function (ev) {
 document.addEventListener('keydown', function (ev) {
   if (ev.key === 'Escape') { closeDetail(); document.getElementById('themePop').classList.remove('open'); }
 });
-window.addEventListener('resize', movePill);
+var resizeTimer = null;
+window.addEventListener('resize', function () {
+  movePill();
+  // 高さが変わると1セルに入る件数が変わるため、月間ビューは組み直す
+  if (view !== 'month' || !DATA) return;
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(renderView, 200);
+});
 
 loadTheme();
 applyTheme(themeId, false);

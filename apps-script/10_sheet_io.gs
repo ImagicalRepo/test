@@ -179,6 +179,23 @@ function loadBusinessCalendar_(settings) {
   return createBusinessCalendar({ holidays: holidays, extraWorkdays: extraWorkdays, weekendDays: weekendDays });
 }
 
+/**
+ * 回次（2026-09 / 2026）を文字列として読む。
+ *
+ * 「2026-09」はスプレッドシートが日付として解釈してしまうことがあり、
+ * そのまま String() すると "Sat Aug 01 2026 00:00:00 GMT+0900" のような
+ * 表示になってしまう。Date で入っていた場合は年月に戻す。
+ */
+function periodText_(value) {
+  if (value === null || value === undefined) return '';
+  if (Object.prototype.toString.call(value) === '[object Date]') {
+    if (isNaN(value.getTime())) return '';
+    var tz = ss_().getSpreadsheetTimeZone() || 'Asia/Tokyo';
+    return Utilities.formatDate(value, tz, 'yyyy-MM');
+  }
+  return String(value).trim();
+}
+
 /** dateKey をシート表示用の Date（ローカル 00:00）に変換 */
 function keyToSheetDate_(key) {
   if (!key) return '';

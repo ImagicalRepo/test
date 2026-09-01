@@ -48,7 +48,7 @@ function buildDigestFromSheet_(settings, cal, today) {
       workId: String(r['業務ID']).trim(),
       workName: String(r['業務名'] || ''),
       color: colorByWork[String(r['業務ID']).trim()],
-      period: String(r['回次'] || ''),
+      period: periodText_(r['回次']),
       seq: Number(r['工程No']) || 0,
       name: String(r['工程名'] || ''),
       dueKey: dueKey,

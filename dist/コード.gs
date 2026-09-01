@@ -87,7 +87,9 @@ var DEFAULT_SETTINGS = [
   ['カレンダー同期', 'OFF', 'ON にすると工程をGoogleカレンダーへ登録する。別途カレンダー権限の追加が必要（docs/README.md 参照）'],
   ['カレンダーID', '', 'カレンダー同期先のID。空ならスクリプト実行者のメインカレンダー'],
   ['ガント表示_前月数', '1', 'ガント画面で今日より何ヶ月前から表示するか'],
-  ['ガント表示_後月数', '3', 'ガント画面で今日より何ヶ月先まで表示するか']
+  ['ガント表示_後月数', '3', 'ガント画面で今日より何ヶ月先まで表示するか'],
+  ['画面の幅', '1400', 'スケジュール画面の幅（px）。ブラウザの幅より大きくはなりません'],
+  ['画面の高さ', '800', 'スケジュール画面の高さ（px）。画面が小さいPCでは 640 程度に下げてください']
 ];
 
 var STATUS = {
@@ -933,6 +935,23 @@ function loadBusinessCalendar_(settings) {
   return createBusinessCalendar({ holidays: holidays, extraWorkdays: extraWorkdays, weekendDays: weekendDays });
 }
 
+/**
+ * 回次（2026-09 / 2026）を文字列として読む。
+ *
+ * 「2026-09」はスプレッドシートが日付として解釈してしまうことがあり、
+ * そのまま String() すると "Sat Aug 01 2026 00:00:00 GMT+0900" のような
+ * 表示になってしまう。Date で入っていた場合は年月に戻す。
+ */
+function periodText_(value) {
+  if (value === null || value === undefined) return '';
+  if (Object.prototype.toString.call(value) === '[object Date]') {
+    if (isNaN(value.getTime())) return '';
+    var tz = ss_().getSpreadsheetTimeZone() || 'Asia/Tokyo';
+    return Utilities.formatDate(value, tz, 'yyyy-MM');
+  }
+  return String(value).trim();
+}
+
 /** dateKey をシート表示用の Date（ローカル 00:00）に変換 */
 function keyToSheetDate_(key) {
   if (!key) return '';
@@ -1194,6 +1213,21 @@ function seedSamples_() {
   }));
 }
 
+/**
+ * 業務の定義と、そこから生成したものをすべて消す。
+ *
+ * 設定・休日マスタ・実行ログは残す。作り直す必要がなく、
+ * 特に休日マスタは手入力した閉庁日を失うと痛いため。
+ */
+function resetBusinessData() {
+  [SHEET.WORK, SHEET.TEMPLATE, SHEET.ANCHOR, SHEET.SCHEDULE].forEach(function (name) {
+    replaceTable_(name, []);
+  });
+  applyFormats_();
+  applyValidations_();
+  log_('データ初期化', true, '業務マスタ・工程テンプレート・基準日・工程表 を空にしました');
+}
+
 /** 日次トリガーを（重複させずに）登録する */
 function installTriggers() {
   var settings = getSettings_();
@@ -1378,7 +1412,7 @@ function generateSchedules() {
   var anchorTable = readTable_(SHEET.ANCHOR);
   var anchorSeen = {};
   anchorTable.rows.forEach(function (r) {
-    anchorSeen[String(r['業務ID']).trim() + '|' + String(r['回次']).trim()] = true;
+    anchorSeen[String(r['業務ID']).trim() + '|' + periodText_(r['回次'])] = true;
   });
   var newAnchors = [];
   works.forEach(function (w) {
@@ -1402,8 +1436,11 @@ function generateSchedules() {
   if (newAnchors.length) appendRows_(SHEET.ANCHOR, newAnchors);
 
   // ---- 2. 工程表の再生成 ----
+  var repaired = repairAnchorPeriods_();
+  if (repaired) log_('回次の修復', true, repaired + ' 行を文字列に直しました');
+
   var anchors = readTable_(SHEET.ANCHOR).rows.filter(function (r) {
-    return String(r['業務ID']).trim() && String(r['回次']).trim() && toDateKey(r['基準日']);
+    return String(r['業務ID']).trim() && periodText_(r['回次']) && toDateKey(r['基準日']);
   });
   var templates = groupTemplates_(readTable_(SHEET.TEMPLATE).rows);
   var workById = {};
@@ -1414,9 +1451,14 @@ function generateSchedules() {
 
   var oldRows = readTable_(SHEET.SCHEDULE).rows;
   var oldByKey = {};
+  var oldByAlt = {};
   oldRows.forEach(function (r) {
     var k = String(r['キー']).trim();
     if (k) oldByKey[k] = r;
+    // 回次の表記が変わるとキーも変わるため、業務・基準日・工程No でも引けるようにする。
+    // これがないと、回次を直したときに入力済みの進捗が失われる。
+    var alt = String(r['業務ID']).trim() + '|' + toDateKey(r['基準日']) + '|' + r['工程No'];
+    if (alt) oldByAlt[alt] = r;
   });
 
   var newRows = [];
@@ -1441,9 +1483,11 @@ function generateSchedules() {
       return;
     }
     rows.forEach(function (row) {
-      var key = workId + '|' + String(a['回次']).trim() + '|' + row.seq;
+      var key = workId + '|' + periodText_(a['回次']) + '|' + row.seq;
       usedKeys[key] = true;
-      var old = oldByKey[key] || {};
+      var old = oldByKey[key]
+        || oldByAlt[workId + '|' + anchorKey + '|' + row.seq]
+        || {};
       var fixed = /^(on|true|はい|固定|1)$/i.test(String(old['日程固定'] || '').trim());
       var dueKey = fixed && toDateKey(old['予定日']) ? toDateKey(old['予定日']) : row.dateKey;
       var remind = row.remindDays === '' || row.remindDays === null || row.remindDays === undefined
@@ -1454,7 +1498,7 @@ function generateSchedules() {
         '完': status === STATUS.DONE,
         '業務ID': workId,
         '業務名': work['業務名'],
-        '回次': a['回次'],
+        '回次': periodText_(a['回次']),
         '基準日': keyToSheetDate_(anchorKey),
         '工程No': row.seq,
         '工程名': row.name,
@@ -1502,6 +1546,52 @@ function generateSchedules() {
     + (errors.length ? ' / エラー: ' + errors.join(' | ') : ''));
 
   return { anchorsAdded: newAnchors.length, rows: newRows.length, errors: errors };
+}
+
+/**
+ * 基準日シートの回次を文字列に直す。
+ *
+ * 「2026-09」は日付として、「2026」はシリアル値として解釈され、
+ * セルが Date になってしまうことがある（2026 は 1905-07-18 になる）。
+ * 基準日と業務のルールから正しい回次を組み立て直し、書式も文字列にする。
+ */
+function repairAnchorPeriods_() {
+  var t = readTable_(SHEET.ANCHOR);
+  var idx = headerIndex_(t.headers);
+  if (!idx['回次'] || !t.rows.length) return 0;
+
+  var works = {};
+  readTable_(SHEET.WORK).rows.forEach(function (w) {
+    works[String(w['業務ID']).trim()] = w;
+  });
+
+  var values = [];
+  var fixed = 0;
+  t.rows.forEach(function (r) {
+    var raw = r['回次'];
+    var isDate = Object.prototype.toString.call(raw) === '[object Date]';
+    var want = isDate ? '' : String(raw).trim();
+
+    if (isDate || !want) {
+      var dateKey = toDateKey(r['基準日']);
+      var work = works[String(r['業務ID']).trim()];
+      var yearly = false;
+      try {
+        var spec = work ? parseRecurrence(work['基準日ルール']) : null;
+        yearly = !!spec && spec.type === 'YEARLY_DATE';
+      } catch (e) {
+        yearly = false;
+      }
+      want = dateKey ? (yearly ? dateKey.slice(0, 4) : dateKey.slice(0, 7)) : '';
+    }
+    if (want !== String(raw)) fixed++;
+    values.push([want]);
+  });
+
+  var range = t.sheet.getRange(2, idx['回次'], values.length, 1);
+  range.setNumberFormat('@');
+  range.setValues(values);
+  return fixed;
 }
 
 /** 工程テンプレート行を業務IDごとにまとめ、工程Noで並べる */
@@ -1698,7 +1788,7 @@ function buildDigestFromSheet_(settings, cal, today) {
       workId: String(r['業務ID']).trim(),
       workName: String(r['業務名'] || ''),
       color: colorByWork[String(r['業務ID']).trim()],
-      period: String(r['回次'] || ''),
+      period: periodText_(r['回次']),
       seq: Number(r['工程No']) || 0,
       name: String(r['工程名'] || ''),
       dueKey: dueKey,
@@ -1773,6 +1863,7 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('📅 業務スケジュール')
     .addItem('スケジュール画面を開く', 'showGantt')
+    .addItem('別ウィンドウで開く（URLを表示）', 'showAppUrl')
     .addSeparator()
     .addItem('工程テンプレートを編集', 'showTemplateEditor')
     .addItem('工程表を再生成', 'menuGenerate')
@@ -1787,23 +1878,80 @@ function onOpen() {
       .addItem('読み込む（JSON）', 'showTemplateImport'))
     .addSeparator()
     .addItem('初期セットアップ', 'menuSetup')
+    .addItem('サンプルを削除して最初から作る', 'menuReset')
     .addToUi();
 }
 
+/**
+ * ダイアログの大きさは Apps Script の仕様上あとから変えられないため、
+ * 設定シートの「画面の幅 / 画面の高さ」で指定できるようにしている。
+ * 本当に自由な大きさで使いたい場合はウェブアプリとして開く（showAppUrl 参照）。
+ */
 function showGantt() {
+  var settings = getSettings_();
   var html = HtmlService.createTemplateFromFile('gantt')
     .evaluate()
-    .setWidth(1400)
-    .setHeight(880);
+    .setWidth(clampSize_(settingNumber_(settings, '画面の幅', 1400), 800, 2000))
+    .setHeight(clampSize_(settingNumber_(settings, '画面の高さ', 800), 480, 1400));
   SpreadsheetApp.getUi().showModalDialog(html, '業務スケジュール');
 }
 
 function showTemplateEditor() {
+  var settings = getSettings_();
   var html = HtmlService.createTemplateFromFile('editor')
     .evaluate()
-    .setWidth(1100)
-    .setHeight(800);
+    .setWidth(clampSize_(settingNumber_(settings, '画面の幅', 1400) - 250, 800, 1700))
+    .setHeight(clampSize_(settingNumber_(settings, '画面の高さ', 800), 480, 1400));
   SpreadsheetApp.getUi().showModalDialog(html, '工程テンプレートの編集');
+}
+
+function clampSize_(value, min, max) {
+  var n = Number(value);
+  if (isNaN(n)) return min;
+  return Math.max(min, Math.min(max, Math.round(n)));
+}
+
+/**
+ * ウェブアプリとしてデプロイ済みなら、その URL を表示する。
+ * ブラウザのタブで開けるので、大きさは自由に変えられ、スプレッドシートを開かずに使える。
+ */
+function showAppUrl() {
+  var ui = SpreadsheetApp.getUi();
+  var url = '';
+  try {
+    url = ScriptApp.getService().getUrl() || '';
+  } catch (e) {
+    url = '';
+  }
+
+  var body;
+  if (url) {
+    body =
+      '<div style="font-family:system-ui,sans-serif;font-size:13px;line-height:1.8;color:#202124">'
+      + '<p>このURLを開くと、スケジュール画面だけを別のタブで表示できます。<br>'
+      + 'ウィンドウの大きさは自由に変えられます。ブックマークしておくと便利です。</p>'
+      + '<p><a href="' + url + '" target="_blank" rel="noopener"'
+      + ' style="word-break:break-all;color:#1a73e8">' + url + '</a></p>'
+      + '<p style="color:#5f6368;font-size:12px">'
+      + 'コードを更新したときは、エディタの［デプロイ］→［デプロイを管理］→ 鉛筆マーク →'
+      + ' バージョンを「新しいバージョン」にして再デプロイしてください。</p></div>';
+  } else {
+    body =
+      '<div style="font-family:system-ui,sans-serif;font-size:13px;line-height:1.8;color:#202124">'
+      + '<p>まだウェブアプリとして公開されていません。次の手順で公開できます。</p>'
+      + '<ol style="padding-left:1.2em">'
+      + '<li>［拡張機能］→［Apps Script］を開く</li>'
+      + '<li>右上の［デプロイ］→［新しいデプロイ］</li>'
+      + '<li>歯車マーク →［ウェブアプリ］を選ぶ</li>'
+      + '<li>次のユーザーとして実行：<b>自分</b></li>'
+      + '<li>アクセスできるユーザー：<b>自分のみ</b></li>'
+      + '<li>［デプロイ］→ 承認 → 表示された URL をコピー</li>'
+      + '</ol>'
+      + '<p style="color:#5f6368;font-size:12px">'
+      + '公開後にもう一度このメニューを開くと、URL がここに表示されます。</p></div>';
+  }
+  ui.showModalDialog(HtmlService.createHtmlOutput(body).setWidth(520).setHeight(340),
+    'スケジュール画面を別ウィンドウで開く');
 }
 
 function menuSetup() {
@@ -1825,6 +1973,33 @@ function menuSetup() {
   } catch (e) {
     ui.alert('エラー', e.message, ui.ButtonSet.OK);
   }
+}
+
+function menuReset() {
+  var ui = SpreadsheetApp.getUi();
+  var res = ui.alert('サンプルを削除して最初から作る',
+    '次の4つのシートの中身をすべて削除します。\n\n'
+    + '　・業務マスタ\n'
+    + '　・工程テンプレート\n'
+    + '　・基準日\n'
+    + '　・工程表\n\n'
+    + '設定・休日マスタ・実行ログはそのまま残ります。\n'
+    + '（手入力した閉庁日も残ります）\n\n'
+    + 'この操作は元に戻せません。実行しますか？',
+    ui.ButtonSet.OK_CANCEL);
+  if (res !== ui.Button.OK) return;
+
+  try {
+    resetBusinessData();
+  } catch (e) {
+    ui.alert('エラー', e.message, ui.ButtonSet.OK);
+    return;
+  }
+  ui.alert('削除しました',
+    '続けて［工程テンプレートを編集］を開きます。\n'
+    + '［＋ 業務を追加］から、実際の業務を登録してください。',
+    ui.ButtonSet.OK);
+  showTemplateEditor();
 }
 
 function menuGenerate() {
@@ -1949,7 +2124,7 @@ function getGanttData() {
   var anchorByKey = {};
   readTable_(SHEET.ANCHOR).rows.forEach(function (a) {
     var id = String(a['業務ID']).trim();
-    var period = String(a['回次']).trim();
+    var period = periodText_(a['回次']);
     if (!id || !period) return;
     anchorByKey[id + '|' + period] = toDateKey(a['基準日']);
   });
@@ -1961,7 +2136,7 @@ function getGanttData() {
   var lanes = [];
   readTable_(SHEET.SCHEDULE).rows.forEach(function (r) {
     var workId = String(r['業務ID']).trim();
-    var period = String(r['回次']).trim();
+    var period = periodText_(r['回次']);
     var dueKey = toDateKey(r['予定日']);
     if (!workId || !dueKey) return;
     if (dueKey < fromKey || dueKey > toKey) return;
@@ -2148,7 +2323,7 @@ function getEditorData() {
     var key = toDateKey(a['基準日']);
     if (!id || !key || key < today) return;
     if (!nextAnchors[id] || key < nextAnchors[id].dateKey) {
-      nextAnchors[id] = { dateKey: key, period: String(a['回次']).trim() };
+      nextAnchors[id] = { dateKey: key, period: periodText_(a['回次']) };
     }
   });
 

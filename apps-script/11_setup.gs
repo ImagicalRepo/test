@@ -241,6 +241,21 @@ function seedSamples_() {
   }));
 }
 
+/**
+ * 業務の定義と、そこから生成したものをすべて消す。
+ *
+ * 設定・休日マスタ・実行ログは残す。作り直す必要がなく、
+ * 特に休日マスタは手入力した閉庁日を失うと痛いため。
+ */
+function resetBusinessData() {
+  [SHEET.WORK, SHEET.TEMPLATE, SHEET.ANCHOR, SHEET.SCHEDULE].forEach(function (name) {
+    replaceTable_(name, []);
+  });
+  applyFormats_();
+  applyValidations_();
+  log_('データ初期化', true, '業務マスタ・工程テンプレート・基準日・工程表 を空にしました');
+}
+
 /** 日次トリガーを（重複させずに）登録する */
 function installTriggers() {
   var settings = getSettings_();

@@ -45,7 +45,7 @@ function getGanttData() {
   var anchorByKey = {};
   readTable_(SHEET.ANCHOR).rows.forEach(function (a) {
     var id = String(a['業務ID']).trim();
-    var period = String(a['回次']).trim();
+    var period = periodText_(a['回次']);
     if (!id || !period) return;
     anchorByKey[id + '|' + period] = toDateKey(a['基準日']);
   });
@@ -57,7 +57,7 @@ function getGanttData() {
   var lanes = [];
   readTable_(SHEET.SCHEDULE).rows.forEach(function (r) {
     var workId = String(r['業務ID']).trim();
-    var period = String(r['回次']).trim();
+    var period = periodText_(r['回次']);
     var dueKey = toDateKey(r['予定日']);
     if (!workId || !dueKey) return;
     if (dueKey < fromKey || dueKey > toKey) return;

@@ -351,17 +351,55 @@
       sel.innerHTML = '';
       d.works.forEach(function (w) { sel.appendChild(opt(w.id, w.name + (w.enabled ? '' : '（無効）'))); });
       sel.onchange = function () { selectWork(sel.value); };
-      if (d.works.length) selectWork(d.works[0].id);
+      if (d.works.length) {
+        selectWork(pendingWorkId && d.templates[pendingWorkId] !== undefined
+          ? pendingWorkId
+          : (pendingWorkId && findWorkById(pendingWorkId) ? pendingWorkId : d.works[0].id));
+        pendingWorkId = null;
+      } else {
+        renderNoWork();
+      }
     }).withFailureHandler(function (e) { setMsg(e.message, 'err'); }).getEditorData();
   }
 
   function work() {
+    return findWorkById(current);
+  }
+
+  function findWorkById(id) {
     var found = null;
-    DATA.works.forEach(function (w) { if (w.id === current) found = w; });
+    DATA.works.forEach(function (w) { if (w.id === id) found = w; });
     return found;
   }
 
+  /** 業務が1件も無いときの案内 */
+  function renderNoWork() {
+    current = null;
+    rows = [];
+    document.getElementById('workBox').innerHTML = '';
+    document.getElementById('preview').innerHTML = '';
+    document.getElementById('pvSummary').innerHTML = '';
+    document.getElementById('btnSave').disabled = true;
+    document.getElementById('btnAddRow').disabled = true;
+
+    var box = document.getElementById('steps');
+    box.innerHTML = '';
+    var empty = el('div', 'empty-state');
+    empty.appendChild(el('div', '', '登録されている業務がありません。'));
+    empty.appendChild(el('div', '', '［＋ 業務を追加］から、管理したい業務を登録してください。'));
+    var b = el('button', 'primary');
+    b.type = 'button';
+    b.style.marginTop = '14px';
+    b.appendChild(svg('plus'));
+    b.appendChild(el('span', '', '業務を追加'));
+    b.onclick = addWork;
+    empty.appendChild(b);
+    box.appendChild(empty);
+  }
+
   function selectWork(id) {
+    document.getElementById('btnSave').disabled = false;
+    document.getElementById('btnAddRow').disabled = false;
     current = id;
     opened = {};
     document.getElementById('workSel').value = id;
@@ -714,17 +752,39 @@
 
   document.getElementById('btnAddRow').onclick = function () { addRow(); };
 
-  document.getElementById('btnAddWork').onclick = function () {
-    var id = prompt('新しい業務のID（半角英数字）を入力してください。\n例）JIRITSU', '');
+  var pendingWorkId = null;
+
+  function addWork() {
+    var id = prompt(
+      '新しい業務のID（半角英数字）を入力してください。\n'
+      + '画面には出ない管理用の記号です。\n\n'
+      + '例）NAN、KOSIN、JIRITSU', '');
     if (!id) return;
-    var name = prompt('業務名を入力してください。', id);
+    var name = prompt(
+      '業務名を入力してください。\n\n'
+      + '例）指定難病 医療費助成（月次審査会）', id);
     if (!name) return;
+    var anchorName = prompt(
+      'この業務の起点になる日を何と呼びますか。\n\n'
+      + '例）審査会、受付開始、処理締切', '審査会');
+    if (!anchorName) return;
+    var rule = prompt(
+      '起点の日はどの周期で来ますか。\n\n'
+      + '毎月第2水 ／ 毎月15日 ／ 毎月末日\n'
+      + '2ヶ月毎第2水 起点2026-04 ／ 毎年9月1日\n'
+      + '手動（自分で日付を入れる）', '毎月第2水');
+    if (!rule) return;
+
+    pendingWorkId = id.trim();
+    setMsg('追加中…');
     google.script.run
       .withSuccessHandler(function () { setMsg('業務を追加しました', 'ok'); load(); })
-      .withFailureHandler(function (e) { setMsg(e.message, 'err'); })
-      .saveWork({ id:id.trim(), name:name, enabled:true, anchorName:'基準日',
-                  rule:'毎月第2水', adjust:'前営業日', color:'紫' });
-  };
+      .withFailureHandler(function (e) { pendingWorkId = null; setMsg(e.message, 'err'); })
+      .saveWork({ id: id.trim(), name: name, enabled: true, anchorName: anchorName,
+                  rule: rule, adjust: '前営業日', color: '青' });
+  }
+
+  document.getElementById('btnAddWork').onclick = addWork;
 
   // ---------- プレビュー ----------
   document.getElementById('btnPreview').onclick = preview;

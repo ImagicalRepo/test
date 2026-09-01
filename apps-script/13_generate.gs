@@ -27,7 +27,7 @@ function generateSchedules() {
   var anchorTable = readTable_(SHEET.ANCHOR);
   var anchorSeen = {};
   anchorTable.rows.forEach(function (r) {
-    anchorSeen[String(r['業務ID']).trim() + '|' + String(r['回次']).trim()] = true;
+    anchorSeen[String(r['業務ID']).trim() + '|' + periodText_(r['回次'])] = true;
   });
   var newAnchors = [];
   works.forEach(function (w) {
@@ -51,8 +51,11 @@ function generateSchedules() {
   if (newAnchors.length) appendRows_(SHEET.ANCHOR, newAnchors);
 
   // ---- 2. 工程表の再生成 ----
+  var repaired = repairAnchorPeriods_();
+  if (repaired) log_('回次の修復', true, repaired + ' 行を文字列に直しました');
+
   var anchors = readTable_(SHEET.ANCHOR).rows.filter(function (r) {
-    return String(r['業務ID']).trim() && String(r['回次']).trim() && toDateKey(r['基準日']);
+    return String(r['業務ID']).trim() && periodText_(r['回次']) && toDateKey(r['基準日']);
   });
   var templates = groupTemplates_(readTable_(SHEET.TEMPLATE).rows);
   var workById = {};
@@ -63,9 +66,14 @@ function generateSchedules() {
 
   var oldRows = readTable_(SHEET.SCHEDULE).rows;
   var oldByKey = {};
+  var oldByAlt = {};
   oldRows.forEach(function (r) {
     var k = String(r['キー']).trim();
     if (k) oldByKey[k] = r;
+    // 回次の表記が変わるとキーも変わるため、業務・基準日・工程No でも引けるようにする。
+    // これがないと、回次を直したときに入力済みの進捗が失われる。
+    var alt = String(r['業務ID']).trim() + '|' + toDateKey(r['基準日']) + '|' + r['工程No'];
+    if (alt) oldByAlt[alt] = r;
   });
 
   var newRows = [];
@@ -90,9 +98,11 @@ function generateSchedules() {
       return;
     }
     rows.forEach(function (row) {
-      var key = workId + '|' + String(a['回次']).trim() + '|' + row.seq;
+      var key = workId + '|' + periodText_(a['回次']) + '|' + row.seq;
       usedKeys[key] = true;
-      var old = oldByKey[key] || {};
+      var old = oldByKey[key]
+        || oldByAlt[workId + '|' + anchorKey + '|' + row.seq]
+        || {};
       var fixed = /^(on|true|はい|固定|1)$/i.test(String(old['日程固定'] || '').trim());
       var dueKey = fixed && toDateKey(old['予定日']) ? toDateKey(old['予定日']) : row.dateKey;
       var remind = row.remindDays === '' || row.remindDays === null || row.remindDays === undefined
@@ -103,7 +113,7 @@ function generateSchedules() {
         '完': status === STATUS.DONE,
         '業務ID': workId,
         '業務名': work['業務名'],
-        '回次': a['回次'],
+        '回次': periodText_(a['回次']),
         '基準日': keyToSheetDate_(anchorKey),
         '工程No': row.seq,
         '工程名': row.name,
@@ -151,6 +161,52 @@ function generateSchedules() {
     + (errors.length ? ' / エラー: ' + errors.join(' | ') : ''));
 
   return { anchorsAdded: newAnchors.length, rows: newRows.length, errors: errors };
+}
+
+/**
+ * 基準日シートの回次を文字列に直す。
+ *
+ * 「2026-09」は日付として、「2026」はシリアル値として解釈され、
+ * セルが Date になってしまうことがある（2026 は 1905-07-18 になる）。
+ * 基準日と業務のルールから正しい回次を組み立て直し、書式も文字列にする。
+ */
+function repairAnchorPeriods_() {
+  var t = readTable_(SHEET.ANCHOR);
+  var idx = headerIndex_(t.headers);
+  if (!idx['回次'] || !t.rows.length) return 0;
+
+  var works = {};
+  readTable_(SHEET.WORK).rows.forEach(function (w) {
+    works[String(w['業務ID']).trim()] = w;
+  });
+
+  var values = [];
+  var fixed = 0;
+  t.rows.forEach(function (r) {
+    var raw = r['回次'];
+    var isDate = Object.prototype.toString.call(raw) === '[object Date]';
+    var want = isDate ? '' : String(raw).trim();
+
+    if (isDate || !want) {
+      var dateKey = toDateKey(r['基準日']);
+      var work = works[String(r['業務ID']).trim()];
+      var yearly = false;
+      try {
+        var spec = work ? parseRecurrence(work['基準日ルール']) : null;
+        yearly = !!spec && spec.type === 'YEARLY_DATE';
+      } catch (e) {
+        yearly = false;
+      }
+      want = dateKey ? (yearly ? dateKey.slice(0, 4) : dateKey.slice(0, 7)) : '';
+    }
+    if (want !== String(raw)) fixed++;
+    values.push([want]);
+  });
+
+  var range = t.sheet.getRange(2, idx['回次'], values.length, 1);
+  range.setNumberFormat('@');
+  range.setValues(values);
+  return fixed;
 }
 
 /** 工程テンプレート行を業務IDごとにまとめ、工程Noで並べる */

@@ -48,7 +48,7 @@ function getEditorData() {
     var key = toDateKey(a['基準日']);
     if (!id || !key || key < today) return;
     if (!nextAnchors[id] || key < nextAnchors[id].dateKey) {
-      nextAnchors[id] = { dateKey: key, period: String(a['回次']).trim() };
+      nextAnchors[id] = { dateKey: key, period: periodText_(a['回次']) };
     }
   });
 
