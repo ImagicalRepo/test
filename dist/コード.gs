@@ -1,0 +1,2326 @@
+/**
+ * 業務スケジュール管理ツール
+ *
+ * このファイルは apps-script/*.gs をまとめたものです。
+ * 編集はリポジトリ側の各ファイルで行い、node tools/bundle.js で作り直してください。
+ *
+ * 収録: 00_config.gs, 01_core_date.gs, 02_core_recurrence.gs, 03_core_schedule.gs, 04_core_digest.gs, 10_sheet_io.gs, 11_setup.gs, 12_holidays.gs, 13_generate.gs, 14_calendar.gs, 15_notify.gs, 16_menu.gs, 17_webapp.gs, 18_template_editor.gs
+ */
+
+// ===========================================================================
+// 00_config.gs
+// ===========================================================================
+
+/**
+ * 設定・シート定義
+ *
+ * 指定難病の医療費助成のように「審査会日を基準に前後へ多段で伸びるスケジュール」を、
+ * スプレッドシート＋ガント画面＋Google Chat 通知で管理するためのツール。
+ *
+ * 設計方針
+ *  - 個人情報は保持しない（工程名と日付のみ）
+ *  - シートをコピーして［初期セットアップ］を押すだけで動く
+ *  - 要求する権限は最小（カレンダー・Gmail送信の権限は既定では不要）
+ */
+
+var SHEET = {
+  SETTINGS: '設定',
+  WORK: '業務マスタ',
+  TEMPLATE: '工程テンプレート',
+  ANCHOR: '基準日',
+  SCHEDULE: '工程表',
+  HOLIDAY: '休日マスタ',
+  LOG: '実行ログ'
+};
+
+/** 各シートのヘッダー定義（列は名前で参照するため、並び替えても壊れない） */
+var SHEET_DEFS = [
+  {
+    name: SHEET.SETTINGS,
+    headers: ['設定キー', '値', '説明'],
+    widths: [200, 330, 470]
+  },
+  {
+    name: SHEET.WORK,
+    headers: ['業務ID', '業務名', '有効', '基準日名称', '基準日ルール', '基準日休日補正', '色', '備考'],
+    widths: [100, 240, 60, 120, 200, 120, 80, 300]
+  },
+  {
+    name: SHEET.TEMPLATE,
+    headers: ['業務ID', '工程No', '工程名', '基準', '方向', '日数', '単位', '休日補正', '担当', 'リマインド営業日前', '備考'],
+    widths: [100, 70, 280, 200, 60, 60, 70, 90, 100, 130, 300]
+  },
+  {
+    name: SHEET.ANCHOR,
+    headers: ['業務ID', '回次', '基準日', '生成元', '状態', '備考'],
+    widths: [100, 100, 110, 80, 90, 300]
+  },
+  {
+    name: SHEET.SCHEDULE,
+    headers: ['キー', '完', '業務ID', '業務名', '回次', '基準日', '工程No', '工程名', '予定日', '曜日', '残営業日', '担当', '状態', '完了日', 'リマインド営業日前', '日程固定', '備考', 'イベントID'],
+    widths: [200, 35, 90, 200, 90, 100, 60, 280, 100, 45, 80, 90, 85, 100, 130, 75, 260, 200]
+  },
+  {
+    name: SHEET.HOLIDAY,
+    headers: ['日付', '名称', '種別'],
+    widths: [110, 260, 110]
+  },
+  {
+    name: SHEET.LOG,
+    headers: ['日時', '処理', '結果', '内容'],
+    widths: [160, 160, 80, 700]
+  }
+];
+
+/** 設定シートの既定値 */
+var DEFAULT_SETTINGS = [
+  ['ChatWebhookURL', '', 'Google Chat のスペースで作成した Webhook URL。ここに日次リマインドを投稿する'],
+  ['通知時刻', '8', '日次リマインドを送る時刻（0〜23）。変更したら［トリガーを再設定］を実行'],
+  ['休日は通知しない', 'ON', 'ON にすると土日祝・閉庁日は通知しない'],
+  ['リマインド対象日数', '14', '「先の予定」として通知に含める営業日数の上限'],
+  ['既定リマインド営業日前', '3', '工程テンプレートでリマインド日数が未指定のときの既定値'],
+  ['先読み月数', '6', '基準日と工程表を何ヶ月先まで自動生成するか'],
+  ['過去保持月数', '3', '何ヶ月前より古い工程表を通知・ガント表示の対象外にするか'],
+  ['週休日', '土,日', '週休日の曜日。カンマ区切り'],
+  ['年末年始休', '12/29-1/3', '毎年閉庁とする期間。M/D-M/D 形式。空なら設定しない'],
+  ['祝日CSV_URL', 'https://www8.cao.go.jp/chosei/shukujitsu/syukujitsu.csv', '内閣府が公開している国民の祝日CSV。ここから祝日を取り込む'],
+  ['カレンダー同期', 'OFF', 'ON にすると工程をGoogleカレンダーへ登録する。別途カレンダー権限の追加が必要（docs/README.md 参照）'],
+  ['カレンダーID', '', 'カレンダー同期先のID。空ならスクリプト実行者のメインカレンダー'],
+  ['ガント表示_前月数', '1', 'ガント画面で今日より何ヶ月前から表示するか'],
+  ['ガント表示_後月数', '3', 'ガント画面で今日より何ヶ月先まで表示するか']
+];
+
+var STATUS = {
+  NOT_STARTED: '未着手',
+  IN_PROGRESS: '着手中',
+  DONE: '完了',
+  SKIP: '対象外'
+};
+
+var STATUS_LIST = [STATUS.NOT_STARTED, STATUS.IN_PROGRESS, STATUS.DONE, STATUS.SKIP];
+
+var WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
+
+/**
+ * 業務マスタの「色」に使える名前。
+ * 実際の色は画面側がカラーテーマに合わせて決めるため、ここでは名前だけを持つ。
+ */
+var COLOR_ORDER = ['青', '緑', '橙', '紫', '赤', '水色', '桃', '灰'];
+
+
+// ===========================================================================
+// 01_core_date.gs
+// ===========================================================================
+
+/**
+ * 日付ユーティリティ / 営業日計算（純粋関数）
+ *
+ * 日付は原則 'YYYY-MM-DD' 形式の文字列（dateKey）で扱う。
+ * タイムゾーンによる 1 日ずれを避けるため、内部の Date は必ず UTC で生成・参照する。
+ */
+
+/** 'YYYY-MM-DD' -> Date(UTC 00:00) */
+function keyToDate(key) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(key).trim());
+  if (!m) throw new Error('日付の形式が不正です: ' + key + '（YYYY-MM-DD で指定してください）');
+  var d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  if (d.getUTCFullYear() !== Number(m[1]) || d.getUTCMonth() !== Number(m[2]) - 1 || d.getUTCDate() !== Number(m[3])) {
+    throw new Error('存在しない日付です: ' + key);
+  }
+  return d;
+}
+
+/** Date -> 'YYYY-MM-DD' */
+function dateToKey(d) {
+  var y = d.getUTCFullYear();
+  var m = d.getUTCMonth() + 1;
+  var day = d.getUTCDate();
+  return y + '-' + (m < 10 ? '0' + m : m) + '-' + (day < 10 ? '0' + day : day);
+}
+
+/** シートのセル値（Date / 文字列 / 空）を dateKey に正規化。空なら '' を返す */
+function toDateKey(value) {
+  if (value === null || value === undefined || value === '') return '';
+  if (Object.prototype.toString.call(value) === '[object Date]') {
+    if (isNaN(value.getTime())) return '';
+    // シートから来る Date はローカルタイムの 00:00。ローカル側の年月日をそのまま採用する。
+    var y = value.getFullYear();
+    var m = value.getMonth() + 1;
+    var day = value.getDate();
+    return y + '-' + (m < 10 ? '0' + m : m) + '-' + (day < 10 ? '0' + day : day);
+  }
+  var s = String(value).trim();
+  if (!s) return '';
+  var m2 = /^(\d{4})[-\/年](\d{1,2})[-\/月](\d{1,2})日?$/.exec(s);
+  if (!m2) throw new Error('日付として解釈できません: ' + s);
+  var mm = Number(m2[2]);
+  var dd = Number(m2[3]);
+  return m2[1] + '-' + (mm < 10 ? '0' + mm : mm) + '-' + (dd < 10 ? '0' + dd : dd);
+}
+
+/** dateKey に暦日 n 日を加算した dateKey */
+function addCalendarDays(key, n) {
+  var d = keyToDate(key);
+  d.setUTCDate(d.getUTCDate() + Number(n));
+  return dateToKey(d);
+}
+
+/** 曜日番号 0=日 ... 6=土 */
+function dayOfWeek(key) {
+  return keyToDate(key).getUTCDay();
+}
+
+/** 2 つの dateKey の暦日差（to - from） */
+function diffCalendarDays(fromKey, toKey) {
+  return Math.round((keyToDate(toKey).getTime() - keyToDate(fromKey).getTime()) / 86400000);
+}
+
+/**
+ * 営業日カレンダーを作る。
+ * @param {Object} opts
+ *   holidays      {Array<string>} 休日（祝日・閉庁日）の dateKey
+ *   extraWorkdays {Array<string>} 休日だが出勤する日（振替出勤）の dateKey
+ *   weekendDays   {Array<number>} 週休日の曜日番号（既定 [0,6] = 日・土）
+ */
+function createBusinessCalendar(opts) {
+  opts = opts || {};
+  var holidays = {};
+  (opts.holidays || []).forEach(function (k) { if (k) holidays[k] = true; });
+  var workdays = {};
+  (opts.extraWorkdays || []).forEach(function (k) { if (k) workdays[k] = true; });
+  var weekend = {};
+  (opts.weekendDays || [0, 6]).forEach(function (w) { weekend[Number(w)] = true; });
+  return { holidays: holidays, extraWorkdays: workdays, weekend: weekend };
+}
+
+/** 営業日かどうか */
+function isBusinessDay(cal, key) {
+  if (cal.extraWorkdays[key]) return true;   // 振替出勤は最優先
+  if (cal.holidays[key]) return false;
+  return !cal.weekend[dayOfWeek(key)];
+}
+
+/**
+ * 営業日で n 日ずらす。
+ * n > 0 : 起点の翌日以降で n 営業日後
+ * n < 0 : 起点の前日以前で n 営業日前
+ * n = 0 : 起点そのまま（補正は adjustToBusinessDay で行う）
+ */
+function addBusinessDays(cal, key, n) {
+  var remaining = Math.abs(Number(n));
+  if (!remaining) return key;
+  var step = Number(n) > 0 ? 1 : -1;
+  var cur = key;
+  var guard = 0;
+  while (remaining > 0) {
+    cur = addCalendarDays(cur, step);
+    if (isBusinessDay(cal, cur)) remaining--;
+    if (++guard > 4000) throw new Error('営業日計算が収束しません（休日設定を確認してください）: ' + key);
+  }
+  return cur;
+}
+
+/**
+ * 休日補正。
+ * mode: 'none'（補正なし） / 'prev'（前営業日へ） / 'next'（翌営業日へ）
+ */
+function adjustToBusinessDay(cal, key, mode) {
+  if (!mode || mode === 'none') return key;
+  if (isBusinessDay(cal, key)) return key;
+  var step = mode === 'next' ? 1 : -1;
+  var cur = key;
+  for (var i = 0; i < 400; i++) {
+    cur = addCalendarDays(cur, step);
+    if (isBusinessDay(cal, cur)) return cur;
+  }
+  throw new Error('補正先の営業日が見つかりません: ' + key);
+}
+
+/** from（含まない）から to（含む）までの営業日数。to が過去なら負の値 */
+function countBusinessDays(cal, fromKey, toKey) {
+  var diff = diffCalendarDays(fromKey, toKey);
+  if (diff === 0) return 0;
+  var step = diff > 0 ? 1 : -1;
+  var cur = fromKey;
+  var count = 0;
+  for (var i = 0; i < Math.abs(diff); i++) {
+    cur = addCalendarDays(cur, step);
+    if (isBusinessDay(cal, cur)) count += step;
+  }
+  return count;
+}
+
+/** 休日補正モードの表記ゆれを吸収（'前営業日' -> 'prev' 等） */
+function normalizeAdjustMode(value) {
+  var s = normalizeText(value);
+  if (!s) return 'none';
+  if (/^(prev|前営業日|前倒し|前)$/.test(s)) return 'prev';
+  if (/^(next|翌営業日|後ろ倒し|翌|後)$/.test(s)) return 'next';
+  if (/^(none|なし|補正なし|-)$/.test(s)) return 'none';
+  throw new Error('休日補正の指定が不正です: ' + value + '（なし / 前営業日 / 翌営業日）');
+}
+
+/** 全角英数記号を半角へ、空白を除去した文字列を返す */
+function normalizeText(value) {
+  if (value === null || value === undefined) return '';
+  return String(value)
+    .replace(/[Ａ-Ｚａ-ｚ０-９：／－．，]/g, function (ch) {
+      return String.fromCharCode(ch.charCodeAt(0) - 0xfee0);
+    })
+    .replace(/[　\s]/g, '')
+    .trim();
+}
+
+
+// ===========================================================================
+// 02_core_recurrence.gs
+// ===========================================================================
+
+/**
+ * 基準日ルールの解釈と展開（純粋関数）
+ *
+ * 「審査会は毎月第2水曜日」のようなルールから、実際の基準日を自動生成する。
+ *
+ * 対応する書き方（全角/半角・空白は無視）:
+ *   毎月第2水            毎月第2水曜日 / 毎月第2水曜
+ *   毎月最終金           （その月の最後の金曜日）
+ *   毎月15日             毎月15
+ *   毎月末日             毎月末
+ *   2ヶ月毎第2水起点2026-04   （隔月。起点の月を基準に interval ヶ月ごと）
+ *   毎年10月1日
+ *   手動                 （基準日シートに手入力する。自動生成しない）
+ */
+
+var WEEKDAY_NAMES = { '日': 0, '月': 1, '火': 2, '水': 3, '木': 4, '金': 5, '土': 6 };
+
+/** 基準日ルール文字列を解析する。手動/空なら null を返す */
+function parseRecurrence(rule) {
+  // 「末日」と「最終日曜」を取り違えないよう、ここでは「曜」を落とさずに解析する
+  var s = normalizeText(rule);
+  if (!s || /^(手動|なし|-)$/.test(s)) return null;
+
+  var interval = 1;
+  var anchorMonth = null; // {year, month} 隔月などの位相
+  var m;
+
+  // 起点指定（例: 起点2026-04 / 開始2026/04）
+  m = /(?:起点|開始)(\d{4})[-\/](\d{1,2})/.exec(s);
+  if (m) {
+    anchorMonth = { year: Number(m[1]), month: Number(m[2]) };
+    s = s.replace(m[0], '');
+  }
+
+  // 毎年 M月D日
+  m = /^毎年(\d{1,2})月(\d{1,2})日?$/.exec(s);
+  if (m) {
+    return { type: 'YEARLY_DATE', month: Number(m[1]), day: Number(m[2]) };
+  }
+
+  // Nヶ月毎 / 毎月
+  m = /^(\d+)[ヶケか]?月毎/.exec(s);
+  if (m) {
+    interval = Number(m[1]);
+    s = s.replace(m[0], '');
+  } else if (/^毎月/.test(s)) {
+    s = s.replace(/^毎月/, '');
+  } else {
+    throw new Error('基準日ルールを解釈できません: ' + rule);
+  }
+  if (interval < 1) throw new Error('周期は 1 以上で指定してください: ' + rule);
+
+  // 末日（「毎月最終日曜」と紛れるため、曜日パターンより先に判定する）
+  if (/^(末|末日|最終日)$/.test(s)) {
+    return { type: 'MONTHLY_DAY', interval: interval, day: 'last', anchorMonth: anchorMonth };
+  }
+
+  // 第N曜日（「曜」あり）: 第2水曜日 / 最終金曜 / 第2日曜
+  m = /^第?(最終|末|\d)([日月火水木金土])曜日?$/.exec(s);
+  // 第N曜日（「曜」を省略）: 第2水 / 最終金
+  //   「日」だけは「末日」「15日」と紛れるため、省略形では受け付けない
+  if (!m) m = /^第?(最終|末|\d)([月火水木金土])$/.exec(s);
+  if (m) {
+    var nth = /^(最終|末)$/.test(m[1]) ? 'last' : Number(m[1]);
+    if (nth !== 'last' && (nth < 1 || nth > 5)) throw new Error('第N曜日の N は 1〜5 です: ' + rule);
+    return { type: 'MONTHLY_NTH', interval: interval, nth: nth, weekday: WEEKDAY_NAMES[m[2]], anchorMonth: anchorMonth };
+  }
+
+  // D日
+  m = /^(\d{1,2})日?$/.exec(s);
+  if (m) {
+    var day = Number(m[1]);
+    if (day < 1 || day > 31) throw new Error('日付は 1〜31 で指定してください: ' + rule);
+    return { type: 'MONTHLY_DAY', interval: interval, day: day, anchorMonth: anchorMonth };
+  }
+
+  throw new Error('基準日ルールを解釈できません: ' + rule);
+}
+
+/** 指定年月の第N曜日（nth='last' で最終）の dateKey。存在しなければ null */
+function nthWeekdayOfMonth(year, month, nth, weekday) {
+  if (nth === 'last') {
+    var last = new Date(Date.UTC(year, month, 0));
+    var back = (last.getUTCDay() - weekday + 7) % 7;
+    last.setUTCDate(last.getUTCDate() - back);
+    return dateToKey(last);
+  }
+  var first = new Date(Date.UTC(year, month - 1, 1));
+  var offset = (weekday - first.getUTCDay() + 7) % 7;
+  var day = 1 + offset + (nth - 1) * 7;
+  var daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (day > daysInMonth) return null; // 第5週が無い月
+  return dateToKey(new Date(Date.UTC(year, month - 1, day)));
+}
+
+/** 指定年月の D 日（day='last' で末日）の dateKey。存在しない日（2/31 等）は末日に丸める */
+function dayOfMonth(year, month, day) {
+  var daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  var d = day === 'last' ? daysInMonth : Math.min(Number(day), daysInMonth);
+  return dateToKey(new Date(Date.UTC(year, month - 1, d)));
+}
+
+/**
+ * ルールを期間内で展開する。
+ * @param {Object|null} spec parseRecurrence の戻り値
+ * @param {string} fromKey 展開開始日（含む）
+ * @param {string} toKey   展開終了日（含む）
+ * @param {Object} cal     営業日カレンダー（休日補正に使用）
+ * @param {string} adjustMode 'none' | 'prev' | 'next'
+ * @return {Array<{dateKey:string, period:string}>} period は回次ラベル（YYYY-MM / YYYY）
+ */
+function expandRecurrence(spec, fromKey, toKey, cal, adjustMode) {
+  if (!spec) return [];
+  var mode = normalizeAdjustMode(adjustMode);
+  var out = [];
+  var from = keyToDate(fromKey);
+  var to = keyToDate(toKey);
+  if (from.getTime() > to.getTime()) return [];
+
+  if (spec.type === 'YEARLY_DATE') {
+    for (var y = from.getUTCFullYear(); y <= to.getUTCFullYear(); y++) {
+      var key = dayOfMonth(y, spec.month, spec.day);
+      pushIfInRange_(out, key, String(y), fromKey, toKey, cal, mode);
+    }
+    return out;
+  }
+
+  var cursorY = from.getUTCFullYear();
+  var cursorM = from.getUTCMonth() + 1;
+  // 隔月などは起点月から位相を合わせるため、1 周期分手前から走査する
+  for (var i = 0; i < spec.interval; i++) {
+    var prev = shiftMonth_(cursorY, cursorM, -1);
+    cursorY = prev.year; cursorM = prev.month;
+  }
+  var guard = 0;
+  while (guard++ < 2000) {
+    var cur = { year: cursorY, month: cursorM };
+    if (matchesInterval_(spec, cur)) {
+      var k = spec.type === 'MONTHLY_NTH'
+        ? nthWeekdayOfMonth(cur.year, cur.month, spec.nth, spec.weekday)
+        : dayOfMonth(cur.year, cur.month, spec.day);
+      if (k) {
+        var period = cur.year + '-' + (cur.month < 10 ? '0' + cur.month : cur.month);
+        pushIfInRange_(out, k, period, fromKey, toKey, cal, mode);
+      }
+    }
+    var next = shiftMonth_(cursorY, cursorM, 1);
+    cursorY = next.year; cursorM = next.month;
+    if (new Date(Date.UTC(cursorY, cursorM - 1, 1)).getTime() > to.getTime()) break;
+  }
+  return out;
+}
+
+function matchesInterval_(spec, cur) {
+  if (!spec.interval || spec.interval === 1) return true;
+  var anchor = spec.anchorMonth || { year: cur.year, month: 1 };
+  var months = (cur.year - anchor.year) * 12 + (cur.month - anchor.month);
+  return ((months % spec.interval) + spec.interval) % spec.interval === 0;
+}
+
+function shiftMonth_(year, month, delta) {
+  var total = year * 12 + (month - 1) + delta;
+  return { year: Math.floor(total / 12), month: (total % 12) + 1 };
+}
+
+function pushIfInRange_(out, key, period, fromKey, toKey, cal, mode) {
+  var adjusted = cal ? adjustToBusinessDay(cal, key, mode) : key;
+  if (adjusted < fromKey || adjusted > toKey) return;
+  for (var i = 0; i < out.length; i++) if (out[i].dateKey === adjusted) return;
+  out.push({ dateKey: adjusted, period: period });
+}
+
+
+// ===========================================================================
+// 03_core_schedule.gs
+// ===========================================================================
+
+/**
+ * 工程テンプレートから実際の日程を算出する（純粋関数）
+ *
+ * 各工程は「基準（基準日 or 別の工程）」からの相対日数で定義する。
+ * これにより、審査会の日が動いても全工程が自動で追随する。
+ */
+
+var ANCHOR_ALIASES = ['基準日', '基準', 'アンカー', 'ANCHOR'];
+
+/** 方向と日数から符号付き日数を得る */
+function signedOffset(direction, days) {
+  var n = Number(days);
+  if (isNaN(n)) throw new Error('日数が数値ではありません: ' + days);
+  var d = normalizeText(direction);
+  if (!d || /^(-|同日)$/.test(d)) return n;
+  if (/^(前|前倒し|BEFORE|-)$/i.test(d)) return -Math.abs(n);
+  if (/^(後|後ろ|以降|AFTER|\+)$/i.test(d)) return Math.abs(n);
+  throw new Error('方向の指定が不正です: ' + direction + '（前 / 後 / 空欄）');
+}
+
+/** 単位表記を正規化 */
+function normalizeUnit(value) {
+  var s = normalizeText(value);
+  if (!s || /^(営業日|BIZ|B)$/i.test(s)) return 'business';
+  if (/^(暦日|カレンダー日|暦|CAL|C)$/i.test(s)) return 'calendar';
+  throw new Error('日数単位の指定が不正です: ' + value + '（営業日 / 暦日）');
+}
+
+function isAnchorRef(value) {
+  var s = normalizeText(value);
+  if (!s) return true;
+  for (var i = 0; i < ANCHOR_ALIASES.length; i++) {
+    if (s === normalizeText(ANCHOR_ALIASES[i])) return true;
+  }
+  return false;
+}
+
+/**
+ * テンプレートを 1 案件分の日程に展開する。
+ *
+ * @param {Array<Object>} rows 工程テンプレート行
+ *        {seq, name, base, direction, days, unit, adjust, owner, remindDays, note}
+ * @param {string} anchorKey 基準日（審査会日など）の dateKey
+ * @param {Object} cal 営業日カレンダー
+ * @param {string} anchorName 基準日の別名（業務マスタの「基準日名称」）。base 欄でこの名前も基準日として扱う
+ * @return {Array<Object>} rows に dateKey を加えたもの（入力順）
+ */
+function computeSchedule(rows, anchorKey, cal, anchorName) {
+  if (!rows || !rows.length) return [];
+  keyToDate(anchorKey); // 形式チェック
+
+  var byName = {};
+  rows.forEach(function (r) {
+    var name = normalizeText(r.name);
+    if (!name) throw new Error('工程名が空の行があります（工程No: ' + r.seq + '）');
+    if (byName[name]) throw new Error('工程名が重複しています: ' + r.name);
+    byName[name] = r;
+  });
+
+  var anchorAlias = anchorName ? normalizeText(anchorName) : '';
+  var resolved = {}; // 工程名 -> dateKey
+  var pending = rows.slice();
+  var guard = 0;
+
+  while (pending.length) {
+    var progressed = false;
+    var next = [];
+    for (var i = 0; i < pending.length; i++) {
+      var row = pending[i];
+      var baseText = normalizeText(row.base);
+      var baseKey = null;
+
+      if (isAnchorRef(baseText) || (anchorAlias && baseText === anchorAlias)) {
+        baseKey = anchorKey;
+      } else if (resolved.hasOwnProperty(baseText)) {
+        baseKey = resolved[baseText];
+      } else if (!byName[baseText]) {
+        throw new Error('「' + row.name + '」の基準「' + row.base + '」に対応する工程がありません');
+      }
+
+      if (baseKey === null) {
+        next.push(row);
+        continue;
+      }
+      row.dateKey = offsetFrom(cal, baseKey, row);
+      resolved[normalizeText(row.name)] = row.dateKey;
+      progressed = true;
+    }
+    if (!progressed) {
+      throw new Error('工程の基準が循環しています: ' + next.map(function (r) { return r.name; }).join(' → '));
+    }
+    pending = next;
+    if (++guard > 500) throw new Error('工程の解決が収束しませんでした');
+  }
+
+  return rows;
+}
+
+/** 基準日から 1 工程分ずらす */
+function offsetFrom(cal, baseKey, row) {
+  var offset = signedOffset(row.direction, row.days);
+  var unit = normalizeUnit(row.unit);
+  var adjust = normalizeAdjustMode(row.adjust);
+  var key = unit === 'business'
+    ? addBusinessDays(cal, baseKey, offset)
+    : addCalendarDays(baseKey, offset);
+  // 営業日計算の結果は必ず営業日になるが、offset=0 や暦日指定では休日に着地しうる
+  return adjustToBusinessDay(cal, key, unit === 'business' && offset !== 0 ? 'none' : adjust);
+}
+
+/**
+ * 予定日とリマインド設定から、通知すべきかを判定する。
+ * @return {string} 'overdue' | 'today' | 'soon' | 'none'
+ */
+function reminderStatus(cal, todayKey, dueKey, remindBusinessDays) {
+  if (dueKey === todayKey) return 'today';
+  if (dueKey < todayKey) return 'overdue';
+  var lead = Number(remindBusinessDays);
+  if (!lead || lead < 0) return 'none';
+  var remaining = countBusinessDays(cal, todayKey, dueKey);
+  return remaining <= lead ? 'soon' : 'none';
+}
+
+
+// ===========================================================================
+// 04_core_digest.gs
+// ===========================================================================
+
+/**
+ * 日次リマインドの内容を組み立てる（純粋関数）
+ *
+ * 「遅延」「本日」「まもなく」の3区分に振り分ける。
+ * 区分の判定は工程ごとの「リマインド営業日前」に従う。
+ */
+
+/**
+ * @param {Array<Object>} rows {workId, workName, color, period, seq, name, dueKey, owner, status, remindDays, note}
+ * @param {Object} cal 営業日カレンダー
+ * @param {string} todayKey 'YYYY-MM-DD'
+ * @param {Object} opts {maxAheadBusinessDays:number, includeDone:boolean}
+ * @return {{overdue:Array, today:Array, soon:Array, total:number}}
+ */
+function buildDigest(rows, cal, todayKey, opts) {
+  opts = opts || {};
+  var maxAhead = opts.maxAheadBusinessDays === undefined ? 14 : Number(opts.maxAheadBusinessDays);
+  var includeDone = !!opts.includeDone;
+
+  var overdue = [], today = [], soon = [];
+
+  rows.forEach(function (r) {
+    if (!r.dueKey) return;
+    var status = String(r.status || '').trim();
+    if (!includeDone && (status === STATUS.DONE || status === STATUS.SKIP)) return;
+
+    var remaining = countBusinessDays(cal, todayKey, r.dueKey);
+    var item = {
+      workId: r.workId,
+      workName: r.workName,
+      color: r.color,
+      period: r.period,
+      seq: r.seq,
+      name: r.name,
+      dueKey: r.dueKey,
+      owner: r.owner || '',
+      status: status,
+      note: r.note || '',
+      remainingBusinessDays: remaining
+    };
+
+    if (r.dueKey < todayKey) {
+      overdue.push(item);
+      return;
+    }
+    if (r.dueKey === todayKey) {
+      today.push(item);
+      return;
+    }
+    var lead = Number(r.remindDays);
+    if (isNaN(lead) || lead < 0) return;
+    if (remaining <= Math.min(lead, maxAhead)) soon.push(item);
+  });
+
+  var byDue = function (a, b) {
+    if (a.dueKey !== b.dueKey) return a.dueKey < b.dueKey ? -1 : 1;
+    return (Number(a.seq) || 0) - (Number(b.seq) || 0);
+  };
+  overdue.sort(byDue);
+  today.sort(byDue);
+  soon.sort(byDue);
+
+  return { overdue: overdue, today: today, soon: soon, total: overdue.length + today.length + soon.length };
+}
+
+/** 'YYYY-MM-DD' -> '9/12(金)' */
+function formatShortDate(key) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
+  if (!m) return key;
+  return Number(m[2]) + '/' + Number(m[3]) + '(' + WEEKDAY_LABELS[dayOfWeek(key)] + ')';
+}
+
+/** 1件分の表示行 */
+function formatDigestLine(item, kind) {
+  var head;
+  if (kind === 'overdue') {
+    head = '<b>' + formatShortDate(item.dueKey) + '</b> ' + Math.abs(item.remainingBusinessDays) + '営業日超過';
+  } else if (kind === 'today') {
+    head = '<b>本日</b>';
+  } else {
+    head = '<b>' + formatShortDate(item.dueKey) + '</b> あと' + item.remainingBusinessDays + '営業日';
+  }
+  var tail = item.owner ? '（' + item.owner + '）' : '';
+  return head + '　' + item.workName + ' ' + item.period + '\n　' + item.name + tail;
+}
+
+/**
+ * Google Chat へ投稿する本文（テキスト形式）を組み立てる。
+ * カード形式より崩れにくく、スマホでも読みやすい。
+ */
+function buildChatText(digest, todayKey) {
+  if (!digest.total) return '';
+  var lines = [];
+  lines.push('*' + formatShortDate(todayKey) + ' の業務スケジュール*');
+
+  if (digest.overdue.length) {
+    lines.push('');
+    lines.push('🔴 *期限超過 ' + digest.overdue.length + '件*');
+    digest.overdue.forEach(function (i) { lines.push(chatLine_(i, 'overdue')); });
+  }
+  if (digest.today.length) {
+    lines.push('');
+    lines.push('🟡 *本日 ' + digest.today.length + '件*');
+    digest.today.forEach(function (i) { lines.push(chatLine_(i, 'today')); });
+  }
+  if (digest.soon.length) {
+    lines.push('');
+    lines.push('🔵 *まもなく ' + digest.soon.length + '件*');
+    digest.soon.forEach(function (i) { lines.push(chatLine_(i, 'soon')); });
+  }
+  return lines.join('\n');
+}
+
+function chatLine_(item, kind) {
+  var when;
+  if (kind === 'overdue') {
+    when = formatShortDate(item.dueKey) + ' 期限・' + Math.abs(item.remainingBusinessDays) + '営業日超過';
+  } else if (kind === 'today') {
+    when = '本日';
+  } else {
+    when = formatShortDate(item.dueKey) + '・あと' + item.remainingBusinessDays + '営業日';
+  }
+  var owner = item.owner ? ' 〈' + item.owner + '〉' : '';
+  return '• *' + item.name + '*' + owner + '\n　' + item.workName + ' ' + item.period + '｜' + when;
+}
+
+
+// ===========================================================================
+// 10_sheet_io.gs
+// ===========================================================================
+
+/**
+ * スプレッドシート入出力
+ */
+
+var SS_ID_PROP = 'SPREADSHEET_ID';
+
+/**
+ * 対象スプレッドシートを返す。
+ * Webアプリ（doGet）からは getActive() が使えない場合があるため、
+ * 初期セットアップ時に控えておいたIDでフォールバックする。
+ */
+function ss_() {
+  var active = null;
+  try {
+    active = SpreadsheetApp.getActive();
+  } catch (e) {
+    active = null;
+  }
+  if (active) {
+    try {
+      PropertiesService.getScriptProperties().setProperty(SS_ID_PROP, active.getId());
+    } catch (e) { /* 権限がなければ黙って諦める */ }
+    return active;
+  }
+  var id = PropertiesService.getScriptProperties().getProperty(SS_ID_PROP);
+  if (!id) throw new Error('対象のスプレッドシートを特定できません。スプレッドシートから［初期セットアップ］を1回実行してください。');
+  return SpreadsheetApp.openById(id);
+}
+
+/** 実行ログを1行追記する（失敗しても本処理は止めない） */
+function log_(process, ok, message) {
+  try {
+    var sh = getSheet_(SHEET.LOG, true);
+    if (!sh) return;
+    sh.appendRow([new Date(), process, ok ? 'OK' : 'NG', String(message).slice(0, 4000)]);
+    // 直近300行だけ残す
+    var extra = sh.getLastRow() - 301;
+    if (extra > 0) sh.deleteRows(2, extra);
+  } catch (e) {
+    console.warn('ログ書き込みに失敗: ' + e.message);
+  }
+}
+
+function getSheet_(name, optional) {
+  var sh = ss_().getSheetByName(name);
+  if (!sh && !optional) {
+    throw new Error('シート「' + name + '」がありません。メニュー［難病スケジュール］→［初期セットアップ］を実行してください。');
+  }
+  return sh;
+}
+
+/**
+ * シートを {headers, rows} で読み出す。
+ * rows の各要素は列名をキーにしたオブジェクトで、_row に実際の行番号を持つ。
+ */
+function readTable_(name) {
+  var sh = getSheet_(name);
+  var lastRow = sh.getLastRow();
+  var lastCol = sh.getLastColumn();
+  if (lastRow < 1 || lastCol < 1) return { sheet: sh, headers: [], rows: [] };
+  var values = sh.getRange(1, 1, lastRow, lastCol).getValues();
+  var headers = values[0].map(function (h) { return String(h).trim(); });
+  var rows = [];
+  for (var r = 1; r < values.length; r++) {
+    var obj = { _row: r + 1 };
+    var empty = true;
+    for (var c = 0; c < headers.length; c++) {
+      if (!headers[c]) continue;
+      obj[headers[c]] = values[r][c];
+      if (values[r][c] !== '' && values[r][c] !== null) empty = false;
+    }
+    if (!empty) rows.push(obj);
+  }
+  return { sheet: sh, headers: headers, rows: rows };
+}
+
+/** ヘッダー名 -> 列番号(1始まり) のマップ */
+function headerIndex_(headers) {
+  var idx = {};
+  headers.forEach(function (h, i) { if (h) idx[h] = i + 1; });
+  return idx;
+}
+
+/** オブジェクト配列をシートの 2 行目以降へ全面上書きする */
+function replaceTable_(name, rows) {
+  var t = readTable_(name);
+  var sh = t.sheet;
+  var headers = t.headers;
+  var lastRow = sh.getLastRow();
+  if (lastRow > 1) sh.getRange(2, 1, lastRow - 1, Math.max(sh.getLastColumn(), 1)).clearContent();
+  if (!rows.length) return;
+  var values = rows.map(function (row) {
+    return headers.map(function (h) {
+      var v = row[h];
+      return (v === undefined || v === null) ? '' : v;
+    });
+  });
+  sh.getRange(2, 1, values.length, headers.length).setValues(values);
+}
+
+/** オブジェクト配列を末尾に追記する */
+function appendRows_(name, rows) {
+  if (!rows.length) return;
+  var t = readTable_(name);
+  var sh = t.sheet;
+  var headers = t.headers;
+  var values = rows.map(function (row) {
+    return headers.map(function (h) {
+      var v = row[h];
+      return (v === undefined || v === null) ? '' : v;
+    });
+  });
+  sh.getRange(sh.getLastRow() + 1, 1, values.length, headers.length).setValues(values);
+}
+
+/** 設定シートを key -> value のオブジェクトで読み出す */
+function getSettings_() {
+  var t = readTable_(SHEET.SETTINGS);
+  var map = {};
+  t.rows.forEach(function (r) {
+    var k = String(r['設定キー']).trim();
+    if (k) map[k] = r['値'];
+  });
+  return map;
+}
+
+function settingText_(settings, key, fallback) {
+  var v = settings[key];
+  if (v === undefined || v === null || String(v).trim() === '') return fallback;
+  return String(v).trim();
+}
+
+function settingNumber_(settings, key, fallback) {
+  var v = settingText_(settings, key, null);
+  if (v === null) return fallback;
+  var n = Number(v);
+  return isNaN(n) ? fallback : n;
+}
+
+function settingBool_(settings, key, fallback) {
+  var v = settingText_(settings, key, null);
+  if (v === null) return fallback;
+  return /^(on|true|はい|有効|1)$/i.test(v);
+}
+
+/** 休日マスタと設定から営業日カレンダーを組み立てる */
+function loadBusinessCalendar_(settings) {
+  settings = settings || getSettings_();
+  var holidays = [];
+  var extraWorkdays = [];
+  var sh = getSheet_(SHEET.HOLIDAY, true);
+  if (sh) {
+    var t = readTable_(SHEET.HOLIDAY);
+    t.rows.forEach(function (r) {
+      var key = toDateKey(r['日付']);
+      if (!key) return;
+      if (String(r['種別']).indexOf('出勤') >= 0) extraWorkdays.push(key);
+      else holidays.push(key);
+    });
+  }
+  var weekendText = settingText_(settings, '週休日', '土,日');
+  var weekendDays = weekendText.split(/[,、]/).map(function (s) {
+    var name = normalizeText(s).replace(/曜日?$/, '');
+    var i = WEEKDAY_LABELS.indexOf(name);
+    return i >= 0 ? i : null;
+  }).filter(function (v) { return v !== null; });
+  if (!weekendDays.length) weekendDays = [0, 6];
+
+  return createBusinessCalendar({ holidays: holidays, extraWorkdays: extraWorkdays, weekendDays: weekendDays });
+}
+
+/** dateKey をシート表示用の Date（ローカル 00:00）に変換 */
+function keyToSheetDate_(key) {
+  if (!key) return '';
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
+  if (!m) return '';
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+function todayKey_() {
+  var tz = ss_().getSpreadsheetTimeZone() || 'Asia/Tokyo';
+  return Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+}
+
+
+// ===========================================================================
+// 11_setup.gs
+// ===========================================================================
+
+/**
+ * 初期セットアップ：シート作成・書式・サンプルデータ・トリガー登録
+ *
+ * スプレッドシートをコピーしたあと、これを1回実行すれば使い始められる。
+ */
+
+function setupWorkbook() {
+  var created = [];
+  SHEET_DEFS.forEach(function (def) {
+    var sh = ss_().getSheetByName(def.name);
+    if (!sh) {
+      sh = ss_().insertSheet(def.name);
+      created.push(def.name);
+    }
+    // ヘッダーを整える（既存の列は残し、不足分だけ足す）
+    var existing = (sh.getLastColumn() > 0 && sh.getLastRow() > 0)
+      ? sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(function (v) { return String(v).trim(); })
+      : [];
+    var headers = existing.filter(function (h) { return h; });
+    def.headers.forEach(function (h) { if (headers.indexOf(h) < 0) headers.push(h); });
+    sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sh.getRange(1, 1, 1, headers.length)
+      .setFontWeight('bold')
+      .setBackground('#e8eef7')
+      .setVerticalAlignment('middle');
+    sh.setFrozenRows(1);
+    def.widths.forEach(function (w, i) {
+      if (i < headers.length) sh.setColumnWidth(i + 1, w);
+    });
+  });
+
+  seedSettings_();
+  var seeded = false;
+  if (readTable_(SHEET.WORK).rows.length === 0) {
+    seedSamples_();
+    seeded = true;
+  }
+  applyFormats_();
+  applyValidations_();
+  syncHolidays();
+  var result = generateSchedules();
+  applyScheduleCheckboxes_();
+  installTriggers();
+
+  log_('初期セットアップ', true, 'シート作成 ' + created.length + '件 / サンプル投入 ' + (seeded ? 'あり' : 'なし'));
+  return { created: created, seeded: seeded, generate: result };
+}
+
+function seedSettings_() {
+  var t = readTable_(SHEET.SETTINGS);
+  var existing = {};
+  t.rows.forEach(function (r) { existing[String(r['設定キー']).trim()] = true; });
+  var add = DEFAULT_SETTINGS.filter(function (row) { return !existing[row[0]]; })
+    .map(function (row) { return { '設定キー': row[0], '値': row[1], '説明': row[2] }; });
+  appendRows_(SHEET.SETTINGS, add);
+}
+
+function applyFormats_() {
+  var sched = readTable_(SHEET.SCHEDULE);
+  var idx = headerIndex_(sched.headers);
+  var sh = sched.sheet;
+  var rowCount = Math.max(sh.getMaxRows() - 1, 1);
+
+  ['予定日', '完了日', '基準日'].forEach(function (name) {
+    if (idx[name]) sh.getRange(2, idx[name], rowCount).setNumberFormat('yyyy/mm/dd');
+  });
+  var anchor = readTable_(SHEET.ANCHOR);
+  var aidx = headerIndex_(anchor.headers);
+  if (aidx['基準日']) anchor.sheet.getRange(2, aidx['基準日'], Math.max(anchor.sheet.getMaxRows() - 1, 1)).setNumberFormat('yyyy/mm/dd');
+  var hol = readTable_(SHEET.HOLIDAY);
+  var hidx = headerIndex_(hol.headers);
+  if (hidx['日付']) hol.sheet.getRange(2, hidx['日付'], Math.max(hol.sheet.getMaxRows() - 1, 1)).setNumberFormat('yyyy/mm/dd');
+
+  // 内部用の列は隠す
+  if (idx['キー']) sh.hideColumns(idx['キー']);
+  if (idx['イベントID']) sh.hideColumns(idx['イベントID']);
+
+  // 条件付き書式：完了=グレー / 期限超過=赤 / 本日=黄
+  if (idx['状態'] && idx['予定日']) {
+    var range = sh.getRange(2, 1, rowCount, sched.headers.length);
+    var cs = columnLetter_(idx['状態']);
+    var cd = columnLetter_(idx['予定日']);
+    sh.setConditionalFormatRules([
+      SpreadsheetApp.newConditionalFormatRule()
+        .whenFormulaSatisfied('=$' + cs + '2="' + STATUS.DONE + '"')
+        .setBackground('#f1f3f4').setFontColor('#9aa0a6').setRanges([range]).build(),
+      SpreadsheetApp.newConditionalFormatRule()
+        .whenFormulaSatisfied('=AND($' + cd + '2<>"",$' + cd + '2<TODAY(),$' + cs + '2<>"' + STATUS.DONE + '",$' + cs + '2<>"' + STATUS.SKIP + '")')
+        .setBackground('#fce8e6').setFontColor('#c5221f').setRanges([range]).build(),
+      SpreadsheetApp.newConditionalFormatRule()
+        .whenFormulaSatisfied('=AND($' + cd + '2=TODAY(),$' + cs + '2<>"' + STATUS.DONE + '")')
+        .setBackground('#fef7e0').setRanges([range]).build()
+    ]);
+  }
+}
+
+function applyValidations_() {
+  var sched = readTable_(SHEET.SCHEDULE);
+  var idx = headerIndex_(sched.headers);
+  var rows = Math.max(sched.sheet.getMaxRows() - 1, 1);
+  if (idx['状態']) {
+    sched.sheet.getRange(2, idx['状態'], rows).setDataValidation(
+      SpreadsheetApp.newDataValidation().requireValueInList(STATUS_LIST, true).setAllowInvalid(false).build());
+  }
+  if (idx['日程固定']) {
+    sched.sheet.getRange(2, idx['日程固定'], rows).setDataValidation(
+      SpreadsheetApp.newDataValidation().requireValueInList(['', 'ON'], true).build());
+  }
+
+  var tpl = readTable_(SHEET.TEMPLATE);
+  var tidx = headerIndex_(tpl.headers);
+  var trows = Math.max(tpl.sheet.getMaxRows() - 1, 1);
+  if (tidx['単位']) {
+    tpl.sheet.getRange(2, tidx['単位'], trows).setDataValidation(
+      SpreadsheetApp.newDataValidation().requireValueInList(['営業日', '暦日'], true).build());
+  }
+  if (tidx['方向']) {
+    tpl.sheet.getRange(2, tidx['方向'], trows).setDataValidation(
+      SpreadsheetApp.newDataValidation().requireValueInList(['前', '後'], true).build());
+  }
+  if (tidx['休日補正']) {
+    tpl.sheet.getRange(2, tidx['休日補正'], trows).setDataValidation(
+      SpreadsheetApp.newDataValidation().requireValueInList(['なし', '前営業日', '翌営業日'], true).build());
+  }
+
+  var work = readTable_(SHEET.WORK);
+  var widx = headerIndex_(work.headers);
+  var wrows = Math.max(work.sheet.getMaxRows() - 1, 1);
+  if (widx['有効']) {
+    work.sheet.getRange(2, widx['有効'], wrows).setDataValidation(
+      SpreadsheetApp.newDataValidation().requireValueInList(['ON', 'OFF'], true).build());
+  }
+  if (widx['色']) {
+    work.sheet.getRange(2, widx['色'], wrows).setDataValidation(
+      SpreadsheetApp.newDataValidation().requireValueInList(COLOR_ORDER, true).build());
+  }
+  if (widx['基準日休日補正']) {
+    work.sheet.getRange(2, widx['基準日休日補正'], wrows).setDataValidation(
+      SpreadsheetApp.newDataValidation().requireValueInList(['なし', '前営業日', '翌営業日'], true).build());
+  }
+}
+
+/** 工程表の「完」列をチェックボックスにする */
+function applyScheduleCheckboxes_() {
+  var sched = readTable_(SHEET.SCHEDULE);
+  var idx = headerIndex_(sched.headers);
+  if (!idx['完']) return;
+  var last = Math.max(sched.sheet.getLastRow() - 1, 1);
+  sched.sheet.getRange(2, idx['完'], last).insertCheckboxes();
+}
+
+function columnLetter_(col) {
+  var s = '';
+  while (col > 0) {
+    var m = (col - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    col = Math.floor((col - m) / 26);
+  }
+  return s;
+}
+
+/**
+ * サンプルデータ投入。
+ * ※ 工程名・日数は「よくある流れ」の例です。実際の要領・決裁ルールに合わせて必ず書き換えてください。
+ */
+function seedSamples_() {
+  appendRows_(SHEET.WORK, [
+    {
+      '業務ID': 'NAN', '業務名': '指定難病 医療費助成（月次審査会）', '有効': 'ON',
+      '基準日名称': '審査会', '基準日ルール': '毎月第2水', '基準日休日補正': '前営業日',
+      '色': '青', '備考': '審査会日を基準に、前後の工程を自動算出'
+    },
+    {
+      '業務ID': 'KOSIN', '業務名': '指定難病 更新申請（一斉更新）', '有効': 'ON',
+      '基準日名称': '受付開始', '基準日ルール': '毎年9月1日', '基準日休日補正': '翌営業日',
+      '色': '緑', '備考': '年次の一斉更新。受付開始日を基準に前後を算出'
+    },
+    {
+      '業務ID': 'SHOMAN', '業務名': '小児慢性特定疾病 医療費助成', '有効': 'ON',
+      '基準日名称': '審査会', '基準日ルール': '毎月第4火', '基準日休日補正': '前営業日',
+      '色': '橙', '備考': '別サイクルで回る審査会'
+    }
+  ]);
+
+  var nan = [
+    [10, '申請受付分の締切（当月審査会分）', '', '前', 20, '営業日', 3, '窓口・郵送分をここで締める'],
+    [20, '形式審査・不備照会の完了', '', '前', 15, '営業日', 3, '不備は返戻または追加提出を依頼'],
+    [30, '審査会資料の作成・システム入力', '', '前', 10, '営業日', 3, '入力はここまでに終わらせる'],
+    [40, '資料の最終確認（係内）', '', '前', 8, '営業日', 2, ''],
+    [50, '審査委員へ資料送付', '', '前', 7, '営業日', 2, '発送日'],
+    [60, '審査委員からの意見返送期限', '', '前', 3, '営業日', 2, '未着はここで督促'],
+    [70, '審査会', '', '後', 0, '営業日', 1, '基準日そのもの'],
+    [80, '審査結果の整理・記録作成', '審査会', '後', 1, '営業日', 1, ''],
+    [90, '認定/不認定 決裁の起案・システム入力', '審査結果の整理・記録作成', '後', 1, '営業日', 1, '起案日'],
+    [100, '決裁完了（見込）', '認定/不認定 決裁の起案・システム入力', '後', 3, '営業日', 2, '起案からN営業日。実績に合わせて調整する'],
+    [110, '受給者証・通知書の印刷', '決裁完了（見込）', '後', 1, '営業日', 1, ''],
+    [120, '封入封緘・点検', '受給者証・通知書の印刷', '後', 1, '営業日', 1, '二人体制で突合'],
+    [130, '受給者証の発送', '封入封緘・点検', '後', 1, '営業日', 1, '到達日を意識して逆算する'],
+    [140, '台帳更新・報告用データ反映', '受給者証の発送', '後', 2, '営業日', 2, '']
+  ];
+  appendRows_(SHEET.TEMPLATE, nan.map(function (r) {
+    return {
+      '業務ID': 'NAN', '工程No': r[0], '工程名': r[1], '基準': r[2], '方向': r[3], '日数': r[4],
+      '単位': r[5], '休日補正': '前営業日', '担当': '', 'リマインド営業日前': r[6], '備考': r[7]
+    };
+  }));
+
+  var kosin = [
+    [10, '更新案内の印刷・封入準備', '', '前', 20, '営業日', 5, ''],
+    [20, '更新案内の一斉発送', '', '前', 10, '営業日', 3, '受付開始前に届くように'],
+    [30, '更新申請 受付開始', '', '後', 0, '営業日', 1, '基準日そのもの'],
+    [40, '受付期間 中間点検（未提出者の把握）', '更新申請 受付開始', '後', 30, '暦日', 3, ''],
+    [50, '更新申請 受付締切', '更新申請 受付開始', '後', 60, '暦日', 5, '休日なら翌営業日に補正'],
+    [60, '未提出者への勧奨通知', '更新申請 受付締切', '後', 5, '営業日', 3, ''],
+    [70, '審査・決裁（一斉分）完了', '更新申請 受付締切', '後', 30, '営業日', 5, ''],
+    [80, '新受給者証の封入封緘', '審査・決裁（一斉分）完了', '後', 3, '営業日', 2, ''],
+    [90, '新受給者証の一斉発送', '新受給者証の封入封緘', '後', 2, '営業日', 2, '有効期間の開始前に到達させる']
+  ];
+  appendRows_(SHEET.TEMPLATE, kosin.map(function (r) {
+    return {
+      '業務ID': 'KOSIN', '工程No': r[0], '工程名': r[1], '基準': r[2], '方向': r[3], '日数': r[4],
+      '単位': r[5], '休日補正': '翌営業日', '担当': '', 'リマインド営業日前': r[6], '備考': r[7]
+    };
+  }));
+
+  var shoman = [
+    [10, '申請受付分の締切', '', '前', 15, '営業日', 3, ''],
+    [20, '医療意見書の確認・審査会資料作成', '', '前', 8, '営業日', 3, ''],
+    [30, '審査会', '', '後', 0, '営業日', 1, ''],
+    [40, '決裁起案', '審査会', '後', 2, '営業日', 1, ''],
+    [50, '受給者証の発送', '決裁起案', '後', 5, '営業日', 2, '']
+  ];
+  appendRows_(SHEET.TEMPLATE, shoman.map(function (r) {
+    return {
+      '業務ID': 'SHOMAN', '工程No': r[0], '工程名': r[1], '基準': r[2], '方向': r[3], '日数': r[4],
+      '単位': r[5], '休日補正': '前営業日', '担当': '', 'リマインド営業日前': r[6], '備考': r[7]
+    };
+  }));
+}
+
+/** 日次トリガーを（重複させずに）登録する */
+function installTriggers() {
+  var settings = getSettings_();
+  var hour = settingNumber_(settings, '通知時刻', 8);
+  if (hour < 0 || hour > 23) hour = 8;
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    var fn = t.getHandlerFunction();
+    if (fn === 'dailyReminder' || fn === 'nightlyRefresh') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('nightlyRefresh').timeBased().atHour(1).everyDays(1).create();
+  ScriptApp.newTrigger('dailyReminder').timeBased().atHour(hour).everyDays(1).create();
+  log_('トリガー設定', true, '日次リマインド ' + hour + '時 / 自動更新 1時');
+  return hour;
+}
+
+/** 毎晩の自動更新：休日取込 → 基準日展開 → 工程表生成 →（有効なら）カレンダー同期 */
+function nightlyRefresh() {
+  syncHolidays();
+  generateSchedules();
+  syncCalendarIfEnabled();
+}
+
+
+// ===========================================================================
+// 12_holidays.gs
+// ===========================================================================
+
+/**
+ * 休日マスタの同期
+ *
+ * ・国民の祝日：内閣府が公開している syukujitsu.csv から取り込む（種別=祝日）
+ *   一次情報なので確実で、Googleカレンダーの権限も不要。
+ * ・年末年始 ：設定シートの「年末年始休」から自動生成（種別=年末年始）
+ * ・上記以外 ：手入力した閉庁日・振替出勤日は消さずに残す（種別=閉庁 / 振替出勤）
+ */
+
+function syncHolidays() {
+  var settings = getSettings_();
+  var t = readTable_(SHEET.HOLIDAY);
+
+  // 手入力分（閉庁・振替出勤など）は保持する
+  var manual = t.rows.filter(function (r) {
+    var kind = String(r['種別'] || '').trim();
+    return kind !== '祝日' && kind !== '年末年始';
+  }).map(function (r) {
+    return { key: toDateKey(r['日付']), name: r['名称'], kind: String(r['種別'] || '閉庁').trim() };
+  }).filter(function (r) { return r.key; });
+
+  var thisYear = Number(todayKey_().slice(0, 4));
+  var fromKey = (thisYear - 1) + '-01-01';
+  var toKey = (thisYear + 3) + '-12-31';
+
+  var fetched = [];
+  var fetchError = '';
+  try {
+    fetched = fetchNationalHolidays_(settings, fromKey, toKey);
+  } catch (e) {
+    fetchError = e.message;
+    // 取得できなかった場合は既存の祝日行をそのまま残す（消してしまうと営業日計算が狂うため）
+    fetched = t.rows.filter(function (r) { return String(r['種別'] || '').trim() === '祝日'; })
+      .map(function (r) { return { key: toDateKey(r['日付']), name: r['名称'], kind: '祝日' }; })
+      .filter(function (r) { return r.key; });
+  }
+
+  var yearEnd = buildYearEndClosures_(settings, thisYear - 1, thisYear + 3);
+
+  var merged = {};
+  // 手入力を最優先（振替出勤の指定が祝日に勝てるようにする）
+  manual.concat(fetched).concat(yearEnd).forEach(function (r) {
+    if (!r.key) return;
+    if (!merged[r.key]) merged[r.key] = r;
+  });
+
+  var rows = Object.keys(merged).sort().map(function (k) {
+    return { '日付': keyToSheetDate_(k), '名称': merged[k].name, '種別': merged[k].kind };
+  });
+  replaceTable_(SHEET.HOLIDAY, rows);
+
+  if (fetchError) {
+    log_('休日同期', false, '祝日CSVを取得できませんでした（既存の祝日行を維持）: ' + fetchError);
+  } else {
+    log_('休日同期', true, rows.length + '件');
+  }
+  return { count: rows.length, error: fetchError };
+}
+
+/** 内閣府の祝日CSVを取得して [{key,name,kind}] を返す */
+function fetchNationalHolidays_(settings, fromKey, toKey) {
+  var url = settingText_(settings, '祝日CSV_URL', 'https://www8.cao.go.jp/chosei/shukujitsu/syukujitsu.csv');
+  var res = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true });
+  if (res.getResponseCode() !== 200) {
+    throw new Error('HTTP ' + res.getResponseCode());
+  }
+  // 内閣府CSVは Shift_JIS
+  var text;
+  try {
+    text = res.getBlob().getDataAsString('Shift_JIS');
+  } catch (e) {
+    text = res.getContentText();
+  }
+  return parseHolidayCsv_(text, fromKey, toKey);
+}
+
+/**
+ * 祝日CSVを解析する（純粋関数）。
+ * 形式: 「国民の祝日・休日月日,国民の祝日・休日名称」のヘッダー＋ "2026/1/1,元日" の行
+ */
+function parseHolidayCsv_(text, fromKey, toKey) {
+  var out = [];
+  String(text).split(/\r\n|\r|\n/).forEach(function (line) {
+    if (!line) return;
+    var cols = line.split(',');
+    if (cols.length < 2) return;
+    var m = /^\s*(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})\s*$/.exec(cols[0]);
+    if (!m) return; // ヘッダー行など
+    var key = m[1] + '-' + pad2_(m[2]) + '-' + pad2_(m[3]);
+    if (fromKey && key < fromKey) return;
+    if (toKey && key > toKey) return;
+    out.push({ key: key, name: String(cols[1]).trim(), kind: '祝日' });
+  });
+  return out;
+}
+
+/** 「12/29-1/3」形式の年末年始閉庁日を年ごとに展開する（純粋関数） */
+function buildYearEndClosures_(settings, fromYear, toYear) {
+  // 設定を空にしたら「年末年始の閉庁を設定しない」の意味なので、既定値へ戻さない
+  var spec = settingText_(settings, '年末年始休', '');
+  if (!spec) return [];
+  var m = /^(\d{1,2})\/(\d{1,2})-(\d{1,2})\/(\d{1,2})$/.exec(normalizeText(spec));
+  if (!m) {
+    log_('休日同期', false, '年末年始休の書式が不正です（例: 12/29-1/3）: ' + spec);
+    return [];
+  }
+  var out = [];
+  for (var y = fromYear; y <= toYear; y++) {
+    var startKey = y + '-' + pad2_(m[1]) + '-' + pad2_(m[2]);
+    var endYear = Number(m[3]) < Number(m[1]) ? y + 1 : y;
+    var endKey = endYear + '-' + pad2_(m[3]) + '-' + pad2_(m[4]);
+    var cur = startKey;
+    var guard = 0;
+    while (cur <= endKey && guard++ < 40) {
+      out.push({ key: cur, name: '年末年始（閉庁）', kind: '年末年始' });
+      cur = addCalendarDays(cur, 1);
+    }
+  }
+  return out;
+}
+
+function pad2_(v) { var n = Number(v); return n < 10 ? '0' + n : String(n); }
+
+
+// ===========================================================================
+// 13_generate.gs
+// ===========================================================================
+
+/**
+ * 基準日の展開と工程表の生成
+ *
+ * ・業務マスタの「基準日ルール」から基準日シートへ回次を自動追加（既存行は上書きしない）
+ * ・基準日 × 工程テンプレート から工程表を再生成
+ * ・状態／完了日／備考／担当／イベントID など手入力した内容は保持する
+ * ・「日程固定」に ON を入れた行は、再生成しても予定日を動かさない
+ */
+
+function generateSchedules() {
+  var settings = getSettings_();
+  var cal = loadBusinessCalendar_(settings);
+  var today = todayKey_();
+  var aheadMonths = settingNumber_(settings, '先読み月数', 6);
+  var backMonths = settingNumber_(settings, '過去保持月数', 3);
+  var defaultRemind = settingNumber_(settings, '既定リマインド営業日前', 3);
+
+  var fromKey = shiftMonthKey_(today, -backMonths);
+  var toKey = shiftMonthKey_(today, aheadMonths);
+
+  var works = readTable_(SHEET.WORK).rows.filter(function (w) {
+    return String(w['業務ID']).trim() && !/^(off|false|いいえ|無効|0)$/i.test(String(w['有効']).trim());
+  });
+  var errors = [];
+
+  // ---- 1. 基準日の自動展開 ----
+  var anchorTable = readTable_(SHEET.ANCHOR);
+  var anchorSeen = {};
+  anchorTable.rows.forEach(function (r) {
+    anchorSeen[String(r['業務ID']).trim() + '|' + String(r['回次']).trim()] = true;
+  });
+  var newAnchors = [];
+  works.forEach(function (w) {
+    try {
+      var spec = parseRecurrence(w['基準日ルール']);
+      if (!spec) return;
+      var list = expandRecurrence(spec, fromKey, toKey, cal, normalizeAdjustMode(w['基準日休日補正']));
+      list.forEach(function (item) {
+        var key = String(w['業務ID']).trim() + '|' + item.period;
+        if (anchorSeen[key]) return;
+        anchorSeen[key] = true;
+        newAnchors.push({
+          '業務ID': w['業務ID'], '回次': item.period, '基準日': keyToSheetDate_(item.dateKey),
+          '生成元': '自動', '状態': '予定', '備考': ''
+        });
+      });
+    } catch (e) {
+      errors.push('[' + w['業務ID'] + '] 基準日ルール: ' + e.message);
+    }
+  });
+  if (newAnchors.length) appendRows_(SHEET.ANCHOR, newAnchors);
+
+  // ---- 2. 工程表の再生成 ----
+  var anchors = readTable_(SHEET.ANCHOR).rows.filter(function (r) {
+    return String(r['業務ID']).trim() && String(r['回次']).trim() && toDateKey(r['基準日']);
+  });
+  var templates = groupTemplates_(readTable_(SHEET.TEMPLATE).rows);
+  var workById = {};
+  works.forEach(function (w) { workById[String(w['業務ID']).trim()] = w; });
+
+  var oldRows = readTable_(SHEET.SCHEDULE).rows;
+  var oldByKey = {};
+  oldRows.forEach(function (r) {
+    var k = String(r['キー']).trim();
+    if (k) oldByKey[k] = r;
+  });
+
+  var newRows = [];
+  var usedKeys = {};
+
+  anchors.forEach(function (a) {
+    var workId = String(a['業務ID']).trim();
+    var work = workById[workId];
+    if (!work) return; // 無効化された業務はスキップ
+    if (String(a['状態']).trim() === '中止') return;
+    var tpl = templates[workId];
+    if (!tpl || !tpl.length) {
+      errors.push('[' + workId + '] 工程テンプレートが登録されていません');
+      return;
+    }
+    var anchorKey = toDateKey(a['基準日']);
+    var rows;
+    try {
+      rows = computeSchedule(cloneTemplateRows_(tpl), anchorKey, cal, work['基準日名称']);
+    } catch (e) {
+      errors.push('[' + workId + ' ' + a['回次'] + '] ' + e.message);
+      return;
+    }
+    rows.forEach(function (row) {
+      var key = workId + '|' + String(a['回次']).trim() + '|' + row.seq;
+      usedKeys[key] = true;
+      var old = oldByKey[key] || {};
+      var fixed = /^(on|true|はい|固定|1)$/i.test(String(old['日程固定'] || '').trim());
+      var dueKey = fixed && toDateKey(old['予定日']) ? toDateKey(old['予定日']) : row.dateKey;
+      var remind = row.remindDays === '' || row.remindDays === null || row.remindDays === undefined
+        ? defaultRemind : Number(row.remindDays);
+      var status = old['状態'] || STATUS.NOT_STARTED;
+      newRows.push({
+        'キー': key,
+        '完': status === STATUS.DONE,
+        '業務ID': workId,
+        '業務名': work['業務名'],
+        '回次': a['回次'],
+        '基準日': keyToSheetDate_(anchorKey),
+        '工程No': row.seq,
+        '工程名': row.name,
+        '予定日': keyToSheetDate_(dueKey),
+        '曜日': WEEKDAY_LABELS[dayOfWeek(dueKey)],
+        '残営業日': countBusinessDays(cal, today, dueKey),
+        '担当': old['担当'] || row.owner || '',
+        '状態': status,
+        '完了日': old['完了日'] || '',
+        'リマインド営業日前': old['リマインド営業日前'] !== '' && old['リマインド営業日前'] !== undefined && old['リマインド営業日前'] !== null
+          ? old['リマインド営業日前'] : remind,
+        '日程固定': old['日程固定'] || '',
+        '備考': old['備考'] || row.note || '',
+        'イベントID': old['イベントID'] || '',
+        _sortDue: dueKey,
+        _sortSeq: Number(row.seq) || 0
+      });
+    });
+  });
+
+  // テンプレートから消えたが、進捗が入っている行は履歴として残す
+  oldRows.forEach(function (r) {
+    var k = String(r['キー']).trim();
+    if (!k || usedKeys[k]) return;
+    var status = String(r['状態'] || '').trim();
+    if (status === STATUS.NOT_STARTED || status === '') return;
+    var due = toDateKey(r['予定日']);
+    r._sortDue = due || '9999-12-31';
+    r._sortSeq = Number(r['工程No']) || 0;
+    newRows.push(r);
+  });
+
+  newRows.sort(function (a, b) {
+    if (a._sortDue !== b._sortDue) return a._sortDue < b._sortDue ? -1 : 1;
+    if (a['業務ID'] !== b['業務ID']) return a['業務ID'] < b['業務ID'] ? -1 : 1;
+    return a._sortSeq - b._sortSeq;
+  });
+  newRows.forEach(function (r) { delete r._sortDue; delete r._sortSeq; });
+
+  replaceTable_(SHEET.SCHEDULE, newRows);
+  applyScheduleCheckboxes_();
+
+  log_('工程表生成', errors.length === 0,
+    '基準日追加 ' + newAnchors.length + '件 / 工程 ' + newRows.length + '行'
+    + (errors.length ? ' / エラー: ' + errors.join(' | ') : ''));
+
+  return { anchorsAdded: newAnchors.length, rows: newRows.length, errors: errors };
+}
+
+/** 工程テンプレート行を業務IDごとにまとめ、工程Noで並べる */
+function groupTemplates_(rows) {
+  var map = {};
+  rows.forEach(function (r) {
+    var id = String(r['業務ID']).trim();
+    if (!id || !String(r['工程名']).trim()) return;
+    if (!map[id]) map[id] = [];
+    map[id].push({
+      seq: r['工程No'],
+      name: String(r['工程名']).trim(),
+      base: r['基準'],
+      direction: r['方向'],
+      days: r['日数'] === '' || r['日数'] === null ? 0 : r['日数'],
+      unit: r['単位'],
+      adjust: r['休日補正'],
+      owner: r['担当'],
+      remindDays: r['リマインド営業日前'],
+      note: r['備考']
+    });
+  });
+  Object.keys(map).forEach(function (id) {
+    map[id].sort(function (a, b) { return (Number(a.seq) || 0) - (Number(b.seq) || 0); });
+  });
+  return map;
+}
+
+function cloneTemplateRows_(rows) {
+  return rows.map(function (r) {
+    return {
+      seq: r.seq, name: r.name, base: r.base, direction: r.direction, days: r.days,
+      unit: r.unit, adjust: r.adjust, owner: r.owner, remindDays: r.remindDays, note: r.note
+    };
+  });
+}
+
+/** dateKey を n ヶ月ずらす（日は月末に丸める） */
+function shiftMonthKey_(key, months) {
+  var d = keyToDate(key);
+  var y = d.getUTCFullYear();
+  var m = d.getUTCMonth() + 1 + Number(months);
+  var day = d.getUTCDate();
+  var total = y * 12 + (m - 1);
+  var ny = Math.floor(total / 12);
+  var nm = (total % 12) + 1;
+  var maxDay = new Date(Date.UTC(ny, nm, 0)).getUTCDate();
+  return dateToKey(new Date(Date.UTC(ny, nm - 1, Math.min(day, maxDay))));
+}
+
+
+// ===========================================================================
+// 14_calendar.gs
+// ===========================================================================
+
+/**
+ * Googleカレンダー同期（任意機能・既定OFF）
+ *
+ * 既定ではカレンダー権限を要求しない構成にしてある。
+ * 使う場合は appsscript.json の oauthScopes に
+ *   "https://www.googleapis.com/auth/calendar"
+ * を追加し、設定シートの「カレンダー同期」を ON にする。
+ */
+
+function syncCalendarIfEnabled() {
+  var settings = getSettings_();
+  if (!settingBool_(settings, 'カレンダー同期', false)) return { skipped: true };
+  return syncCalendar();
+}
+
+function syncCalendar() {
+  var settings = getSettings_();
+  if (typeof CalendarApp === 'undefined') {
+    var msg = 'カレンダー権限が付与されていません。appsscript.json の oauthScopes に calendar を追加してください。';
+    log_('カレンダー同期', false, msg);
+    throw new Error(msg);
+  }
+
+  var calId = settingText_(settings, 'カレンダーID', '');
+  var cal = calId ? CalendarApp.getCalendarById(calId) : CalendarApp.getDefaultCalendar();
+  if (!cal) throw new Error('カレンダーを取得できません: ' + calId);
+
+  var t = readTable_(SHEET.SCHEDULE);
+  var idx = headerIndex_(t.headers);
+  if (!idx['イベントID']) throw new Error('工程表に「イベントID」列がありません');
+
+  var today = todayKey_();
+  var fromKey = shiftMonthKey_(today, -1);
+  var created = 0, updated = 0, removed = 0;
+  var eventIdValues = [];
+
+  t.rows.forEach(function (r) {
+    var eventId = String(r['イベントID'] || '').trim();
+    var dueKey = toDateKey(r['予定日']);
+    var status = String(r['状態'] || '').trim();
+    var title = '【' + r['業務名'] + ' ' + r['回次'] + '】' + r['工程名'];
+    var wanted = dueKey && dueKey >= fromKey && status !== STATUS.SKIP;
+
+    if (!wanted) {
+      if (eventId) {
+        try { var ev = cal.getEventById(eventId); if (ev) { ev.deleteEvent(); removed++; } } catch (e) { /* 既に無い */ }
+        eventId = '';
+      }
+      eventIdValues.push([eventId]);
+      return;
+    }
+
+    var date = keyToSheetDate_(dueKey);
+    var desc = [
+      '担当: ' + (r['担当'] || '—'),
+      '状態: ' + status,
+      r['備考'] ? '備考: ' + r['備考'] : ''
+    ].filter(String).join('\n');
+
+    var event = null;
+    if (eventId) {
+      try { event = cal.getEventById(eventId); } catch (e) { event = null; }
+    }
+    if (event) {
+      if (event.getTitle() !== title) event.setTitle(title);
+      var start = event.getAllDayStartDate();
+      if (!start || Utilities.formatDate(start, 'Asia/Tokyo', 'yyyy-MM-dd') !== dueKey) {
+        event.setAllDayDate(date);
+      }
+      event.setDescription(desc);
+      updated++;
+    } else {
+      event = cal.createAllDayEvent(title, date, { description: desc });
+      eventId = event.getId();
+      created++;
+    }
+    eventIdValues.push([eventId]);
+  });
+
+  if (eventIdValues.length) {
+    t.sheet.getRange(2, idx['イベントID'], eventIdValues.length, 1).setValues(eventIdValues);
+  }
+  log_('カレンダー同期', true, '作成 ' + created + ' / 更新 ' + updated + ' / 削除 ' + removed);
+  return { created: created, updated: updated, removed: removed };
+}
+
+
+// ===========================================================================
+// 15_notify.gs
+// ===========================================================================
+
+/**
+ * Google Chat への通知
+ *
+ * Chat のスペースで［アプリと連携］→［Webhook を作成］して得た URL を
+ * 設定シートの ChatWebhookURL に貼るだけで動く。
+ */
+
+function dailyReminder() {
+  var settings = getSettings_();
+  var cal = loadBusinessCalendar_(settings);
+  var today = todayKey_();
+
+  if (settingBool_(settings, '休日は通知しない', true) && !isBusinessDay(cal, today)) {
+    log_('日次リマインド', true, '休日のためスキップ: ' + today);
+    return { skipped: true };
+  }
+
+  var digest = buildDigestFromSheet_(settings, cal, today);
+  if (!digest.total) {
+    log_('日次リマインド', true, '通知対象なし');
+    return { total: 0 };
+  }
+
+  var text = buildChatText(digest, today);
+  var res = postToChat_(settings, text);
+  log_('日次リマインド', res.ok,
+    '超過 ' + digest.overdue.length + ' / 本日 ' + digest.today.length + ' / まもなく ' + digest.soon.length
+    + (res.ok ? '' : ' / ' + res.message));
+  return { total: digest.total, posted: res.ok, message: res.message };
+}
+
+/** 工程表シートからダイジェストを組み立てる */
+function buildDigestFromSheet_(settings, cal, today) {
+  var colorByWork = {};
+  readTable_(SHEET.WORK).rows.forEach(function (w, i) {
+    colorByWork[String(w['業務ID']).trim()] = w['色'] || COLOR_ORDER[i % COLOR_ORDER.length];
+  });
+
+  var backMonths = settingNumber_(settings, '過去保持月数', 3);
+  var minKey = shiftMonthKey_(today, -backMonths);
+  var defaultRemind = settingNumber_(settings, '既定リマインド営業日前', 3);
+
+  var rows = readTable_(SHEET.SCHEDULE).rows.map(function (r) {
+    var dueKey = toDateKey(r['予定日']);
+    if (!dueKey || dueKey < minKey) return null;
+    var remind = r['リマインド営業日前'];
+    return {
+      workId: String(r['業務ID']).trim(),
+      workName: r['業務名'],
+      color: colorByWork[String(r['業務ID']).trim()],
+      period: r['回次'],
+      seq: r['工程No'],
+      name: r['工程名'],
+      dueKey: dueKey,
+      owner: r['担当'],
+      status: r['状態'],
+      note: r['備考'],
+      remindDays: (remind === '' || remind === null || remind === undefined) ? defaultRemind : Number(remind)
+    };
+  }).filter(Boolean);
+
+  return buildDigest(rows, cal, today, {
+    maxAheadBusinessDays: settingNumber_(settings, 'リマインド対象日数', 14),
+    includeDone: false
+  });
+}
+
+/** Chat Webhook へ投稿する */
+function postToChat_(settings, text) {
+  var url = settingText_(settings, 'ChatWebhookURL', '');
+  if (!url) {
+    return { ok: false, message: 'ChatWebhookURL が未設定です。設定シートに Webhook URL を貼ってください。' };
+  }
+  if (!/^https:\/\/chat\.googleapis\.com\//.test(url)) {
+    return { ok: false, message: 'ChatWebhookURL が Google Chat の Webhook URL ではありません。' };
+  }
+  try {
+    var res = UrlFetchApp.fetch(url, {
+      method: 'post',
+      contentType: 'application/json; charset=UTF-8',
+      payload: JSON.stringify({ text: text }),
+      muteHttpExceptions: true
+    });
+    var code = res.getResponseCode();
+    if (code >= 200 && code < 300) return { ok: true, message: '' };
+    return { ok: false, message: 'Chat投稿に失敗 HTTP ' + code + ': ' + res.getContentText().slice(0, 300) };
+  } catch (e) {
+    return { ok: false, message: 'Chat投稿に失敗: ' + e.message };
+  }
+}
+
+/** メニューから叩く：いまの内容でテスト投稿する */
+function sendTestNotification() {
+  var settings = getSettings_();
+  var cal = loadBusinessCalendar_(settings);
+  var today = todayKey_();
+  var digest = buildDigestFromSheet_(settings, cal, today);
+  var text = digest.total
+    ? buildChatText(digest, today)
+    : '*' + formatShortDate(today) + ' の業務スケジュール*\n\n通知対象の工程はありません。';
+  var res = postToChat_(settings, text);
+  log_('テスト通知', res.ok, res.message || '送信しました');
+  return res;
+}
+
+
+// ===========================================================================
+// 16_menu.gs
+// ===========================================================================
+
+/**
+ * メニュー・画面表示・シート上の操作
+ */
+
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('📅 業務スケジュール')
+    .addItem('スケジュール画面を開く', 'showGantt')
+    .addSeparator()
+    .addItem('工程テンプレートを編集', 'showTemplateEditor')
+    .addItem('工程表を再生成', 'menuGenerate')
+    .addItem('休日を取り込む', 'menuSyncHolidays')
+    .addSeparator()
+    .addItem('Chatにテスト通知', 'menuTestNotify')
+    .addItem('通知トリガーを再設定', 'menuInstallTriggers')
+    .addSeparator()
+    .addSubMenu(SpreadsheetApp.getUi().createMenu('テンプレートの受け渡し')
+      .addItem('書き出す（JSON）', 'showTemplateExport')
+      .addItem('読み込む（JSON）', 'showTemplateImport'))
+    .addSeparator()
+    .addItem('初期セットアップ', 'menuSetup')
+    .addToUi();
+}
+
+function showGantt() {
+  var html = HtmlService.createTemplateFromFile('gantt')
+    .evaluate()
+    .setWidth(1400)
+    .setHeight(880);
+  SpreadsheetApp.getUi().showModalDialog(html, '業務スケジュール');
+}
+
+function showTemplateEditor() {
+  var html = HtmlService.createTemplateFromFile('editor')
+    .evaluate()
+    .setWidth(1100)
+    .setHeight(800);
+  SpreadsheetApp.getUi().showModalDialog(html, '工程テンプレートの編集');
+}
+
+function menuSetup() {
+  var ui = SpreadsheetApp.getUi();
+  var res = ui.alert('初期セットアップ',
+    'シートの作成・書式設定・休日の取り込み・トリガー登録を行います。\n'
+    + '既存のデータは消しません。実行しますか？',
+    ui.ButtonSet.OK_CANCEL);
+  if (res !== ui.Button.OK) return;
+  try {
+    var r = setupWorkbook();
+    var msg = 'セットアップが完了しました。\n\n'
+      + (r.seeded ? '・サンプルの業務と工程テンプレートを入れました\n' : '')
+      + '・工程表 ' + r.generate.rows + ' 行を生成しました\n'
+      + '・毎日の通知トリガーを登録しました\n\n'
+      + '次は［設定］シートの ChatWebhookURL を埋めてください。';
+    if (r.generate.errors.length) msg += '\n\n【要確認】\n' + r.generate.errors.join('\n');
+    ui.alert('完了', msg, ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('エラー', e.message, ui.ButtonSet.OK);
+  }
+}
+
+function menuGenerate() {
+  try {
+    var r = generateSchedules();
+    var msg = '基準日を ' + r.anchorsAdded + ' 件追加し、工程表を ' + r.rows + ' 行にしました。';
+    if (r.errors.length) msg += '\n\n【要確認】\n' + r.errors.join('\n');
+    SpreadsheetApp.getUi().alert('工程表の再生成', msg, SpreadsheetApp.getUi().ButtonSet.OK);
+  } catch (e) {
+    SpreadsheetApp.getUi().alert('エラー', e.message, SpreadsheetApp.getUi().ButtonSet.OK);
+  }
+}
+
+function menuSyncHolidays() {
+  var r = syncHolidays();
+  var msg = '休日マスタを ' + r.count + ' 件にしました。';
+  if (r.error) msg += '\n\n祝日CSVの取得に失敗しました（既存の祝日は維持）:\n' + r.error;
+  SpreadsheetApp.getUi().alert('休日の取り込み', msg, SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
+function menuTestNotify() {
+  var r = sendTestNotification();
+  SpreadsheetApp.getUi().alert(
+    r.ok ? '送信しました' : '送信できませんでした',
+    r.ok ? 'Google Chat のスペースを確認してください。' : r.message,
+    SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
+function menuInstallTriggers() {
+  var hour = installTriggers();
+  SpreadsheetApp.getUi().alert('トリガー設定',
+    '毎日 ' + hour + ' 時に Chat へ通知します。\n（毎日 1 時に工程表を自動更新します）',
+    SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
+/**
+ * 工程表の「完」チェックボックスを状態と連動させる（シンプルトリガー）。
+ * 追加の権限承認なしで動く。
+ */
+function onEdit(e) {
+  try {
+    if (!e || !e.range) return;
+    var sh = e.range.getSheet();
+    if (sh.getName() !== SHEET.SCHEDULE) return;
+    if (e.range.getRow() < 2) return;
+
+    var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(function (v) { return String(v).trim(); });
+    var idx = {};
+    headers.forEach(function (h, i) { if (h) idx[h] = i + 1; });
+    if (!idx['完'] || !idx['状態']) return;
+
+    var row = e.range.getRow();
+    var col = e.range.getColumn();
+
+    if (col === idx['完']) {
+      var checked = e.range.getValue() === true;
+      sh.getRange(row, idx['状態']).setValue(checked ? STATUS.DONE : STATUS.NOT_STARTED);
+      if (idx['完了日']) sh.getRange(row, idx['完了日']).setValue(checked ? new Date() : '');
+    } else if (col === idx['状態']) {
+      var status = String(e.range.getValue()).trim();
+      sh.getRange(row, idx['完']).setValue(status === STATUS.DONE);
+      if (idx['完了日']) {
+        var cur = sh.getRange(row, idx['完了日']).getValue();
+        if (status === STATUS.DONE && !cur) sh.getRange(row, idx['完了日']).setValue(new Date());
+        if (status !== STATUS.DONE) sh.getRange(row, idx['完了日']).setValue('');
+      }
+    }
+  } catch (err) {
+    console.warn('onEdit: ' + err.message);
+  }
+}
+
+
+// ===========================================================================
+// 17_webapp.gs
+// ===========================================================================
+
+/**
+ * ガント画面（HTMLサービス）へのデータ供給と更新処理
+ *
+ * スプレッドシートのメニューからダイアログとして開くほか、
+ * Webアプリとしてデプロイして単独のURLで開くこともできる。
+ */
+
+function doGet() {
+  return HtmlService.createTemplateFromFile('gantt')
+    .evaluate()
+    .setTitle('業務スケジュール')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
+function include_(name) {
+  return HtmlService.createHtmlOutputFromFile(name).getContent();
+}
+
+/** ガント画面が必要とするデータを一括で返す */
+function getGanttData() {
+  var settings = getSettings_();
+  var cal = loadBusinessCalendar_(settings);
+  var today = todayKey_();
+  var fromKey = shiftMonthKey_(today, -settingNumber_(settings, 'ガント表示_前月数', 1));
+  var toKey = shiftMonthKey_(today, settingNumber_(settings, 'ガント表示_後月数', 3));
+
+  var works = [];
+  var workById = {};
+  readTable_(SHEET.WORK).rows.forEach(function (w, i) {
+    var id = String(w['業務ID']).trim();
+    if (!id) return;
+    var item = {
+      id: id,
+      name: w['業務名'],
+      enabled: !/^(off|false|いいえ|無効|0)$/i.test(String(w['有効']).trim()),
+      anchorName: w['基準日名称'] || '基準日',
+      rule: w['基準日ルール'],
+      // 実際の色は画面側でテーマに合わせて解決する。ここでは色の名前だけ渡す
+      color: String(w['色'] || '').trim() || COLOR_ORDER[i % COLOR_ORDER.length]
+    };
+    works.push(item);
+    workById[id] = item;
+  });
+
+  var anchorByKey = {};
+  readTable_(SHEET.ANCHOR).rows.forEach(function (a) {
+    var id = String(a['業務ID']).trim();
+    var period = String(a['回次']).trim();
+    if (!id || !period) return;
+    anchorByKey[id + '|' + period] = toDateKey(a['基準日']);
+  });
+
+  var laneMap = {};
+  var lanes = [];
+  readTable_(SHEET.SCHEDULE).rows.forEach(function (r) {
+    var workId = String(r['業務ID']).trim();
+    var period = String(r['回次']).trim();
+    var dueKey = toDateKey(r['予定日']);
+    if (!workId || !dueKey) return;
+    if (dueKey < fromKey || dueKey > toKey) return;
+    var work = workById[workId];
+    if (!work || !work.enabled) return;
+
+    var laneKey = workId + '|' + period;
+    var lane = laneMap[laneKey];
+    if (!lane) {
+      lane = {
+        laneKey: laneKey,
+        workId: workId,
+        workName: work.name,
+        period: period,
+        anchorKey: anchorByKey[laneKey] || '',
+        anchorName: work.anchorName,
+        color: work.color,
+        from: dueKey,
+        to: dueKey,
+        items: []
+      };
+      laneMap[laneKey] = lane;
+      lanes.push(lane);
+    }
+    if (dueKey < lane.from) lane.from = dueKey;
+    if (dueKey > lane.to) lane.to = dueKey;
+
+    var status = String(r['状態'] || STATUS.NOT_STARTED).trim();
+    lane.items.push({
+      key: String(r['キー']).trim(),
+      seq: Number(r['工程No']) || 0,
+      name: r['工程名'],
+      dueKey: dueKey,
+      weekday: WEEKDAY_LABELS[dayOfWeek(dueKey)],
+      status: status,
+      owner: r['担当'] || '',
+      note: r['備考'] || '',
+      isAnchor: dueKey === (anchorByKey[laneKey] || ''),
+      overdue: dueKey < today && status !== STATUS.DONE && status !== STATUS.SKIP,
+      remaining: countBusinessDays(cal, today, dueKey)
+    });
+  });
+
+  lanes.forEach(function (l) {
+    l.items.sort(function (a, b) {
+      if (a.dueKey !== b.dueKey) return a.dueKey < b.dueKey ? -1 : 1;
+      return a.seq - b.seq;
+    });
+    l.doneCount = l.items.filter(function (i) { return i.status === STATUS.DONE; }).length;
+  });
+  lanes.sort(function (a, b) {
+    if (a.from !== b.from) return a.from < b.from ? -1 : 1;
+    return a.workId < b.workId ? -1 : 1;
+  });
+
+  var digest = buildDigestFromSheet_(settings, cal, today);
+
+  return {
+    today: today,
+    from: fromKey,
+    to: toKey,
+    works: works,
+    lanes: lanes,
+    holidays: listHolidays_(fromKey, toKey),
+    weekendDays: Object.keys(cal.weekend).map(Number),
+    digest: {
+      overdue: digest.overdue,
+      today: digest.today,
+      soon: digest.soon,
+      total: digest.total
+    },
+    statusList: STATUS_LIST
+  };
+}
+
+/** 表示範囲の休日を [{key, name}] で返す（振替出勤日は休日ではないので除く） */
+function listHolidays_(fromKey, toKey) {
+  var out = [];
+  readTable_(SHEET.HOLIDAY).rows.forEach(function (r) {
+    var k = toDateKey(r['日付']);
+    if (!k || k < fromKey || k > toKey) return;
+    if (String(r['種別'] || '').indexOf('出勤') >= 0) return;
+    out.push({ key: k, name: String(r['名称'] || '') });
+  });
+  return out;
+}
+
+/** 工程の状態を更新する（ガント画面から呼ばれる） */
+function updateItemStatus(key, status) {
+  if (STATUS_LIST.indexOf(status) < 0) throw new Error('不正な状態です: ' + status);
+  var t = readTable_(SHEET.SCHEDULE);
+  var idx = headerIndex_(t.headers);
+  var target = null;
+  for (var i = 0; i < t.rows.length; i++) {
+    if (String(t.rows[i]['キー']).trim() === key) { target = t.rows[i]; break; }
+  }
+  if (!target) throw new Error('工程が見つかりません: ' + key);
+
+  t.sheet.getRange(target._row, idx['状態']).setValue(status);
+  if (idx['完']) t.sheet.getRange(target._row, idx['完']).setValue(status === STATUS.DONE);
+  if (idx['完了日']) {
+    t.sheet.getRange(target._row, idx['完了日'])
+      .setValue(status === STATUS.DONE ? keyToSheetDate_(todayKey_()) : '');
+  }
+  return { key: key, status: status };
+}
+
+/** 基準日（審査会日など）を変更して、その回次の工程を組み直す */
+function updateAnchorDate(workId, period, dateKey) {
+  keyToDate(dateKey); // 形式チェック
+  var t = readTable_(SHEET.ANCHOR);
+  var idx = headerIndex_(t.headers);
+  var target = null;
+  for (var i = 0; i < t.rows.length; i++) {
+    if (String(t.rows[i]['業務ID']).trim() === workId && String(t.rows[i]['回次']).trim() === period) {
+      target = t.rows[i];
+      break;
+    }
+  }
+  if (!target) throw new Error('基準日の行が見つかりません: ' + workId + ' ' + period);
+  t.sheet.getRange(target._row, idx['基準日']).setValue(keyToSheetDate_(dateKey));
+  if (idx['生成元']) t.sheet.getRange(target._row, idx['生成元']).setValue('手動');
+  var result = generateSchedules();
+  log_('基準日変更', true, workId + ' ' + period + ' → ' + dateKey);
+  return result;
+}
+
+
+// ===========================================================================
+// 18_template_editor.gs
+// ===========================================================================
+
+/**
+ * 工程テンプレート編集画面のバックエンドと、テンプレートの受け渡し（JSON）
+ */
+
+/** 編集画面の初期データ */
+function getEditorData() {
+  var settings = getSettings_();
+  var today = todayKey_();
+  var works = readTable_(SHEET.WORK).rows.filter(function (w) {
+    return String(w['業務ID']).trim();
+  }).map(function (w, i) {
+    return {
+      id: String(w['業務ID']).trim(),
+      name: w['業務名'],
+      anchorName: w['基準日名称'] || '基準日',
+      rule: w['基準日ルール'],
+      adjust: w['基準日休日補正'],
+      enabled: !/^(off|false|いいえ|無効|0)$/i.test(String(w['有効']).trim()),
+      color: w['色'] || COLOR_ORDER[i % COLOR_ORDER.length]
+    };
+  });
+
+  var templates = {};
+  readTable_(SHEET.TEMPLATE).rows.forEach(function (r) {
+    var id = String(r['業務ID']).trim();
+    if (!id) return;
+    if (!templates[id]) templates[id] = [];
+    templates[id].push({
+      seq: r['工程No'],
+      name: String(r['工程名'] || ''),
+      base: String(r['基準'] || ''),
+      direction: String(r['方向'] || '前'),
+      days: r['日数'] === '' || r['日数'] === null ? 0 : Number(r['日数']),
+      unit: String(r['単位'] || '営業日'),
+      adjust: String(r['休日補正'] || '前営業日'),
+      owner: String(r['担当'] || ''),
+      remindDays: r['リマインド営業日前'],
+      note: String(r['備考'] || '')
+    });
+  });
+  Object.keys(templates).forEach(function (id) {
+    templates[id].sort(function (a, b) { return (Number(a.seq) || 0) - (Number(b.seq) || 0); });
+  });
+
+  var nextAnchors = {};
+  readTable_(SHEET.ANCHOR).rows.forEach(function (a) {
+    var id = String(a['業務ID']).trim();
+    var key = toDateKey(a['基準日']);
+    if (!id || !key || key < today) return;
+    if (!nextAnchors[id] || key < nextAnchors[id].dateKey) {
+      nextAnchors[id] = { dateKey: key, period: String(a['回次']).trim() };
+    }
+  });
+
+  return {
+    today: today,
+    works: works,
+    templates: templates,
+    nextAnchors: nextAnchors,
+    defaultRemind: settingNumber_(settings, '既定リマインド営業日前', 3),
+    colors: COLOR_ORDER
+  };
+}
+
+/**
+ * 保存せずに日付だけ計算して返す（編集画面のプレビュー用）
+ * @param {Array} rows 編集中の工程行
+ * @param {string} anchorKey 基準日
+ * @param {string} anchorName 基準日名称
+ */
+function previewSchedule(rows, anchorKey, anchorName) {
+  var cal = loadBusinessCalendar_();
+  var input = (rows || []).map(function (r, i) {
+    return {
+      seq: r.seq === '' || r.seq === undefined ? (i + 1) * 10 : r.seq,
+      name: r.name, base: r.base, direction: r.direction, days: r.days,
+      unit: r.unit, adjust: r.adjust, owner: r.owner, remindDays: r.remindDays, note: r.note
+    };
+  });
+  try {
+    var computed = computeSchedule(input, anchorKey, cal, anchorName);
+    return {
+      ok: true,
+      items: computed.map(function (r) {
+        return {
+          seq: r.seq, name: r.name, dateKey: r.dateKey,
+          weekday: WEEKDAY_LABELS[dayOfWeek(r.dateKey)],
+          isBusinessDay: isBusinessDay(cal, r.dateKey)
+        };
+      })
+    };
+  } catch (e) {
+    return { ok: false, message: e.message };
+  }
+}
+
+/** 1業務分の工程テンプレートを保存し、工程表を作り直す */
+function saveTemplate(workId, rows) {
+  workId = String(workId).trim();
+  if (!workId) throw new Error('業務IDが指定されていません');
+
+  var t = readTable_(SHEET.TEMPLATE);
+  var kept = t.rows.filter(function (r) { return String(r['業務ID']).trim() !== workId; });
+
+  var seen = {};
+  var added = (rows || []).map(function (r, i) {
+    var name = String(r.name || '').trim();
+    if (!name) throw new Error((i + 1) + '行目の工程名が空です');
+    if (seen[name]) throw new Error('工程名が重複しています: ' + name);
+    seen[name] = true;
+    return {
+      '業務ID': workId,
+      '工程No': r.seq === '' || r.seq === undefined || r.seq === null ? (i + 1) * 10 : Number(r.seq),
+      '工程名': name,
+      '基準': String(r.base || ''),
+      '方向': String(r.direction || '前'),
+      '日数': Number(r.days) || 0,
+      '単位': String(r.unit || '営業日'),
+      '休日補正': String(r.adjust || '前営業日'),
+      '担当': String(r.owner || ''),
+      'リマインド営業日前': r.remindDays === '' || r.remindDays === null || r.remindDays === undefined ? '' : Number(r.remindDays),
+      '備考': String(r.note || '')
+    };
+  });
+
+  // 保存前に必ず計算が通ることを確かめる（循環参照などをここで弾く）
+  var work = findWork_(workId);
+  var cal = loadBusinessCalendar_();
+  computeSchedule(added.map(function (r) {
+    return {
+      seq: r['工程No'], name: r['工程名'], base: r['基準'], direction: r['方向'],
+      days: r['日数'], unit: r['単位'], adjust: r['休日補正']
+    };
+  }), todayKey_(), cal, work ? work['基準日名称'] : '');
+
+  var merged = kept.map(function (r) {
+    var o = {};
+    t.headers.forEach(function (h) { if (h) o[h] = r[h]; });
+    return o;
+  }).concat(added);
+
+  replaceTable_(SHEET.TEMPLATE, merged);
+  applyValidations_();
+  var result = generateSchedules();
+  log_('テンプレート保存', result.errors.length === 0, workId + ' / ' + added.length + '工程');
+  return result;
+}
+
+function findWork_(workId) {
+  var rows = readTable_(SHEET.WORK).rows;
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i]['業務ID']).trim() === String(workId).trim()) return rows[i];
+  }
+  return null;
+}
+
+/** 業務マスタ1件を保存（新規追加も可） */
+function saveWork(work) {
+  var id = String(work.id || '').trim();
+  if (!id) throw new Error('業務IDを入力してください');
+  if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new Error('業務IDは半角英数字・ハイフン・アンダースコアで入力してください');
+  if (work.rule) parseRecurrence(work.rule); // 書式チェック
+
+  var t = readTable_(SHEET.WORK);
+  var idx = headerIndex_(t.headers);
+  var target = null;
+  for (var i = 0; i < t.rows.length; i++) {
+    if (String(t.rows[i]['業務ID']).trim() === id) { target = t.rows[i]; break; }
+  }
+  var values = {
+    '業務ID': id,
+    '業務名': String(work.name || id),
+    '有効': work.enabled === false ? 'OFF' : 'ON',
+    '基準日名称': String(work.anchorName || '基準日'),
+    '基準日ルール': String(work.rule || ''),
+    '基準日休日補正': String(work.adjust || '前営業日'),
+    '色': String(work.color || '青'),
+    '備考': String(work.note || '')
+  };
+  if (target) {
+    Object.keys(values).forEach(function (h) {
+      if (idx[h]) t.sheet.getRange(target._row, idx[h]).setValue(values[h]);
+    });
+  } else {
+    appendRows_(SHEET.WORK, [values]);
+  }
+  applyValidations_();
+  return generateSchedules();
+}
+
+// ---- テンプレートの受け渡し（JSON） ----
+
+/** 業務マスタ＋工程テンプレートを JSON 文字列で書き出す（個人情報は含まない） */
+function exportTemplatesJson() {
+  var works = readTable_(SHEET.WORK).rows.filter(function (w) { return String(w['業務ID']).trim(); });
+  var templates = readTable_(SHEET.TEMPLATE).rows.filter(function (r) { return String(r['業務ID']).trim(); });
+  var payload = {
+    format: 'gyomu-schedule-template',
+    version: 1,
+    exportedAt: todayKey_(),
+    works: works.map(function (w) {
+      return {
+        id: String(w['業務ID']).trim(), name: w['業務名'], enabled: w['有効'],
+        anchorName: w['基準日名称'], rule: w['基準日ルール'], adjust: w['基準日休日補正'],
+        color: w['色'], note: w['備考']
+      };
+    }),
+    templates: templates.map(function (r) {
+      return {
+        workId: String(r['業務ID']).trim(), seq: r['工程No'], name: r['工程名'], base: r['基準'],
+        direction: r['方向'], days: r['日数'], unit: r['単位'], adjust: r['休日補正'],
+        owner: r['担当'], remindDays: r['リマインド営業日前'], note: r['備考']
+      };
+    })
+  };
+  return JSON.stringify(payload, null, 2);
+}
+
+/**
+ * JSON を読み込む。
+ * @param {string} json
+ * @param {string} mode 'merge'（同じ業務IDは上書き）/ 'replace'（既存を全部消してから読み込む）
+ */
+function importTemplatesJson(json, mode) {
+  var payload;
+  try {
+    payload = JSON.parse(json);
+  } catch (e) {
+    throw new Error('JSONとして読めません: ' + e.message);
+  }
+  if (!payload || payload.format !== 'gyomu-schedule-template') {
+    throw new Error('このツールが書き出した形式ではありません（format が一致しません）');
+  }
+  if (!payload.works || !payload.templates) throw new Error('works / templates が含まれていません');
+
+  var incomingIds = {};
+  payload.works.forEach(function (w) { incomingIds[String(w.id).trim()] = true; });
+
+  var workRows, tplRows;
+  if (mode === 'replace') {
+    workRows = [];
+    tplRows = [];
+  } else {
+    workRows = readTable_(SHEET.WORK).rows.filter(function (w) {
+      return String(w['業務ID']).trim() && !incomingIds[String(w['業務ID']).trim()];
+    }).map(function (w) { return pickHeaders_(w, SHEET.WORK); });
+    tplRows = readTable_(SHEET.TEMPLATE).rows.filter(function (r) {
+      return String(r['業務ID']).trim() && !incomingIds[String(r['業務ID']).trim()];
+    }).map(function (r) { return pickHeaders_(r, SHEET.TEMPLATE); });
+  }
+
+  payload.works.forEach(function (w) {
+    if (w.rule) parseRecurrence(w.rule);
+    workRows.push({
+      '業務ID': String(w.id).trim(), '業務名': w.name || w.id, '有効': w.enabled || 'ON',
+      '基準日名称': w.anchorName || '基準日', '基準日ルール': w.rule || '',
+      '基準日休日補正': w.adjust || '前営業日', '色': w.color || '青', '備考': w.note || ''
+    });
+  });
+  payload.templates.forEach(function (r) {
+    tplRows.push({
+      '業務ID': String(r.workId).trim(), '工程No': r.seq, '工程名': r.name, '基準': r.base || '',
+      '方向': r.direction || '前', '日数': r.days || 0, '単位': r.unit || '営業日',
+      '休日補正': r.adjust || '前営業日', '担当': r.owner || '',
+      'リマインド営業日前': r.remindDays === undefined ? '' : r.remindDays, '備考': r.note || ''
+    });
+  });
+
+  replaceTable_(SHEET.WORK, workRows);
+  replaceTable_(SHEET.TEMPLATE, tplRows);
+  applyValidations_();
+  var result = generateSchedules();
+  log_('テンプレート読込', result.errors.length === 0,
+    '業務 ' + payload.works.length + '件 / 工程 ' + payload.templates.length + '件（' + mode + '）');
+  return result;
+}
+
+function pickHeaders_(row, sheetName) {
+  var headers = readTable_(sheetName).headers;
+  var o = {};
+  headers.forEach(function (h) { if (h) o[h] = row[h]; });
+  return o;
+}
+
+function showTemplateExport() {
+  var tpl = HtmlService.createTemplateFromFile('json');
+  tpl.mode = 'export';
+  tpl.payload = exportTemplatesJson();
+  SpreadsheetApp.getUi().showModalDialog(tpl.evaluate().setWidth(720).setHeight(620), 'テンプレートの書き出し');
+}
+
+function showTemplateImport() {
+  var tpl = HtmlService.createTemplateFromFile('json');
+  tpl.mode = 'import';
+  tpl.payload = '';
+  SpreadsheetApp.getUi().showModalDialog(tpl.evaluate().setWidth(720).setHeight(620), 'テンプレートの読み込み');
+}
