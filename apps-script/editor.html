@@ -91,6 +91,12 @@
   .anchor-empty { font-size:11.5px; color:var(--muted); }
   .anchor-add { display:inline-flex; align-items:center; gap:5px; }
   .anchor-add input { font-size:11.5px; padding:4px 7px; }
+  .auto-line { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:8px; }
+  .linklike {
+    border:none; background:none; color:var(--accent); font-size:11.5px;
+    padding:2px 0; text-decoration:underline; text-underline-offset:3px;
+  }
+  .linklike:hover { background:none; opacity:.8; }
 
   .hint { font-size:11.5px; color:var(--muted); line-height:1.7; margin:0 0 14px; }
   .hint b { color:var(--text); }
@@ -270,8 +276,7 @@
       <p class="hint">
         <b>起点の日は、その業務で一番動かせない日のことです。</b>
         審査会のような会議日でなくても、<b>締切日・発送日・受付開始日</b>など、
-        すでに決まっている日を選べば構いません。決まった周期がなければ
-        「決まっていない」にして、下の［起点の日］に日付を足していきます。<br>
+        すでに決まっている日で構いません。上の［起点の日］に日付を足していきます。<br>
         各工程は「<b>どこを基準に、何日ずらすか</b>」の一文で決まります。基準には
         <b>前の工程</b>も選べるので、「決裁完了は起案から3営業日後」のような連鎖もそのまま書けます。
         右端の日付が、その設定で実際に何日になるかです。
@@ -436,6 +441,7 @@
   }
 
   function selectWork(id) {
+    ruleOpen = false;
     document.getElementById('btnSave').disabled = false;
     document.getElementById('btnAddRow').disabled = false;
     current = id;
@@ -450,6 +456,8 @@
     preview();
   }
 
+  var ruleOpen = false;
+
   /** その業務の「起点の日」を並べ、手で足したり消したりできるようにする */
   function renderAnchors() {
     var box = document.getElementById('anchorBox');
@@ -462,8 +470,8 @@
     var head = el('div', 'anchor-head');
     head.appendChild(el('span', 'anchor-title', '起点の日（' + (w.anchorName || '基準日') + '）'));
     head.appendChild(el('span', 'anchor-note', manual
-      ? '決まった周期がないので、ここに日付を足してください'
-      : '周期から自動で並びます。臨時の回はここに足せます'));
+      ? 'この業務の起点になる日を足してください'
+      : '「' + ruleSummary(w.rule) + '」で自動的に並びます。臨時の回はここに足せます'));
     box.appendChild(head);
 
     var chips = el('div', 'anchor-chips');
@@ -513,6 +521,18 @@
     add.appendChild(btn);
     chips.appendChild(add);
     box.appendChild(chips);
+
+    // 決まった周期がある業務だけの設定なので、折りたたんでおく
+    var auto = el('div', 'auto-line');
+    var toggle = el('button', 'linklike');
+    toggle.type = 'button';
+    toggle.textContent = ruleOpen
+      ? '自動で並べる設定を閉じる'
+      : (manual ? '決まった周期があるなら自動で並べる' : '自動で並べる設定：' + ruleSummary(w.rule) + '（変更）');
+    toggle.onclick = function () { ruleOpen = !ruleOpen; renderAnchors(); };
+    auto.appendChild(toggle);
+    if (ruleOpen) auto.appendChild(buildRuleControls(w));
+    box.appendChild(auto);
   }
 
   // ---------- 業務設定 ----------
@@ -536,8 +556,6 @@
     anchorName.title = 'この業務の起点の呼び方。審査会・締切日・発送日・受付開始など自由に決められます';
     anchorName.onchange = function () { w.anchorName = anchorName.value; renderRows(); saveWorkMeta(); };
     box.appendChild(field('起点の日の呼び方', anchorName));
-
-    box.appendChild(buildRuleField(w));
 
     box.appendChild(field('起点が休日なら',
       select(ADJUSTS, w.adjust || '前営業日', function (v) { w.adjust = v; saveWorkMeta(); })));
@@ -575,18 +593,13 @@
     return spec.text || '手動';
   }
 
-  /** 「起点の日はいつ来るか」を選ぶ欄 */
-  function buildRuleField(w) {
-    var wrap = el('label', 'field');
-    wrap.appendChild(el('span', '', '起点の日はいつ？'));
+  /** 決まった周期がある場合に、起点の日を自動で並べる設定 */
+  function buildRuleControls(w) {
     var line = el('div', 'rule-line');
-    wrap.appendChild(line);
-
     var spec = parseRule(w.rule);
 
     function commit() {
       w.rule = buildRule(spec);
-      renderWorkBox();
       saveWorkMeta();
       renderAnchors();
     }
@@ -599,11 +612,11 @@
     }
 
     line.appendChild(select([
+      { value: 'manual', label: '自動で並べない（日付を手で足す）' },
       { value: 'monthlyNth', label: '毎月・第N曜日' },
       { value: 'monthlyDay', label: '毎月・決まった日' },
       { value: 'monthlyLast', label: '毎月・末日' },
       { value: 'yearly', label: '年に1回' },
-      { value: 'manual', label: '決まっていない（その都度入力）' },
       { value: 'custom', label: 'そのほか（自由入力）' }
     ], spec.kind, function (v) {
       var next = { kind: v };
@@ -634,10 +647,19 @@
       t.title = '例）2ヶ月毎第2水 起点2026-04';
       t.onchange = function () { spec.text = t.value; commit(); };
       line.appendChild(t);
-    } else {
-      line.appendChild(el('span', 'unit-text', '下の「起点の日」で日付を足します'));
     }
-    return wrap;
+    return line;
+  }
+
+  /** 周期の設定内容を1行で言い表す */
+  function ruleSummary(rule) {
+    var spec = parseRule(rule);
+    if (spec.kind === 'manual') return '日付を手で足す';
+    if (spec.kind === 'monthlyNth') return '毎月 第' + spec.nth + spec.wday + '曜日';
+    if (spec.kind === 'monthlyDay') return '毎月 ' + spec.day + '日';
+    if (spec.kind === 'monthlyLast') return '毎月 末日';
+    if (spec.kind === 'yearly') return '毎年 ' + spec.month + '月' + spec.day + '日';
+    return String(rule || '');
   }
 
   function saveWorkMeta() {
@@ -653,7 +675,7 @@
   // ---------- 工程カード ----------
   function baseOptions(index) {
     var w = work();
-    var list = [{ value:'', label:w.anchorName + '（基準日）' }];
+    var list = [{ value:'', label:w.anchorName + '（起点）' }];
     rows.forEach(function (r, i) {
       if (i === index || !r.name) return;
       list.push({ value:r.name, label:r.name });
@@ -961,20 +983,13 @@
       'この業務の起点になる日を何と呼びますか。\n\n'
       + '例）審査会、受付開始、処理締切', '審査会');
     if (!anchorName) return;
-    var rule = prompt(
-      '起点の日はどの周期で来ますか。\n\n'
-      + '毎月第2水 ／ 毎月15日 ／ 毎月末日\n'
-      + '2ヶ月毎第2水 起点2026-04 ／ 毎年9月1日\n'
-      + '手動（自分で日付を入れる）', '毎月第2水');
-    if (!rule) return;
-
     pendingWorkId = id.trim();
     setMsg('追加中…');
     google.script.run
       .withSuccessHandler(function () { setMsg('業務を追加しました', 'ok'); load(); })
       .withFailureHandler(function (e) { pendingWorkId = null; setMsg(e.message, 'err'); })
       .saveWork({ id: id.trim(), name: name, enabled: true, anchorName: anchorName,
-                  rule: rule, adjust: '前営業日', color: '青' });
+                  rule: '手動', adjust: '前営業日', color: '青' });
   }
 
   document.getElementById('btnAddWork').onclick = addWork;
