@@ -140,6 +140,45 @@ async function main() {
   check('既定は「日付指定」', def.mode === '日付指定', def.mode);
   check('日付に今日が入る', def.date === '2026-09-09', def.date);
 
+  // ---- 前の工程を基準にできること ----
+  console.log('\n他の工程を基準にする');
+  await page.selectOption('#workSel', 'NAN');
+  await page.waitForTimeout(700);
+  const baseSel = await page.evaluate(() => {
+    const sels = [...document.querySelectorAll('[data-focus="base"]')];
+    // 前の工程を基準にしている行（「審査結果の整理・記録作成」など）を見る
+    const sel = sels.find(s => s.value !== '') || sels[0];
+    return {
+      groups: [...sel.querySelectorAll('optgroup')].map(g => g.label),
+      steps: [...sel.querySelectorAll('optgroup')].slice(1).flatMap(
+        g => [...g.querySelectorAll('option')].map(o => o.value)),
+      value: sel.value
+    };
+  });
+  check('「起点」と「他の工程」が分かれている', baseSel.groups.length === 2, JSON.stringify(baseSel.groups));
+  check('他の工程が選択肢に並ぶ', baseSel.steps.length > 3, baseSel.steps.length + ' 件');
+  check('前の工程が基準として選ばれている', baseSel.value !== '', baseSel.value);
+
+  // ---- 打っている最中は計算し直さないこと ----
+  console.log('\n入力中は再計算しない');
+  const before = await page.evaluate(() => {
+    document.querySelector('.step .name-row input').focus();
+    return window.MOCK_CALLS.previewSchedule || 0;
+  });
+  await page.keyboard.type('かきくけこ', { delay: 60 });
+  await page.waitForTimeout(700);
+  const duringTyping = await page.evaluate(() => window.MOCK_CALLS.previewSchedule || 0);
+  check('打っている間は1回も計算しない', duringTyping === before,
+    (duringTyping - before) + ' 回呼ばれた');
+  const stale = await page.evaluate(() => document.getElementById('preview').classList.contains('stale'));
+  check('未反映であることが見て分かる', stale);
+  await page.evaluate(() => document.querySelector('.step .name-row input').blur());
+  await page.waitForTimeout(500);
+  const afterBlur = await page.evaluate(() => window.MOCK_CALLS.previewSchedule || 0);
+  check('欄から離れたら1回だけ計算する', afterBlur - before === 1, (afterBlur - before) + ' 回');
+  const cleared = await page.evaluate(() => document.getElementById('preview').classList.contains('stale'));
+  check('反映されたら薄い表示が戻る', !cleared);
+
   await page.screenshot({ path: path.join(OUT, 'editor-interact.png'), fullPage: false });
   await browser.close();
 

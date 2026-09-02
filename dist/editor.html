@@ -229,6 +229,8 @@
   .pv-waiting-head { font-weight:700; color:var(--warn); }
   .pv-waiting-list { margin:5px 0 5px 2px; }
   .pv-waiting-note { color:var(--muted); font-size:11px; }
+  /* 入力中で、まだ計算し直していない状態 */
+  .stale { opacity:.45; transition:opacity .15s var(--ease); }
 
   #msg { font-size:12px; display:inline-flex; align-items:center; gap:5px; }
   #msg.err { color:var(--danger); }
@@ -329,7 +331,6 @@
   var rows = [];        // 編集中の工程
   var opened = {};      // 詳細を開いている行
   var dueByIndex = {};  // 行ごとの算出日
-  var timer = null;
   var dragFrom = null;
 
   var UNITS = ['営業日', '暦日'];
@@ -734,15 +735,32 @@
   }
 
   // ---------- 工程カード ----------
-  function baseOptions(index) {
+  /**
+   * 「基準」の選択肢を入れる。
+   * 起点の日だけでなく前後の工程も選べることが分かるよう、見出しを付けて分ける。
+   */
+  function fillBaseSelect(sel, index, value) {
     var w = work();
     var an = String(w.anchorName || '').trim();
-    var list = [{ value:'', label: (an && an !== '起点') ? an + '（起点）' : '起点の日' }];
+    sel.innerHTML = '';
+
+    var g1 = document.createElement('optgroup');
+    g1.label = 'この業務の起点';
+    g1.appendChild(opt('', (an && an !== '起点') ? an + '（起点の日）' : '起点の日', !value));
+    sel.appendChild(g1);
+
+    var others = [];
     rows.forEach(function (r, i) {
       if (i === index || !r.name) return;
-      list.push({ value:r.name, label:r.name });
+      others.push(r.name);
     });
-    return list;
+    if (others.length) {
+      var g2 = document.createElement('optgroup');
+      g2.label = '他の工程';
+      others.forEach(function (name) { g2.appendChild(opt(name, name, name === value)); });
+      sel.appendChild(g2);
+    }
+    sel.value = value || '';
   }
 
   /**
@@ -803,12 +821,7 @@
       var i = Number(card.dataset.index);
       var sel = card.querySelector('[data-focus="base"]');
       if (!sel) return;
-      var keep = rows[i].base || '';
-      sel.innerHTML = '';
-      baseOptions(i).forEach(function (o) {
-        sel.appendChild(opt(o.value, o.label, o.value === keep));
-      });
-      sel.value = keep;
+      fillBaseSelect(sel, i, rows[i].base || '');
     });
   }
 
@@ -889,7 +902,7 @@
     name.dataset.focus = 'name';
     // 打つたびに作り直すと入力中の文字が消えるため、model の更新と再計算だけにする
     var prevName = r.name || '';
-    name.oninput = function () { r.name = name.value; schedulePreview(); };
+    name.oninput = function () { r.name = name.value; markStale(); };
     name.onchange = function () {
       // 名前を変えたら、この工程を基準にしている工程の指定も追従させる
       if (prevName && name.value && name.value !== prevName) {
@@ -897,7 +910,7 @@
       }
       prevName = name.value;
       refreshBaseOptions();
-      schedulePreview();
+      preview();
     };
     nameRow.appendChild(name);
     nameRow.appendChild(dueBadge(i, r));
@@ -908,14 +921,16 @@
     var fixed = isFixed(r);
     var ranged = hasRange(r);
 
+    // シートに入る値は「起点から」「日付指定」のまま。
+    // 画面の文言だけ、前の工程も基準にできることが分かるようにしている。
     var modeSel = select([
-      { value: '起点から', label: '起点から' },
-      { value: '日付指定', label: '日付指定' }
+      { value: '起点から', label: '基準から数える' },
+      { value: '日付指定', label: '日付を指定' }
     ], fixed ? '日付指定' : '起点から', function (v) {
       r.mode = v;
       if (v === '日付指定' && !r.startDate) r.startDate = DATA.today;
       renderRows();
-      schedulePreview();
+      preview();
     }, 'mode', '日付の決め方');
     modeSel.dataset.focus = 'mode';
     sen.appendChild(modeSel);
@@ -929,7 +944,7 @@
         r.startDate = sd.value;
         var e2 = sen.querySelector('[data-focus="endDate"]');
         if (e2) e2.min = r.startDate || '';
-        schedulePreview();
+        preview();
       };
       sen.appendChild(sd);
 
@@ -940,7 +955,7 @@
         ed.min = r.startDate || '';
         ed.setAttribute('aria-label', '終了日');
         ed.dataset.focus = 'endDate';
-        ed.onchange = function () { r.endDate = ed.value; schedulePreview(); };
+        ed.onchange = function () { r.endDate = ed.value; preview(); };
         sen.appendChild(ed);
       }
     } else {
@@ -952,11 +967,14 @@
         sen.appendChild(chain);
       }
 
-      var baseSel = select(baseOptions(i), base, function (v) {
-        r.base = v;
+      var baseSel = el('select', 'base');
+      baseSel.setAttribute('aria-label', '基準にする日。起点の日か、他の工程を選べます');
+      fillBaseSelect(baseSel, i, base);
+      baseSel.onchange = function () {
+        r.base = baseSel.value;
         renderRows();
-        schedulePreview();
-      }, 'base', '基準にする工程');
+        preview();
+      };
       baseSel.dataset.focus = 'base';
       if (baseSel.selectedIndex >= 0) baseSel.title = baseSel.options[baseSel.selectedIndex].textContent;
       sen.appendChild(baseSel);
@@ -971,14 +989,15 @@
         r.days = Number(days.value);
         var hint = sen.querySelector('.same-day');
         if (hint) hint.hidden = !(!hasRange(r) && Number(r.days) === 0);
-        schedulePreview();
+        markStale();
       };
+      days.onchange = preview;
       sen.appendChild(days);
 
-      var unitSel = select(UNITS, r.unit || '営業日', function (v) { r.unit = v; schedulePreview(); }, 'unit', '日数の単位');
+      var unitSel = select(UNITS, r.unit || '営業日', function (v) { r.unit = v; preview(); }, 'unit', '日数の単位');
       unitSel.dataset.focus = 'unit';
       sen.appendChild(unitSel);
-      var dirSel = select(DIRS, r.direction || '前', function (v) { r.direction = v; schedulePreview(); }, 'dir', '基準より前か後か');
+      var dirSel = select(DIRS, r.direction || '前', function (v) { r.direction = v; preview(); }, 'dir', '基準より前か後か');
       dirSel.dataset.focus = 'dir';
       sen.appendChild(dirSel);
 
@@ -989,10 +1008,11 @@
         ends.value = r.endDays === '' || r.endDays === undefined ? 0 : r.endDays;
         ends.setAttribute('aria-label', '終了までの日数');
         ends.dataset.focus = 'endDays';
-        ends.oninput = function () { r.endDays = Number(ends.value); schedulePreview(); };
+        ends.oninput = function () { r.endDays = Number(ends.value); markStale(); };
+        ends.onchange = preview;
         sen.appendChild(ends);
         var endDir = select(DIRS, r.endDirection || r.direction || '前',
-          function (v) { r.endDirection = v; schedulePreview(); }, 'dir', '終了は基準より前か後か');
+          function (v) { r.endDirection = v; preview(); }, 'dir', '終了は基準より前か後か');
         endDir.dataset.focus = 'endDir';
         sen.appendChild(endDir);
         sen.appendChild(el('span', '', 'まで'));
@@ -1020,7 +1040,7 @@
         r.endDirection = r.direction || '前';
       }
       renderRows();
-      schedulePreview();
+      preview();
     };
     sen.appendChild(rangeBtn);
 
@@ -1046,7 +1066,7 @@
       if (!confirm('「' + (r.name || '無題') + '」を削除しますか？')) return;
       rows.splice(i, 1);
       opened = {};
-      renumber(); renderRows(); schedulePreview();
+      renumber(); renderRows(); preview();
     };
     more.appendChild(del);
     sen.appendChild(more);
@@ -1087,7 +1107,7 @@
     d.appendChild(field('何営業日前から通知', rem));
 
     d.appendChild(field('計算結果が休日のとき',
-      select(ADJUSTS, r.adjust || '前営業日', function (v) { r.adjust = v; schedulePreview(); })));
+      select(ADJUSTS, r.adjust || '前営業日', function (v) { r.adjust = v; preview(); })));
 
     var noteWrap = el('div', 'field note-field');
     noteWrap.appendChild(el('span', '', 'メモ（この工程で何をするか）'));
@@ -1154,7 +1174,7 @@
     var item = rows.splice(from, 1)[0];
     rows.splice(to, 0, item);
     opened = {};
-    renumber(); renderRows(); schedulePreview();
+    renumber(); renderRows(); preview();
   }
 
   function renumber() { rows.forEach(function (r, i) { r.seq = (i + 1) * 10; }); }
@@ -1215,9 +1235,19 @@
   document.getElementById('btnPreview').onclick = preview;
   document.getElementById('anchorInput').onchange = preview;
 
-  function schedulePreview() {
-    clearTimeout(timer);
-    timer = setTimeout(preview, 450);
+  /**
+   * 打っている最中は計算し直さない。
+   * 欄から離れたとき・選び直したとき・工程を足したときに更新する。
+   * 打っている間は「まだ反映していない」ことだけ薄く見せる。
+   */
+  function markStale() {
+    document.getElementById('preview').classList.add('stale');
+    document.getElementById('pvSummary').classList.add('stale');
+  }
+
+  function clearStale() {
+    document.getElementById('preview').classList.remove('stale');
+    document.getElementById('pvSummary').classList.remove('stale');
   }
 
   /**
@@ -1227,7 +1257,6 @@
   var previewSeq = 0;
 
   function preview() {
-    clearTimeout(timer);
     var anchor = document.getElementById('anchorInput').value.trim();
     var box = document.getElementById('preview');
     var sum = document.getElementById('pvSummary');
@@ -1241,6 +1270,7 @@
     });
 
     var my = ++previewSeq;
+    clearStale();
     if (!payload.length) {
       dueByIndex = {};
       updateBadges();

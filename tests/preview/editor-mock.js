@@ -140,6 +140,7 @@
    * 応答がわざと前後するようにして、古い応答で画面が壊れないかも試せるようにした。
    */
   window.MOCK_DELAY = function () { return 10; };
+  window.MOCK_CALLS = {};
 
   function makeRunner() {
     var ok = null, ng = null;
@@ -150,6 +151,8 @@
         return function () {
           var args = Array.prototype.slice.call(arguments);
           var fn = handlers[prop];
+          // どの処理が何回呼ばれたかを数える（操作テスト用）
+          window.MOCK_CALLS[prop] = (window.MOCK_CALLS[prop] || 0) + 1;
           var onOk = ok, onNg = ng;
           ok = null; ng = null;
           setTimeout(function () {
