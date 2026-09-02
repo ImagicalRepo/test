@@ -406,6 +406,54 @@ check('日付種別が空でも開始日があれば日付指定として扱う'
   eq(G.rowMode({ mode: '起点から', startDate: '2026-09-14' }), 'relative', '明示指定を優先する');
 });
 
+// ---------------------------------------------------------------
+group('起点の日が無い業務');
+
+check('日付指定の工程は起点が無くても決まる', () => {
+  const rows = G.computeSchedule([
+    { seq: 10, name: '棚卸し', mode: '日付指定', startDate: '2026-09-14' }
+  ], '', cal, '審査会', { skipUnresolved: true });
+  eq(rows[0].dateKey, '2026-09-14');
+  eq(!!rows[0].unresolved, false);
+});
+
+check('日付指定から伸びる工程も起点なしで決まる', () => {
+  const rows = G.computeSchedule([
+    { seq: 10, name: '受付期間', mode: '日付指定', startDate: '2026-09-01', endDate: '2026-09-30' },
+    { seq: 20, name: '集計', base: '受付期間', direction: '後', days: 1, unit: '営業日', adjust: 'なし' }
+  ], '', cal, '審査会', { skipUnresolved: true });
+  eq(rows[1].dateKey, '2026-10-01');
+  eq(!!rows[1].unresolved, false);
+});
+
+check('起点からの工程は unresolved になる', () => {
+  const rows = G.computeSchedule([
+    { seq: 10, name: '締切', base: '', direction: '前', days: 20, unit: '営業日', adjust: 'なし' },
+    { seq: 20, name: '棚卸し', mode: '日付指定', startDate: '2026-09-14' }
+  ], '', cal, '審査会', { skipUnresolved: true });
+  eq(rows[0].unresolved, true);
+  eq(rows[0].dateKey, '');
+  eq(!!rows[1].unresolved, false, '日付指定は影響を受けない');
+});
+
+check('起点待ちの工程を基準にした工程も unresolved になる', () => {
+  const rows = G.computeSchedule([
+    { seq: 10, name: '締切', base: '', direction: '前', days: 20, unit: '営業日', adjust: 'なし' },
+    { seq: 20, name: '点検', base: '締切', direction: '後', days: 1, unit: '営業日', adjust: 'なし' }
+  ], '', cal, '審査会', { skipUnresolved: true });
+  eq(rows[0].unresolved, true);
+  eq(rows[1].unresolved, true);
+});
+
+check('skipUnresolved が無ければ起点なしはエラーにする', () => {
+  throws(() => G.computeSchedule([
+    { seq: 10, name: '締切', base: '', direction: '前', days: 20, unit: '営業日', adjust: 'なし' }
+  ], '', cal, '審査会'), /起点の日が登録されていません/);
+});
+
+// ---------------------------------------------------------------
+group('日付を直接指定する工程（つづき）');
+
 check('日付種別の表記ゆれを吸収する', () => {
   eq(G.normalizeMode(''), 'relative');
   eq(G.normalizeMode('起点から'), 'relative');

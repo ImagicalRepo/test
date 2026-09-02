@@ -34,7 +34,8 @@
     works: [
       { id:'NAN', name:'指定難病 医療費助成（月次審査会）', anchorName:'審査会', rule:'毎月第2水', adjust:'前営業日', enabled:true, color:'青' },
       { id:'KOSIN', name:'指定難病 更新申請（一斉更新）', anchorName:'受付開始', rule:'毎年9月1日', adjust:'翌営業日', enabled:true, color:'緑' },
-      { id:'SHOMAN', name:'小児慢性特定疾病 医療費助成', anchorName:'審査会', rule:'毎月第4火', adjust:'前営業日', enabled:true, color:'橙' }
+      { id:'SHOMAN', name:'小児慢性特定疾病 医療費助成', anchorName:'審査会', rule:'毎月第4火', adjust:'前営業日', enabled:true, color:'橙' },
+      { id:'W4', name:'起点の日がない業務（日付指定だけ）', anchorName:'起点', rule:'手動', adjust:'前営業日', enabled:true, color:'紫' }
     ],
     templates: {
       NAN: [
@@ -57,7 +58,12 @@
         fixed(170,'研修期間','2026-09-28','2026-09-30',3)
       ],
       KOSIN: [tpl(10,'更新案内の一斉発送','','前',10,'営業日',3,''), tpl(20,'更新申請 受付開始','','後',0,'営業日',1,'')],
-      SHOMAN: [tpl(10,'申請受付分の締切','','前',15,'営業日',3,''), tpl(20,'審査会','','後',0,'営業日',1,'')]
+      SHOMAN: [tpl(10,'申請受付分の締切','','前',15,'営業日',3,''), tpl(20,'審査会','','後',0,'営業日',1,'')],
+      W4: [
+        fixed(10,'月初の窓口点検','2026-09-01','',2),
+        fixed(20,'研修','2026-09-28','2026-09-30',3),
+        tpl(30,'起点からの工程（起点未登録）','','前',5,'営業日',3,'')
+      ]
     },
     nextAnchors: {
       NAN: { dateKey: '2026-09-09', period: '2026-09' },
@@ -92,23 +98,48 @@
                  startDate: r.startDate, endDate: r.endDate,
                  unit: r.unit, adjust: r.adjust };
       });
+      var key = /^\d{4}-\d{2}-\d{2}$/.test(String(anchorKey || '').trim())
+        ? String(anchorKey).trim() : '';
       try {
-        var computed = computeSchedule(input, anchorKey, cal, anchorName);
-        return { ok: true, items: computed.map(function (r) {
+        var computed = computeSchedule(input, key, cal, anchorName, { skipUnresolved: !key });
+        var needsAnchor = 0;
+        var items = computed.map(function (r) {
+          if (r.unresolved) {
+            needsAnchor++;
+            return { seq: r.seq, name: r.name, dateKey: '', endKey: '', unresolved: true };
+          }
           return { seq: r.seq, name: r.name, dateKey: r.dateKey, endKey: r.endKey || '',
                    weekday: WEEKDAY_LABELS[dayOfWeek(r.dateKey)],
                    endWeekday: r.endKey ? WEEKDAY_LABELS[dayOfWeek(r.endKey)] : '',
-                   isBusinessDay: isBusinessDay(cal, r.dateKey) };
-        }) };
+                   isBusinessDay: isBusinessDay(cal, r.dateKey), unresolved: false };
+        });
+        return { ok: true, items: items, needsAnchor: needsAnchor };
       } catch (e) {
         return { ok: false, message: e.message };
       }
     },
-    saveWork: function () { return { rows: 0, errors: [] }; },
+    saveWork: function (w) {
+      var id = String((w && w.id) || '').trim();
+      if (!id) {
+        for (var n = 1; !id; n++) {
+          var cand = 'W' + n;
+          if (!EDITOR_DATA.works.some(function (x) { return x.id === cand; })) id = cand;
+        }
+        EDITOR_DATA.works.push({ id:id, name:w.name, anchorName:w.anchorName || '起点',
+                                 rule:w.rule || '手動', adjust:'前営業日', enabled:true, color:'青' });
+      }
+      return { id: id, generate: { rows: 0, errors: [] } };
+    },
     saveTemplate: function () { return { rows: 42, errors: [] }; }
   };
 
   window.google = { script: { run: makeRunner(), host: { close: function () {} } } };
+
+  /**
+   * 本物の google.script.run と同じく、呼び出しごとにハンドラを束ねる。
+   * 応答がわざと前後するようにして、古い応答で画面が壊れないかも試せるようにした。
+   */
+  window.MOCK_DELAY = function () { return 10; };
 
   function makeRunner() {
     var ok = null, ng = null;
@@ -119,11 +150,13 @@
         return function () {
           var args = Array.prototype.slice.call(arguments);
           var fn = handlers[prop];
+          var onOk = ok, onNg = ng;
+          ok = null; ng = null;
           setTimeout(function () {
-            if (!fn) { if (ng) ng(new Error('未実装のモック: ' + String(prop))); return; }
-            try { if (ok) ok(fn.apply(null, args)); }
-            catch (e) { if (ng) ng(e); }
-          }, 10);
+            if (!fn) { if (onNg) onNg(new Error('未実装のモック: ' + String(prop))); return; }
+            try { if (onOk) onOk(fn.apply(null, args)); }
+            catch (e) { if (onNg) onNg(e); }
+          }, window.MOCK_DELAY(String(prop)));
         };
       }
     });

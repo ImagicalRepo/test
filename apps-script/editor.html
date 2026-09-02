@@ -151,6 +151,8 @@
   .due.anchor { background:var(--ok-soft); color:var(--ok); }
   .due.off { background:var(--warn-soft); color:var(--warn); }
   .due.none { background:var(--surface-3); color:var(--muted); font-weight:500; }
+  .due.wait { background:var(--warn-soft); color:var(--warn); font-size:11px; }
+  .same-day { color:var(--muted); }
 
   /* 「〔審査会〕の〔20〕〔営業日〕〔前〕」を一文として読ませる */
   .sentence { display:flex; align-items:center; gap:5px; flex-wrap:wrap; font-size:12px; color:var(--muted); }
@@ -220,6 +222,13 @@
     background:var(--surface); border:1px solid var(--danger); color:var(--danger);
     border-radius:8px; padding:9px 10px; font-size:11.5px; line-height:1.6; white-space:pre-wrap;
   }
+  .pv-waiting {
+    margin-top:12px; background:var(--warn-soft); border-radius:8px;
+    padding:9px 10px; font-size:11.5px; line-height:1.6; color:var(--text);
+  }
+  .pv-waiting-head { font-weight:700; color:var(--warn); }
+  .pv-waiting-list { margin:5px 0 5px 2px; }
+  .pv-waiting-note { color:var(--muted); font-size:11px; }
 
   #msg { font-size:12px; display:inline-flex; align-items:center; gap:5px; }
   #msg.err { color:var(--danger); }
@@ -282,12 +291,12 @@
       <div class="anchor-box" id="anchorBox"></div>
 
       <p class="hint">
-        <b>起点の日は、その業務で一番動かせない日のことです。</b>
-        審査会のような会議日でなくても、<b>締切日・発送日・受付開始日</b>など、
-        すでに決まっている日で構いません。上の［起点の日］に日付を足していきます。<br>
-        各工程は「<b>どこを基準に、何日ずらすか</b>」の一文で決まります。基準には
-        <b>前の工程</b>も選べるので、「決裁完了は起案から3営業日後」のような連鎖もそのまま書けます。
-        右端の日付が、その設定で実際に何日になるかです。
+        工程の日付は<b>［日付指定］</b>で「この日にやる」と直接書くのが基本です。<br>
+        <b>［起点から］</b>を選ぶと「<b>どこを基準に、何日ずらすか</b>」で決まります。
+        基準には<b>前の工程</b>も選べるので、「決裁完了は起案から3営業日後」のような連鎖もそのまま書けます。
+        審査会のように<b>回ごとに日が動く</b>業務は、上の［起点の日］にその日を足せば、
+        ［起点から］の工程がまとめて追随します。<br>
+        右端の日付が、その設定で実際に何日になるかです。［期間にする］で「◯日から◯日まで」にもできます。
       </p>
 
       <div class="steps" id="steps"></div>
@@ -467,8 +476,9 @@
     opened = {};
     document.getElementById('workSel').value = id;
     rows = (DATA.templates[id] || []).map(function (r) { return JSON.parse(JSON.stringify(r)); });
+    // 起点の日が無いなら空にする。今日を入れると「起点がある」ように見えてしまう
     var next = DATA.nextAnchors[id];
-    document.getElementById('anchorInput').value = next ? next.dateKey : DATA.today;
+    document.getElementById('anchorInput').value = next ? next.dateKey : '';
     renderWorkBox();
     renderAnchors();
     renderRows();
@@ -487,9 +497,11 @@
     var manual = parseRule(w.rule).kind === 'manual';
 
     var head = el('div', 'anchor-head');
-    head.appendChild(el('span', 'anchor-title', '起点の日（' + (w.anchorName || '基準日') + '）'));
+    var an = String(w.anchorName || '').trim();
+    head.appendChild(el('span', 'anchor-title',
+      (an && an !== '起点') ? '起点の日（' + an + '）' : '起点の日'));
     head.appendChild(el('span', 'anchor-note', manual
-      ? 'この業務の起点になる日を足してください'
+      ? '「起点から◯日」で決める工程がある場合だけ必要です'
       : '「' + ruleSummary(w.rule) + '」で自動的に並びます。臨時の回はここに足せます'));
     box.appendChild(head);
 
@@ -592,11 +604,19 @@
     box.appendChild(nameField);
 
     var anchorName = el('input');
-    anchorName.type = 'text'; anchorName.value = w.anchorName; anchorName.style.width = '96px';
-    anchorName.placeholder = '審査会';
-    anchorName.title = 'この業務の起点の呼び方。審査会・締切日・発送日・受付開始など自由に決められます';
-    anchorName.onchange = function () { w.anchorName = anchorName.value; renderRows(); saveWorkMeta(); };
-    box.appendChild(field('起点の日の呼び方', anchorName));
+    anchorName.type = 'text';
+    anchorName.value = (w.anchorName === '起点' ? '' : (w.anchorName || ''));
+    anchorName.style.width = '96px';
+    anchorName.placeholder = '起点';
+    anchorName.title = 'この業務の起点の呼び方。審査会・締切日・発送日など自由に決められます。'
+      + '空欄なら「起点」と表示します';
+    anchorName.onchange = function () {
+      w.anchorName = anchorName.value.trim() || '起点';
+      refreshBaseOptions();
+      renderAnchors();
+      saveWorkMeta();
+    };
+    box.appendChild(field('起点の日の呼び方（任意）', anchorName));
 
     box.appendChild(field('起点が休日なら',
       select(ADJUSTS, w.adjust || '前営業日', function (v) { w.adjust = v; saveWorkMeta(); })));
@@ -716,7 +736,8 @@
   // ---------- 工程カード ----------
   function baseOptions(index) {
     var w = work();
-    var list = [{ value:'', label:w.anchorName + '（起点）' }];
+    var an = String(w.anchorName || '').trim();
+    var list = [{ value:'', label: (an && an !== '起点') ? an + '（起点）' : '起点の日' }];
     rows.forEach(function (r, i) {
       if (i === index || !r.name) return;
       list.push({ value:r.name, label:r.name });
@@ -748,6 +769,47 @@
     if (k.caret !== null && target.setSelectionRange) {
       try { target.setSelectionRange(k.caret, k.caret); } catch (e) { /* 数値欄などでは無視 */ }
     }
+  }
+
+  /**
+   * 入力中に全体を作り直すと、打っている最中の欄が消えたりカレンダーが閉じたりする。
+   * 変わった部分だけを差し替えるための関数を用意し、
+   * renderRows() は工程の増減・並べ替え・決め方の切り替えのときだけ呼ぶ。
+   */
+  function stepEl(i) {
+    return document.querySelector('#steps .step[data-index="' + i + '"]');
+  }
+
+  /** 算出日のバッジだけ差し替える */
+  function updateBadges() {
+    Array.prototype.forEach.call(document.querySelectorAll('#steps .step'), function (card) {
+      var i = Number(card.dataset.index);
+      var old = card.querySelector('.name-row .due');
+      if (!old || !rows[i]) return;
+      card.querySelector('.name-row').replaceChild(dueBadge(i, rows[i]), old);
+    });
+  }
+
+  /** 折りたたみボタンの要約（担当・通知・メモ）だけ差し替える */
+  function refreshSummary(i) {
+    var card = stepEl(i);
+    var sum = card && card.querySelector('.more-sum');
+    if (sum) sum.textContent = detailSummary(rows[i]);
+  }
+
+  /** 工程名を変えたとき、他の工程の「基準」の選択肢だけ入れ替える */
+  function refreshBaseOptions() {
+    Array.prototype.forEach.call(document.querySelectorAll('#steps .step'), function (card) {
+      var i = Number(card.dataset.index);
+      var sel = card.querySelector('[data-focus="base"]');
+      if (!sel) return;
+      var keep = rows[i].base || '';
+      sel.innerHTML = '';
+      baseOptions(i).forEach(function (o) {
+        sel.appendChild(opt(o.value, o.label, o.value === keep));
+      });
+      sel.value = keep;
+    });
   }
 
   function renderRows() {
@@ -825,7 +887,18 @@
     name.placeholder = '工程名（例：封入封緘・点検）';
     name.setAttribute('aria-label', (i + 1) + '番目の工程名');
     name.dataset.focus = 'name';
-    name.onchange = function () { r.name = name.value; renderRows(); schedulePreview(); };
+    // 打つたびに作り直すと入力中の文字が消えるため、model の更新と再計算だけにする
+    var prevName = r.name || '';
+    name.oninput = function () { r.name = name.value; schedulePreview(); };
+    name.onchange = function () {
+      // 名前を変えたら、この工程を基準にしている工程の指定も追従させる
+      if (prevName && name.value && name.value !== prevName) {
+        rows.forEach(function (o) { if (o !== r && o.base === prevName) o.base = name.value; });
+      }
+      prevName = name.value;
+      refreshBaseOptions();
+      schedulePreview();
+    };
     nameRow.appendChild(name);
     nameRow.appendChild(dueBadge(i, r));
     main.appendChild(nameRow);
@@ -852,7 +925,12 @@
       sd.type = 'date'; sd.value = r.startDate || '';
       sd.setAttribute('aria-label', 'この工程を行う日');
       sd.dataset.focus = 'startDate';
-      sd.onchange = function () { r.startDate = sd.value; schedulePreview(); };
+      sd.onchange = function () {
+        r.startDate = sd.value;
+        var e2 = sen.querySelector('[data-focus="endDate"]');
+        if (e2) e2.min = r.startDate || '';
+        schedulePreview();
+      };
       sen.appendChild(sd);
 
       if (ranged) {
@@ -889,7 +967,12 @@
       days.value = r.days === undefined ? 0 : r.days;
       days.setAttribute('aria-label', 'ずらす日数');
       days.dataset.focus = 'days';
-      days.onchange = function () { r.days = Number(days.value); schedulePreview(); };
+      days.oninput = function () {
+        r.days = Number(days.value);
+        var hint = sen.querySelector('.same-day');
+        if (hint) hint.hidden = !(!hasRange(r) && Number(r.days) === 0);
+        schedulePreview();
+      };
       sen.appendChild(days);
 
       var unitSel = select(UNITS, r.unit || '営業日', function (v) { r.unit = v; schedulePreview(); }, 'unit', '日数の単位');
@@ -906,15 +989,18 @@
         ends.value = r.endDays === '' || r.endDays === undefined ? 0 : r.endDays;
         ends.setAttribute('aria-label', '終了までの日数');
         ends.dataset.focus = 'endDays';
-        ends.onchange = function () { r.endDays = Number(ends.value); schedulePreview(); };
+        ends.oninput = function () { r.endDays = Number(ends.value); schedulePreview(); };
         sen.appendChild(ends);
         var endDir = select(DIRS, r.endDirection || r.direction || '前',
           function (v) { r.endDirection = v; schedulePreview(); }, 'dir', '終了は基準より前か後か');
         endDir.dataset.focus = 'endDir';
         sen.appendChild(endDir);
         sen.appendChild(el('span', '', 'まで'));
-      } else if (Number(r.days) === 0) {
-        sen.appendChild(el('span', '', '＝ 起点と同じ日'));
+      } else {
+        // 日数を打ち替えても作り直さずに済むよう、出し入れだけで切り替える
+        var sameDay = el('span', 'same-day', '＝ 起点と同じ日');
+        sameDay.hidden = Number(r.days) !== 0;
+        sen.appendChild(sameDay);
       }
     }
 
@@ -946,7 +1032,7 @@
     var chev = svg('chevron');
     if (opened[i]) chev.style.transform = 'rotate(180deg)';
     toggle.appendChild(chev);
-    toggle.appendChild(el('span', '', detailSummary(r)));
+    toggle.appendChild(el('span', 'more-sum', detailSummary(r)));
     toggle.setAttribute('aria-expanded', opened[i] ? 'true' : 'false');
     toggle.onclick = function () { opened[i] = !opened[i]; renderRows(); };
     more.appendChild(toggle);
@@ -966,7 +1052,7 @@
     sen.appendChild(more);
     main.appendChild(sen);
 
-    if (opened[i]) main.appendChild(renderDetail(r));
+    if (opened[i]) main.appendChild(renderDetail(r, i));
 
     card.appendChild(main);
     return card;
@@ -982,20 +1068,22 @@
     return parts.join('・');
   }
 
-  function renderDetail(r) {
+  function renderDetail(r, i) {
     var d = el('div', 'detail');
 
     var owner = el('input');
     owner.type = 'text'; owner.value = r.owner || ''; owner.style.width = '110px';
     owner.placeholder = '未設定';
-    owner.onchange = function () { r.owner = owner.value; renderRows(); };
+    owner.dataset.focus = 'owner';
+    owner.oninput = function () { r.owner = owner.value; refreshSummary(i); };
     d.appendChild(field('担当', owner));
 
     var rem = el('input');
     rem.type = 'number'; rem.min = 0; rem.style.width = '78px';
     rem.value = (r.remindDays === '' || r.remindDays === null || r.remindDays === undefined) ? '' : r.remindDays;
     rem.placeholder = DATA.defaultRemind;
-    rem.onchange = function () { r.remindDays = rem.value === '' ? '' : Number(rem.value); renderRows(); };
+    rem.dataset.focus = 'remindDays';
+    rem.oninput = function () { r.remindDays = rem.value === '' ? '' : Number(rem.value); refreshSummary(i); };
     d.appendChild(field('何営業日前から通知', rem));
 
     d.appendChild(field('計算結果が休日のとき',
@@ -1006,7 +1094,8 @@
     var note = el('input');
     note.type = 'text'; note.value = r.note || '';
     note.placeholder = '例：二人体制で突合する';
-    note.onchange = function () { r.note = note.value; renderRows(); };
+    note.dataset.focus = 'note';
+    note.oninput = function () { r.note = note.value; refreshSummary(i); };
     noteWrap.appendChild(note);
     d.appendChild(noteWrap);
 
@@ -1017,6 +1106,13 @@
     var due = dueByIndex[i];
     if (!r.name) return el('span', 'due none', '工程名を入力');
     if (!due) return el('span', 'due none', '—');
+    if (due.unresolved) {
+      var u = el('span', 'due wait');
+      u.title = 'この工程は起点からの日数で決めています。上の「起点の日」に日付を足してください';
+      u.appendChild(svg('warn'));
+      u.appendChild(el('span', '', '起点の日が必要'));
+      return u;
+    }
     var cls = 'due' + (due.isAnchorDay ? ' anchor' : '') + (due.isBusinessDay ? '' : ' off');
     var b = el('span', cls);
     if (!due.isBusinessDay) {
@@ -1081,26 +1177,35 @@
 
   var pendingWorkId = null;
 
+  /**
+   * 業務を1件足す。聞くのは業務名だけ。
+   * 業務IDはシート内で行を結ぶためだけの記号なので、サーバー側で採番する。
+   * 起点の日の呼び方も、必要になってから業務設定で変えられる。
+   */
   function addWork() {
-    var id = prompt(
-      '新しい業務のID（半角英数字）を入力してください。\n'
-      + '画面には出ない管理用の記号です。\n\n'
-      + '例）NAN、KOSIN、JIRITSU', '');
-    if (!id) return;
     var name = prompt(
       '業務名を入力してください。\n\n'
-      + '例）指定難病 医療費助成（月次審査会）', id);
-    if (!name) return;
-    var anchorName = prompt(
-      'この業務の起点になる日を何と呼びますか。\n\n'
-      + '例）審査会、受付開始、処理締切', '審査会');
-    if (!anchorName) return;
-    pendingWorkId = id.trim();
+      + '例）指定難病 医療費助成（月次審査会）', '');
+    if (!name || !name.trim()) return;
+
+    // 前の業務の入力が残って見えないように、先に画面を空にする
+    previewSeq++;
+    rows = [];
+    dueByIndex = {};
+    opened = {};
+    document.getElementById('steps').innerHTML = '';
+    document.getElementById('preview').innerHTML = '';
+    document.getElementById('pvSummary').innerHTML = '';
+
     setMsg('追加中…');
     google.script.run
-      .withSuccessHandler(function () { setMsg('業務を追加しました', 'ok'); load(); })
-      .withFailureHandler(function (e) { pendingWorkId = null; setMsg(e.message, 'err'); })
-      .saveWork({ id: id.trim(), name: name, enabled: true, anchorName: anchorName,
+      .withSuccessHandler(function (res) {
+        pendingWorkId = (res && res.id) ? res.id : null;
+        setMsg('業務を追加しました', 'ok');
+        load();
+      })
+      .withFailureHandler(function (e) { pendingWorkId = null; setMsg(e.message, 'err'); load(); })
+      .saveWork({ name: name.trim(), enabled: true, anchorName: '起点',
                   rule: '手動', adjust: '前営業日', color: '青' });
   }
 
@@ -1112,19 +1217,21 @@
 
   function schedulePreview() {
     clearTimeout(timer);
-    timer = setTimeout(preview, 300);
+    timer = setTimeout(preview, 450);
   }
 
+  /**
+   * 通信は投げた順に返るとは限らない。古い応答で画面を書き換えると
+   * 前の業務の工程が残ったり、集計行が二重に出たりするので、番号で捨てる。
+   */
+  var previewSeq = 0;
+
   function preview() {
+    clearTimeout(timer);
     var anchor = document.getElementById('anchorInput').value.trim();
     var box = document.getElementById('preview');
     var sum = document.getElementById('pvSummary');
-    sum.innerHTML = '';
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(anchor)) {
-      box.innerHTML = '';
-      box.appendChild(alertBox('基準日を YYYY-MM-DD の形式で入力してください。'));
-      return;
-    }
+
     var indices = [];
     var payload = [];
     rows.forEach(function (r, i) {
@@ -1132,27 +1239,56 @@
       indices.push(i);
       payload.push(r);
     });
-    if (!payload.length) { box.innerHTML = ''; dueByIndex = {}; return; }
+
+    var my = ++previewSeq;
+    if (!payload.length) {
+      dueByIndex = {};
+      updateBadges();
+      box.innerHTML = '';
+      sum.innerHTML = '';
+      return;
+    }
 
     google.script.run.withSuccessHandler(function (res) {
+      if (my !== previewSeq) return;
+      renderPreview(res, indices, anchor);
+    }).withFailureHandler(function (e) {
+      if (my !== previewSeq) return;
+      sum.innerHTML = '';
       box.innerHTML = '';
-      dueByIndex = {};
-      if (!res.ok) {
-        box.appendChild(alertBox(res.message));
-        renderRows();
-        return;
-      }
-      res.items.forEach(function (it, n) {
-        dueByIndex[indices[n]] = {
-          dateKey: it.dateKey,
-          endKey: it.endKey || '',
-          isBusinessDay: it.isBusinessDay,
-          isAnchorDay: it.dateKey === anchor && !it.endKey
-        };
-      });
-      renderRows();
+      box.appendChild(alertBox(e.message));
+    }).previewSchedule(payload, anchor, work().anchorName);
+  }
 
-      var sorted = res.items.slice().sort(function (a, b) {
+  function renderPreview(res, indices, anchor) {
+    var box = document.getElementById('preview');
+    var sum = document.getElementById('pvSummary');
+    box.innerHTML = '';
+    sum.innerHTML = '';
+    dueByIndex = {};
+
+    if (!res.ok) {
+      box.appendChild(alertBox(res.message));
+      updateBadges();
+      return;
+    }
+
+    res.items.forEach(function (it, n) {
+      dueByIndex[indices[n]] = {
+        dateKey: it.dateKey,
+        endKey: it.endKey || '',
+        isBusinessDay: it.isBusinessDay,
+        unresolved: !!it.unresolved,
+        isAnchorDay: !!anchor && it.dateKey === anchor && !it.endKey
+      };
+    });
+    updateBadges();
+
+    var dated = res.items.filter(function (it) { return !it.unresolved; });
+    var waiting = res.items.filter(function (it) { return it.unresolved; });
+
+    if (dated.length) {
+      var sorted = dated.slice().sort(function (a, b) {
         return a.dateKey < b.dateKey ? -1 : a.dateKey > b.dateKey ? 1 : 0;
       });
       var first = sorted[0].dateKey, last = sorted[sorted.length - 1].dateKey;
@@ -1164,7 +1300,7 @@
       var list = el('div', 'pv-list');
       var prev = null;
       sorted.forEach(function (it, n) {
-        var isAnchor = it.dateKey === anchor;
+        var isAnchor = !!anchor && it.dateKey === anchor;
         var item = el('div', 'pv-item' + (isAnchor ? ' anchor' : ''));
         if (prev && diffDays(prev, it.dateKey) >= 7) item.classList.add('gap');
         prev = it.dateKey;
@@ -1178,10 +1314,20 @@
         list.appendChild(item);
       });
       box.appendChild(list);
-    }).withFailureHandler(function (e) {
-      box.innerHTML = '';
-      box.appendChild(alertBox(e.message));
-    }).previewSchedule(payload, anchor, work().anchorName);
+    }
+
+    // 起点からの相対で決める工程があるのに、起点の日がまだ無い場合
+    if (waiting.length) {
+      var w = el('div', 'pv-waiting');
+      w.appendChild(el('div', 'pv-waiting-head',
+        '起点の日がまだ登録されていないため、次の ' + waiting.length + ' 工程は日付が出せません'));
+      var ul = el('div', 'pv-waiting-list');
+      waiting.forEach(function (it) { ul.appendChild(el('div', '', '・' + it.name)); });
+      w.appendChild(ul);
+      w.appendChild(el('div', 'pv-waiting-note',
+        '上の「起点の日」に日付を足すか、その工程を［日付指定］に変えてください。'));
+      box.appendChild(w);
+    }
   }
 
   function alertBox(text) {

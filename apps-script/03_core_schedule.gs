@@ -5,7 +5,7 @@
  * これにより、審査会の日が動いても全工程が自動で追随する。
  */
 
-var ANCHOR_ALIASES = ['基準日', '基準', 'アンカー', 'ANCHOR'];
+var ANCHOR_ALIASES = ['起点', '起点の日', '基準日', '基準', 'アンカー', 'ANCHOR'];
 
 /** 方向と日数から符号付き日数を得る */
 function signedOffset(direction, days) {
@@ -46,14 +46,18 @@ function isAnchorRef(value) {
  * @param {Array<Object>} rows 工程テンプレート行
  *        {seq, name, mode, base, direction, days, endDirection, endDays,
  *         startDate, endDate, unit, adjust, owner, remindDays, note}
- * @param {string} anchorKey 基準日（審査会日など）の dateKey
+ * @param {string} anchorKey 基準日（審査会日など）の dateKey。空なら起点なし
  * @param {Object} cal 営業日カレンダー
  * @param {string} anchorName 基準日の別名（業務マスタの「基準日名称」）。base 欄でこの名前も基準日として扱う
+ * @param {Object} [opts] {skipUnresolved: true} で、起点が無くて決められない工程を
+ *        エラーにせず unresolved=true を付けて返す（起点の日が未登録の業務の判定に使う）
  * @return {Array<Object>} rows に dateKey（開始）と endKey（終了・任意）を加えたもの（入力順）
  */
-function computeSchedule(rows, anchorKey, cal, anchorName) {
+function computeSchedule(rows, anchorKey, cal, anchorName, opts) {
   if (!rows || !rows.length) return [];
-  keyToDate(anchorKey); // 形式チェック
+  var skipUnresolved = !!(opts && opts.skipUnresolved);
+  anchorKey = String(anchorKey || '').trim();
+  if (anchorKey) keyToDate(anchorKey); // 形式チェック
 
   var byName = {};
   rows.forEach(function (r) {
@@ -87,6 +91,18 @@ function computeSchedule(rows, anchorKey, cal, anchorName) {
       var baseKey = null;
 
       if (isAnchorRef(baseText) || (anchorAlias && baseText === anchorAlias)) {
+        if (!anchorKey) {
+          // 起点の日が無いと決められない工程。呼び出し側の指定で扱いを変える
+          if (!skipUnresolved) {
+            throw new Error('「' + row.name + '」は起点からの日数で指定されていますが、'
+              + '起点の日が登録されていません');
+          }
+          row.unresolved = true;
+          row.dateKey = '';
+          row.endKey = '';
+          progressed = true;
+          continue;
+        }
         baseKey = anchorKey;
       } else if (resolved.hasOwnProperty(baseText)) {
         baseKey = resolved[baseText];
@@ -104,6 +120,11 @@ function computeSchedule(rows, anchorKey, cal, anchorName) {
       progressed = true;
     }
     if (!progressed) {
+      if (skipUnresolved) {
+        // 起点待ちの工程を基準にしている工程も、まとめて「決められない」とする
+        next.forEach(function (r) { r.unresolved = true; r.dateKey = ''; r.endKey = ''; });
+        break;
+      }
       throw new Error('工程の基準が循環しています: ' + next.map(function (r) { return r.name; }).join(' → '));
     }
     pending = next;

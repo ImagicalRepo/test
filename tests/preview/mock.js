@@ -74,6 +74,12 @@ const LANES = [
     ['審査・システム入力','2026-09-08','着手中','高橋'],
     ['処理締切','2026-09-15','未着手',''],
     ['受給者証の発送','2026-09-25','未着手','鈴木']
+  ]),
+  // 起点の日を持たない業務。日付指定の工程だけなので回次が無い
+  lane('TEIREI','定例の事務（日付指定だけ）','水色','','','',[
+    ['月初の窓口点検','2026-09-01','完了','高橋'],
+    ['研修','2026-09-28','未着手','','2026-09-30'],
+    ['年1回の全件点検','2026-10-15','未着手','佐藤']
   ])
 ];
 
@@ -91,7 +97,8 @@ window.MOCK_DATA = {
     {id:'NAN', name:'指定難病 医療費助成（月次審査会）', enabled:true, anchorName:'審査会', rule:'毎月第2水', color:'青'},
     {id:'KOSIN', name:'指定難病 更新申請（一斉更新）', enabled:true, anchorName:'受付開始', rule:'毎年9月1日', color:'緑'},
     {id:'SHOMAN', name:'小児慢性特定疾病 医療費助成', enabled:true, anchorName:'審査会', rule:'毎月第4火', color:'橙'},
-    {id:'JIRITSU', name:'自立支援医療（精神通院）', enabled:true, anchorName:'処理締切', rule:'毎月15日', color:'紫'}
+    {id:'JIRITSU', name:'自立支援医療（精神通院）', enabled:true, anchorName:'処理締切', rule:'毎月15日', color:'紫'},
+    {id:'TEIREI', name:'定例の事務（日付指定だけ）', enabled:true, anchorName:'起点', rule:'', color:'水色'}
   ],
   lanes: LANES,
   holidays: HOLIDAYS,

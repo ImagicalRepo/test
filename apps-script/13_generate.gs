@@ -81,62 +81,110 @@ function generateSchedules() {
   var newRows = [];
   var usedKeys = {};
 
+  // 業務ごとに、有効な起点の日をまとめる
+  var anchorsByWork = {};
   anchors.forEach(function (a) {
-    var workId = String(a['業務ID']).trim();
-    var work = workById[workId];
-    if (!work) return; // 無効化された業務はスキップ
     if (String(a['状態']).trim() === '中止') return;
+    var workId = String(a['業務ID']).trim();
+    if (!workById[workId]) return; // 無効化された業務はスキップ
+    if (!anchorsByWork[workId]) anchorsByWork[workId] = [];
+    anchorsByWork[workId].push(a);
+  });
+
+  /** 1工程を工程表の行に変換して積む */
+  function pushRow(work, period, anchorKey, row) {
+    var workId = String(work['業務ID']).trim();
+    var key = workId + '|' + period + '|' + row.seq;
+    if (usedKeys[key]) return;
+    usedKeys[key] = true;
+    var old = oldByKey[key]
+      || oldByAlt[workId + '|' + anchorKey + '|' + row.seq]
+      || {};
+    var pinned = /^(on|true|はい|固定|1)$/i.test(String(old['日程固定'] || '').trim());
+    var dueKey = pinned && toDateKey(old['予定日']) ? toDateKey(old['予定日']) : row.dateKey;
+    var endKey = pinned && toDateKey(old['予定日'])
+      ? toDateKey(old['終了日'])
+      : (row.endKey || '');
+    var remind = row.remindDays === '' || row.remindDays === null || row.remindDays === undefined
+      ? defaultRemind : Number(row.remindDays);
+    var status = old['状態'] || STATUS.NOT_STARTED;
+    newRows.push({
+      'キー': key,
+      '完': status === STATUS.DONE,
+      '業務ID': workId,
+      '業務名': work['業務名'],
+      '回次': period,
+      '基準日': anchorKey ? keyToSheetDate_(anchorKey) : '',
+      '工程No': row.seq,
+      '工程名': row.name,
+      '予定日': keyToSheetDate_(dueKey),
+      '終了日': endKey ? keyToSheetDate_(endKey) : '',
+      '曜日': WEEKDAY_LABELS[dayOfWeek(dueKey)],
+      '残営業日': countFrom(dueKey),
+      '担当': old['担当'] || row.owner || '',
+      '状態': status,
+      '完了日': old['完了日'] || '',
+      'リマインド営業日前': old['リマインド営業日前'] !== '' && old['リマインド営業日前'] !== undefined && old['リマインド営業日前'] !== null
+        ? old['リマインド営業日前'] : remind,
+      '日程固定': old['日程固定'] || '',
+      '備考': old['備考'] || row.note || '',
+      'イベントID': old['イベントID'] || '',
+      _sortDue: dueKey,
+      _sortSeq: Number(row.seq) || 0
+    });
+  }
+
+  works.forEach(function (work) {
+    var workId = String(work['業務ID']).trim();
     var tpl = templates[workId];
     if (!tpl || !tpl.length) {
       // 業務を作った直後は工程が空なのが普通なので、失敗としては扱わない
       notices[workId] = true;
       return;
     }
-    var anchorKey = toDateKey(a['基準日']);
-    var rows;
+
+    // 起点が無くても決まる工程（日付指定と、そこから伸びる工程）を先に出す。
+    // これらは回次に属さないので、業務ごとに1回だけ生成する。
+    var free;
     try {
-      rows = computeSchedule(cloneTemplateRows_(tpl), anchorKey, cal, work['基準日名称']);
+      free = computeSchedule(cloneTemplateRows_(tpl), '', cal, work['基準日名称'],
+        { skipUnresolved: true });
     } catch (e) {
-      errors.push('[' + workId + ' ' + a['回次'] + '] ' + e.message);
+      errors.push('[' + workId + '] ' + e.message);
       return;
     }
-    rows.forEach(function (row) {
-      var key = workId + '|' + periodText_(a['回次']) + '|' + row.seq;
-      usedKeys[key] = true;
-      var old = oldByKey[key]
-        || oldByAlt[workId + '|' + anchorKey + '|' + row.seq]
-        || {};
-      var fixed = /^(on|true|はい|固定|1)$/i.test(String(old['日程固定'] || '').trim());
-      var dueKey = fixed && toDateKey(old['予定日']) ? toDateKey(old['予定日']) : row.dateKey;
-      var endKey = fixed && toDateKey(old['予定日'])
-        ? toDateKey(old['終了日'])
-        : (row.endKey || '');
-      var remind = row.remindDays === '' || row.remindDays === null || row.remindDays === undefined
-        ? defaultRemind : Number(row.remindDays);
-      var status = old['状態'] || STATUS.NOT_STARTED;
-      newRows.push({
-        'キー': key,
-        '完': status === STATUS.DONE,
-        '業務ID': workId,
-        '業務名': work['業務名'],
-        '回次': periodText_(a['回次']),
-        '基準日': keyToSheetDate_(anchorKey),
-        '工程No': row.seq,
-        '工程名': row.name,
-        '予定日': keyToSheetDate_(dueKey),
-        '終了日': endKey ? keyToSheetDate_(endKey) : '',
-        '曜日': WEEKDAY_LABELS[dayOfWeek(dueKey)],
-        '残営業日': countFrom(dueKey),
-        '担当': old['担当'] || row.owner || '',
-        '状態': status,
-        '完了日': old['完了日'] || '',
-        'リマインド営業日前': old['リマインド営業日前'] !== '' && old['リマインド営業日前'] !== undefined && old['リマインド営業日前'] !== null
-          ? old['リマインド営業日前'] : remind,
-        '日程固定': old['日程固定'] || '',
-        '備考': old['備考'] || row.note || '',
-        'イベントID': old['イベントID'] || '',
-        _sortDue: dueKey,
-        _sortSeq: Number(row.seq) || 0
+    var needsAnchor = {};
+    free.forEach(function (row) {
+      if (row.unresolved) needsAnchor[row.seq] = true;
+      else pushRow(work, '', '', row);
+    });
+
+    var list = anchorsByWork[workId] || [];
+    var waiting = Object.keys(needsAnchor);
+    if (!waiting.length) return;            // 起点を使う工程が無ければここまで
+    if (!list.length) {
+      var names = free.filter(function (r) { return r.unresolved; })
+        .map(function (r) { return r.name; });
+      errors.push('[' + workId + '] 起点の日が登録されていないため、'
+        + names.slice(0, 3).join('・')
+        + (names.length > 3 ? ' ほか' + (names.length - 3) + '件' : '')
+        + ' の日付を出せません');
+      return;
+    }
+
+    // 起点からの工程は回次ごとに生成する
+    list.forEach(function (a) {
+      var anchorKey = toDateKey(a['基準日']);
+      var rows;
+      try {
+        rows = computeSchedule(cloneTemplateRows_(tpl), anchorKey, cal, work['基準日名称']);
+      } catch (e) {
+        errors.push('[' + workId + ' ' + periodText_(a['回次']) + '] ' + e.message);
+        return;
+      }
+      rows.forEach(function (row) {
+        if (!needsAnchor[row.seq]) return;  // 日付指定の工程は上で出している
+        pushRow(work, periodText_(a['回次']), anchorKey, row);
       });
     });
   });

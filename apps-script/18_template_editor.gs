@@ -12,7 +12,7 @@ function getEditorData() {
     return {
       id: String(w['業務ID']).trim(),
       name: w['業務名'],
-      anchorName: w['基準日名称'] || '基準日',
+      anchorName: w['基準日名称'] || '起点',
       rule: w['基準日ルール'],
       adjust: w['基準日休日補正'],
       enabled: !/^(off|false|いいえ|無効|0)$/i.test(String(w['有効']).trim()),
@@ -101,19 +101,26 @@ function previewSchedule(rows, anchorKey, anchorName) {
       unit: r.unit, adjust: r.adjust, owner: r.owner, remindDays: r.remindDays, note: r.note
     };
   });
+  var key = /^\d{4}-\d{2}-\d{2}$/.test(String(anchorKey || '').trim())
+    ? String(anchorKey).trim() : '';
   try {
-    var computed = computeSchedule(input, anchorKey, cal, anchorName);
-    return {
-      ok: true,
-      items: computed.map(function (r) {
-        return {
-          seq: r.seq, name: r.name, dateKey: r.dateKey, endKey: r.endKey || '',
-          weekday: WEEKDAY_LABELS[dayOfWeek(r.dateKey)],
-          endWeekday: r.endKey ? WEEKDAY_LABELS[dayOfWeek(r.endKey)] : '',
-          isBusinessDay: isBusinessDay(cal, r.dateKey)
-        };
-      })
-    };
+    // 起点の日が無くても、日付指定の工程だけは計算して見せる
+    var computed = computeSchedule(input, key, cal, anchorName, { skipUnresolved: !key });
+    var needsAnchor = 0;
+    var items = computed.map(function (r) {
+      if (r.unresolved) {
+        needsAnchor++;
+        return { seq: r.seq, name: r.name, dateKey: '', endKey: '', unresolved: true };
+      }
+      return {
+        seq: r.seq, name: r.name, dateKey: r.dateKey, endKey: r.endKey || '',
+        weekday: WEEKDAY_LABELS[dayOfWeek(r.dateKey)],
+        endWeekday: r.endKey ? WEEKDAY_LABELS[dayOfWeek(r.endKey)] : '',
+        isBusinessDay: isBusinessDay(cal, r.dateKey),
+        unresolved: false
+      };
+    });
+    return { ok: true, items: items, needsAnchor: needsAnchor };
   } catch (e) {
     return { ok: false, message: e.message };
   }
@@ -191,14 +198,19 @@ function findWork_(workId) {
   return null;
 }
 
-/** 業務マスタ1件を保存（新規追加も可） */
+/**
+ * 業務マスタ1件を保存（新規追加も可）
+ *
+ * 業務IDはシート内で行を結び付けるためだけの記号なので、
+ * 指定が無ければこちらで採番する（画面から入力させない）。
+ */
 function saveWork(work) {
+  var t = readTable_(SHEET.WORK);
   var id = String(work.id || '').trim();
-  if (!id) throw new Error('業務IDを入力してください');
+  if (!id) id = nextWorkId_(t.rows);
   if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new Error('業務IDは半角英数字・ハイフン・アンダースコアで入力してください');
   if (work.rule) parseRecurrence(work.rule); // 書式チェック
 
-  var t = readTable_(SHEET.WORK);
   var idx = headerIndex_(t.headers);
   var target = null;
   for (var i = 0; i < t.rows.length; i++) {
@@ -208,7 +220,7 @@ function saveWork(work) {
     '業務ID': id,
     '業務名': String(work.name || id),
     '有効': work.enabled === false ? 'OFF' : 'ON',
-    '基準日名称': String(work.anchorName || '基準日'),
+    '基準日名称': String(work.anchorName || '起点'),
     '基準日ルール': String(work.rule || ''),
     '基準日休日補正': String(work.adjust || '前営業日'),
     '色': String(work.color || '青'),
@@ -222,7 +234,17 @@ function saveWork(work) {
     appendRows_(SHEET.WORK, [values]);
   }
   applyValidations_();
-  return generateSchedules();
+  return { id: id, generate: generateSchedules() };
+}
+
+/** 使われていない業務IDを採番する（W1, W2, …） */
+function nextWorkId_(rows) {
+  var used = {};
+  rows.forEach(function (r) { used[String(r['業務ID']).trim()] = true; });
+  for (var n = 1; n < 10000; n++) {
+    if (!used['W' + n]) return 'W' + n;
+  }
+  throw new Error('業務IDを採番できませんでした');
 }
 
 /**
