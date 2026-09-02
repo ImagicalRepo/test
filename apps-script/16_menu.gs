@@ -7,6 +7,7 @@ function onOpen() {
     .createMenu('📅 業務スケジュール')
     .addItem('スケジュール画面を開く', 'showGantt')
     .addItem('別ウィンドウで開く（URLを表示）', 'showAppUrl')
+    .addItem('WebアプリのURLを登録', 'menuSetAppUrl')
     .addSeparator()
     .addItem('工程テンプレートを編集', 'showTemplateEditor')
     .addItem('工程表を再生成', 'menuGenerate')
@@ -60,12 +61,15 @@ function clampSize_(value, min, max) {
  */
 function showAppUrl() {
   var ui = SpreadsheetApp.getUi();
-  var url = '';
+  var settings = getSettings_();
+  var saved = normalizeWebAppUrl_(settingText_(settings, 'WebアプリURL', ''));
+  var deployed = '';
   try {
-    url = ScriptApp.getService().getUrl() || '';
+    deployed = ScriptApp.getService().getUrl() || '';
   } catch (e) {
-    url = '';
+    deployed = '';
   }
+  var url = saved || deployed;
 
   var body;
   if (url) {
@@ -80,10 +84,24 @@ function showAppUrl() {
       + '<p style="margin-bottom:4px"><b>工程テンプレートの編集</b><br>'
       + '<a href="' + editorUrl + '" target="_blank" rel="noopener"'
       + ' style="word-break:break-all;color:#1a73e8">' + editorUrl + '</a></p>'
-      + '<p style="color:#5f6368;font-size:12px">'
-      + '違いは末尾の <code>?page=editor</code> だけです。<br>'
-      + 'コードを更新したときは、エディタの［デプロイ］→［デプロイを管理］→ 鉛筆マーク →'
-      + ' バージョンを「新しいバージョン」にして再デプロイしてください。</p></div>';
+      + '<p style="color:#5f6368;font-size:12px">違いは末尾の <code>?page=editor</code> だけです。'
+      + (saved ? '（設定シートに登録されたURLを表示しています）' : '') + '</p>'
+      + '<hr style="border:none;border-top:1px solid #dadce0;margin:14px 0">'
+      + '<p style="font-size:12px;line-height:1.7;color:#3c4043;margin:0">'
+      + '<b>このURLが開けないときは</b><br>'
+      + '末尾が <code>/exec</code> のURLは<b>デプロイした時点のコード</b>を動かします。'
+      + 'コードを貼り替えても再デプロイしていないと、古いままで開けません。'
+      + '次のどちらかで直ります。</p>'
+      + '<p style="font-size:12px;line-height:1.7;color:#3c4043;margin:8px 0 0">'
+      + '<b>A. 再デプロイする（URLは変わりません）</b><br>'
+      + '［拡張機能］→［Apps Script］→［デプロイ］→［デプロイを管理］→ 鉛筆マーク →'
+      + ' バージョンを「新しいバージョン」→［デプロイ］</p>'
+      + '<p style="font-size:12px;line-height:1.7;color:#3c4043;margin:8px 0 0">'
+      + '<b>B. 開けるURLを登録する</b><br>'
+      + '［デプロイ］→［デプロイをテスト］に出る末尾 <code>/dev</code> のURLは、'
+      + '常に最新のコードで動きます（自分だけが開けます）。'
+      + 'そのURLをコピーして、メニューの［WebアプリのURLを登録］に貼り付けてください。</p>'
+      + '</div>';
   } else {
     body =
       '<div style="font-family:system-ui,sans-serif;font-size:13px;line-height:1.8;color:#202124">'
@@ -99,8 +117,49 @@ function showAppUrl() {
       + '<p style="color:#5f6368;font-size:12px">'
       + '公開後にもう一度このメニューを開くと、URL がここに表示されます。</p></div>';
   }
-  ui.showModalDialog(HtmlService.createHtmlOutput(body).setWidth(560).setHeight(420),
+  ui.showModalDialog(HtmlService.createHtmlOutput(body).setWidth(600).setHeight(520),
     '別ウィンドウで開く');
+}
+
+/**
+ * 実際にブラウザで開けた URL を設定シートに登録する。
+ *
+ * デプロイのURL（/exec）が古いバージョンを指していて開けない場合でも、
+ * テスト用URL（/dev）を登録すれば［別ウィンドウで開く］から使える。
+ */
+function menuSetAppUrl() {
+  var ui = SpreadsheetApp.getUi();
+  var current = normalizeWebAppUrl_(settingText_(getSettings_(), 'WebアプリURL', ''));
+  var res = ui.prompt('WebアプリのURLを登録',
+    'ブラウザで実際に開けたURLを貼り付けてください。\n'
+    + '末尾が /exec でも /dev でもかまいません。\n'
+    + '（?page=editor は付いていても外して登録します）\n\n'
+    + (current ? '現在の登録：\n' + current + '\n\n' : '')
+    + '空欄のまま［OK］を押すと登録を解除します。',
+    ui.ButtonSet.OK_CANCEL);
+  if (res.getSelectedButton() !== ui.Button.OK) return;
+
+  var input = String(res.getResponseText() || '').trim();
+  if (!input) {
+    setSetting_('WebアプリURL', '');
+    ui.alert('登録を解除しました',
+      '以降はデプロイのURLを自動で使います。', ui.ButtonSet.OK);
+    return;
+  }
+
+  var url = normalizeWebAppUrl_(input);
+  if (!url) {
+    ui.alert('登録できませんでした',
+      'Apps Script のウェブアプリのURLではないようです。\n\n'
+      + 'https://script.google.com/macros/s/……/exec\n'
+      + 'https://script.google.com/macros/s/……/dev\n\n'
+      + 'このどちらかの形で貼り付けてください。', ui.ButtonSet.OK);
+    return;
+  }
+
+  setSetting_('WebアプリURL', url);
+  ui.alert('登録しました', url, ui.ButtonSet.OK);
+  showAppUrl();
 }
 
 function menuSetup() {

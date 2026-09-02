@@ -395,6 +395,17 @@ check('日付指定の工程を基準にできる（期間の終わりが基準�
   eq(rows[1].dateKey, '2026-10-01', '9/30の翌営業日');
 });
 
+check('日付種別が空でも開始日があれば日付指定として扱う', () => {
+  // シートに直接書き足すと日付種別が空になりがち
+  const rows = G.computeSchedule([
+    { seq: 10, name: '直接記入', mode: '', startDate: '2026-09-14' }
+  ], '2026-09-09', cal, '審査会');
+  eq(rows[0].dateKey, '2026-09-14');
+  eq(G.rowMode({ mode: '', startDate: '2026-09-14' }), 'fixed');
+  eq(G.rowMode({ mode: '', startDate: '' }), 'relative', '開始日も空なら従来どおり相対');
+  eq(G.rowMode({ mode: '起点から', startDate: '2026-09-14' }), 'relative', '明示指定を優先する');
+});
+
 check('日付種別の表記ゆれを吸収する', () => {
   eq(G.normalizeMode(''), 'relative');
   eq(G.normalizeMode('起点から'), 'relative');

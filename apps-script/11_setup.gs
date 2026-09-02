@@ -121,6 +121,10 @@ function applyValidations_() {
   var tpl = readTable_(SHEET.TEMPLATE);
   var tidx = headerIndex_(tpl.headers);
   var trows = Math.max(tpl.sheet.getMaxRows() - 1, 1);
+  if (tidx['日付種別']) {
+    tpl.sheet.getRange(2, tidx['日付種別'], trows).setDataValidation(
+      SpreadsheetApp.newDataValidation().requireValueInList(['日付指定', '起点から'], true).build());
+  }
   if (tidx['単位']) {
     tpl.sheet.getRange(2, tidx['単位'], trows).setDataValidation(
       SpreadsheetApp.newDataValidation().requireValueInList(['営業日', '暦日'], true).build());

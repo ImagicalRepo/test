@@ -134,6 +134,19 @@ function getSettings_() {
   return map;
 }
 
+/** 設定シートの値を書き換える（キーが無ければ末尾に追加する） */
+function setSetting_(key, value, description) {
+  var t = readTable_(SHEET.SETTINGS);
+  var idx = headerIndex_(t.headers);
+  for (var i = 0; i < t.rows.length; i++) {
+    if (String(t.rows[i]['設定キー']).trim() === key) {
+      t.sheet.getRange(t.rows[i]._row, idx['値']).setValue(value);
+      return;
+    }
+  }
+  appendRows_(SHEET.SETTINGS, [{ '設定キー': key, '値': value, '説明': description || '' }]);
+}
+
 function settingText_(settings, key, fallback) {
   var v = settings[key];
   if (v === undefined || v === null || String(v).trim() === '') return fallback;

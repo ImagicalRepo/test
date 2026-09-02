@@ -75,7 +75,7 @@ function computeSchedule(rows, anchorKey, cal, anchorName) {
       var row = pending[i];
 
       // 日付そのものを指定する工程は、基準を解決する必要がない
-      if (normalizeMode(row.mode) === 'fixed') {
+      if (rowMode(row) === 'fixed') {
         applyFixedDates(cal, row);
         // 後続の工程は、期間の終わりを基準にできる
         resolved[normalizeText(row.name)] = row.endKey || row.dateKey;
@@ -119,6 +119,16 @@ function normalizeMode(value) {
   if (!s || /^(起点から|相対|基準から|RELATIVE)$/i.test(s)) return 'relative';
   if (/^(日付指定|指定日|直接指定|固定|FIXED)$/i.test(s)) return 'fixed';
   throw new Error('日付種別の指定が不正です: ' + value + '（起点から / 日付指定）');
+}
+
+/**
+ * 1 行の日付の決め方。
+ * シートに直接書き足したときは日付種別が空になりがちなので、
+ * 開始日だけ埋まっている行は「日付指定」とみなす。
+ */
+function rowMode(row) {
+  if (!normalizeText(row.mode) && String(row.startDate || '').trim()) return 'fixed';
+  return normalizeMode(row.mode);
 }
 
 /** 日付を直接指定した工程の開始・終了を決める */

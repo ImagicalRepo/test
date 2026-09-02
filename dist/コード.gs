@@ -89,6 +89,7 @@ var DEFAULT_SETTINGS = [
   ['カレンダーID', '', 'カレンダー同期先のID。空ならスクリプト実行者のメインカレンダー'],
   ['ガント表示_前月数', '1', 'ガント画面で今日より何ヶ月前から表示するか'],
   ['ガント表示_後月数', '3', 'ガント画面で今日より何ヶ月先まで表示するか'],
+  ['WebアプリURL', '', 'ブラウザで実際に開けたウェブアプリのURL（末尾が /exec でも /dev でも可）。メニューの［WebアプリのURLを登録］から設定する。空ならデプロイのURLを自動で使う'],
   ['画面の幅', '1400', 'スケジュール画面の幅（px）。ブラウザの幅より大きくはなりません'],
   ['画面の高さ', '800', 'スケジュール画面の高さ（px）。画面が小さいPCでは 640 程度に下げてください']
 ];
@@ -571,7 +572,7 @@ function computeSchedule(rows, anchorKey, cal, anchorName) {
       var row = pending[i];
 
       // 日付そのものを指定する工程は、基準を解決する必要がない
-      if (normalizeMode(row.mode) === 'fixed') {
+      if (rowMode(row) === 'fixed') {
         applyFixedDates(cal, row);
         // 後続の工程は、期間の終わりを基準にできる
         resolved[normalizeText(row.name)] = row.endKey || row.dateKey;
@@ -615,6 +616,16 @@ function normalizeMode(value) {
   if (!s || /^(起点から|相対|基準から|RELATIVE)$/i.test(s)) return 'relative';
   if (/^(日付指定|指定日|直接指定|固定|FIXED)$/i.test(s)) return 'fixed';
   throw new Error('日付種別の指定が不正です: ' + value + '（起点から / 日付指定）');
+}
+
+/**
+ * 1 行の日付の決め方。
+ * シートに直接書き足したときは日付種別が空になりがちなので、
+ * 開始日だけ埋まっている行は「日付指定」とみなす。
+ */
+function rowMode(row) {
+  if (!normalizeText(row.mode) && String(row.startDate || '').trim()) return 'fixed';
+  return normalizeMode(row.mode);
 }
 
 /** 日付を直接指定した工程の開始・終了を決める */
@@ -957,6 +968,19 @@ function getSettings_() {
   return map;
 }
 
+/** 設定シートの値を書き換える（キーが無ければ末尾に追加する） */
+function setSetting_(key, value, description) {
+  var t = readTable_(SHEET.SETTINGS);
+  var idx = headerIndex_(t.headers);
+  for (var i = 0; i < t.rows.length; i++) {
+    if (String(t.rows[i]['設定キー']).trim() === key) {
+      t.sheet.getRange(t.rows[i]._row, idx['値']).setValue(value);
+      return;
+    }
+  }
+  appendRows_(SHEET.SETTINGS, [{ '設定キー': key, '値': value, '説明': description || '' }]);
+}
+
 function settingText_(settings, key, fallback) {
   var v = settings[key];
   if (v === undefined || v === null || String(v).trim() === '') return fallback;
@@ -1160,6 +1184,10 @@ function applyValidations_() {
   var tpl = readTable_(SHEET.TEMPLATE);
   var tidx = headerIndex_(tpl.headers);
   var trows = Math.max(tpl.sheet.getMaxRows() - 1, 1);
+  if (tidx['日付種別']) {
+    tpl.sheet.getRange(2, tidx['日付種別'], trows).setDataValidation(
+      SpreadsheetApp.newDataValidation().requireValueInList(['日付指定', '起点から'], true).build());
+  }
   if (tidx['単位']) {
     tpl.sheet.getRange(2, tidx['単位'], trows).setDataValidation(
       SpreadsheetApp.newDataValidation().requireValueInList(['営業日', '暦日'], true).build());
@@ -1967,6 +1995,7 @@ function onOpen() {
     .createMenu('📅 業務スケジュール')
     .addItem('スケジュール画面を開く', 'showGantt')
     .addItem('別ウィンドウで開く（URLを表示）', 'showAppUrl')
+    .addItem('WebアプリのURLを登録', 'menuSetAppUrl')
     .addSeparator()
     .addItem('工程テンプレートを編集', 'showTemplateEditor')
     .addItem('工程表を再生成', 'menuGenerate')
@@ -2020,12 +2049,15 @@ function clampSize_(value, min, max) {
  */
 function showAppUrl() {
   var ui = SpreadsheetApp.getUi();
-  var url = '';
+  var settings = getSettings_();
+  var saved = normalizeWebAppUrl_(settingText_(settings, 'WebアプリURL', ''));
+  var deployed = '';
   try {
-    url = ScriptApp.getService().getUrl() || '';
+    deployed = ScriptApp.getService().getUrl() || '';
   } catch (e) {
-    url = '';
+    deployed = '';
   }
+  var url = saved || deployed;
 
   var body;
   if (url) {
@@ -2040,10 +2072,24 @@ function showAppUrl() {
       + '<p style="margin-bottom:4px"><b>工程テンプレートの編集</b><br>'
       + '<a href="' + editorUrl + '" target="_blank" rel="noopener"'
       + ' style="word-break:break-all;color:#1a73e8">' + editorUrl + '</a></p>'
-      + '<p style="color:#5f6368;font-size:12px">'
-      + '違いは末尾の <code>?page=editor</code> だけです。<br>'
-      + 'コードを更新したときは、エディタの［デプロイ］→［デプロイを管理］→ 鉛筆マーク →'
-      + ' バージョンを「新しいバージョン」にして再デプロイしてください。</p></div>';
+      + '<p style="color:#5f6368;font-size:12px">違いは末尾の <code>?page=editor</code> だけです。'
+      + (saved ? '（設定シートに登録されたURLを表示しています）' : '') + '</p>'
+      + '<hr style="border:none;border-top:1px solid #dadce0;margin:14px 0">'
+      + '<p style="font-size:12px;line-height:1.7;color:#3c4043;margin:0">'
+      + '<b>このURLが開けないときは</b><br>'
+      + '末尾が <code>/exec</code> のURLは<b>デプロイした時点のコード</b>を動かします。'
+      + 'コードを貼り替えても再デプロイしていないと、古いままで開けません。'
+      + '次のどちらかで直ります。</p>'
+      + '<p style="font-size:12px;line-height:1.7;color:#3c4043;margin:8px 0 0">'
+      + '<b>A. 再デプロイする（URLは変わりません）</b><br>'
+      + '［拡張機能］→［Apps Script］→［デプロイ］→［デプロイを管理］→ 鉛筆マーク →'
+      + ' バージョンを「新しいバージョン」→［デプロイ］</p>'
+      + '<p style="font-size:12px;line-height:1.7;color:#3c4043;margin:8px 0 0">'
+      + '<b>B. 開けるURLを登録する</b><br>'
+      + '［デプロイ］→［デプロイをテスト］に出る末尾 <code>/dev</code> のURLは、'
+      + '常に最新のコードで動きます（自分だけが開けます）。'
+      + 'そのURLをコピーして、メニューの［WebアプリのURLを登録］に貼り付けてください。</p>'
+      + '</div>';
   } else {
     body =
       '<div style="font-family:system-ui,sans-serif;font-size:13px;line-height:1.8;color:#202124">'
@@ -2059,8 +2105,49 @@ function showAppUrl() {
       + '<p style="color:#5f6368;font-size:12px">'
       + '公開後にもう一度このメニューを開くと、URL がここに表示されます。</p></div>';
   }
-  ui.showModalDialog(HtmlService.createHtmlOutput(body).setWidth(560).setHeight(420),
+  ui.showModalDialog(HtmlService.createHtmlOutput(body).setWidth(600).setHeight(520),
     '別ウィンドウで開く');
+}
+
+/**
+ * 実際にブラウザで開けた URL を設定シートに登録する。
+ *
+ * デプロイのURL（/exec）が古いバージョンを指していて開けない場合でも、
+ * テスト用URL（/dev）を登録すれば［別ウィンドウで開く］から使える。
+ */
+function menuSetAppUrl() {
+  var ui = SpreadsheetApp.getUi();
+  var current = normalizeWebAppUrl_(settingText_(getSettings_(), 'WebアプリURL', ''));
+  var res = ui.prompt('WebアプリのURLを登録',
+    'ブラウザで実際に開けたURLを貼り付けてください。\n'
+    + '末尾が /exec でも /dev でもかまいません。\n'
+    + '（?page=editor は付いていても外して登録します）\n\n'
+    + (current ? '現在の登録：\n' + current + '\n\n' : '')
+    + '空欄のまま［OK］を押すと登録を解除します。',
+    ui.ButtonSet.OK_CANCEL);
+  if (res.getSelectedButton() !== ui.Button.OK) return;
+
+  var input = String(res.getResponseText() || '').trim();
+  if (!input) {
+    setSetting_('WebアプリURL', '');
+    ui.alert('登録を解除しました',
+      '以降はデプロイのURLを自動で使います。', ui.ButtonSet.OK);
+    return;
+  }
+
+  var url = normalizeWebAppUrl_(input);
+  if (!url) {
+    ui.alert('登録できませんでした',
+      'Apps Script のウェブアプリのURLではないようです。\n\n'
+      + 'https://script.google.com/macros/s/……/exec\n'
+      + 'https://script.google.com/macros/s/……/dev\n\n'
+      + 'このどちらかの形で貼り付けてください。', ui.ButtonSet.OK);
+    return;
+  }
+
+  setSetting_('WebアプリURL', url);
+  ui.alert('登録しました', url, ui.ButtonSet.OK);
+  showAppUrl();
 }
 
 function menuSetup() {
@@ -2209,16 +2296,37 @@ function doGet(e) {
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
-/** ウェブアプリとして公開済みならその URL を返す（未公開なら空文字） */
-function webAppUrl_(page) {
+/**
+ * 画面を開くための URL を返す（未公開なら空文字）。
+ *
+ * 設定シートの「WebアプリURL」が入っていればそれを優先する。
+ * ScriptApp が返す /exec はデプロイしたバージョンのもので、コードを貼り替えても
+ * 再デプロイするまで古いままなので、実際に開けた URL を登録できるようにしている。
+ */
+function webAppUrl_(page, settings) {
   var base = '';
   try {
-    base = ScriptApp.getService().getUrl() || '';
+    base = normalizeWebAppUrl_(settingText_(settings || getSettings_(), 'WebアプリURL', ''));
   } catch (e) {
     base = '';
   }
+  if (!base) {
+    try {
+      base = ScriptApp.getService().getUrl() || '';
+    } catch (e2) {
+      base = '';
+    }
+  }
   if (!base) return '';
   return page ? base + '?page=' + encodeURIComponent(page) : base;
+}
+
+/** 貼り付けられた URL から ?query や #fragment を落とす。形が違えば空文字 */
+function normalizeWebAppUrl_(url) {
+  var s = String(url || '').trim();
+  if (!s) return '';
+  s = s.split('#')[0].split('?')[0];
+  return /^https:\/\/script\.google\.com\/[^\s]*\/(exec|dev)$/.test(s) ? s : '';
 }
 
 function include_(name) {
@@ -2345,7 +2453,7 @@ function getGanttData() {
     },
     statusList: STATUS_LIST,
     // 公開済みなら、画面から編集画面へ直接移動できるようにする
-    editorUrl: webAppUrl_('editor')
+    editorUrl: webAppUrl_('editor', settings)
   };
 
   // 画面へ渡せるのは素の値だけ。シートから来た Date などが混ざっていても
@@ -2878,6 +2986,20 @@ function runDiagnostics() {
       return payload.from + ' 〜 ' + payload.to + '（本日 ' + payload.today + '）';
     });
   }
+
+  step('別ウィンドウのURL', function () {
+    var saved = normalizeWebAppUrl_(settingText_(getSettings_(), 'WebアプリURL', ''));
+    if (saved) return '登録済み ' + saved;
+    var deployed = '';
+    try {
+      deployed = ScriptApp.getService().getUrl() || '';
+    } catch (e) {
+      deployed = '';
+    }
+    if (!deployed) return '未デプロイ（メニューの［別ウィンドウで開く］の手順を参照）';
+    return 'デプロイのURL ' + deployed
+      + '　※開けない場合は再デプロイするか［WebアプリのURLを登録］で /dev のURLを登録';
+  });
 
   step('Chat通知の設定', function () {
     var url = settingText_(getSettings_(), 'ChatWebhookURL', '');

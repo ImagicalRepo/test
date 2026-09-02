@@ -61,6 +61,20 @@ function runDiagnostics() {
     });
   }
 
+  step('別ウィンドウのURL', function () {
+    var saved = normalizeWebAppUrl_(settingText_(getSettings_(), 'WebアプリURL', ''));
+    if (saved) return '登録済み ' + saved;
+    var deployed = '';
+    try {
+      deployed = ScriptApp.getService().getUrl() || '';
+    } catch (e) {
+      deployed = '';
+    }
+    if (!deployed) return '未デプロイ（メニューの［別ウィンドウで開く］の手順を参照）';
+    return 'デプロイのURL ' + deployed
+      + '　※開けない場合は再デプロイするか［WebアプリのURLを登録］で /dev のURLを登録';
+  });
+
   step('Chat通知の設定', function () {
     var url = settingText_(getSettings_(), 'ChatWebhookURL', '');
     if (!url) return '未設定（通知は送られません）';

@@ -9,5 +9,8 @@
     "bundle": "node tools/bundle.js"
   },
   "license": "MIT",
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
 }

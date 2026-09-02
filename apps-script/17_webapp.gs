@@ -21,16 +21,37 @@ function doGet(e) {
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
-/** ウェブアプリとして公開済みならその URL を返す（未公開なら空文字） */
-function webAppUrl_(page) {
+/**
+ * 画面を開くための URL を返す（未公開なら空文字）。
+ *
+ * 設定シートの「WebアプリURL」が入っていればそれを優先する。
+ * ScriptApp が返す /exec はデプロイしたバージョンのもので、コードを貼り替えても
+ * 再デプロイするまで古いままなので、実際に開けた URL を登録できるようにしている。
+ */
+function webAppUrl_(page, settings) {
   var base = '';
   try {
-    base = ScriptApp.getService().getUrl() || '';
+    base = normalizeWebAppUrl_(settingText_(settings || getSettings_(), 'WebアプリURL', ''));
   } catch (e) {
     base = '';
   }
+  if (!base) {
+    try {
+      base = ScriptApp.getService().getUrl() || '';
+    } catch (e2) {
+      base = '';
+    }
+  }
   if (!base) return '';
   return page ? base + '?page=' + encodeURIComponent(page) : base;
+}
+
+/** 貼り付けられた URL から ?query や #fragment を落とす。形が違えば空文字 */
+function normalizeWebAppUrl_(url) {
+  var s = String(url || '').trim();
+  if (!s) return '';
+  s = s.split('#')[0].split('?')[0];
+  return /^https:\/\/script\.google\.com\/[^\s]*\/(exec|dev)$/.test(s) ? s : '';
 }
 
 function include_(name) {
@@ -157,7 +178,7 @@ function getGanttData() {
     },
     statusList: STATUS_LIST,
     // 公開済みなら、画面から編集画面へ直接移動できるようにする
-    editorUrl: webAppUrl_('editor')
+    editorUrl: webAppUrl_('editor', settings)
   };
 
   // 画面へ渡せるのは素の値だけ。シートから来た Date などが混ざっていても

@@ -50,7 +50,10 @@ const SHOTS = [
 
 async function shoot(files) {
   const { chromium } = require('playwright');
-  const browser = await chromium.launch();
+  // 環境によっては Playwright 同梱の Chromium が入っていないため、あればそちらを使う
+  const preinstalled = '/opt/pw-browsers/chromium';
+  const launchOpts = fs.existsSync(preinstalled) ? { executablePath: preinstalled } : {};
+  const browser = await chromium.launch(launchOpts);
   const page = await browser.newPage({ viewport: { width: 1400, height: 880 }, deviceScaleFactor: 2 });
 
   const errors = [];

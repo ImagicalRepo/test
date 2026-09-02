@@ -1064,8 +1064,9 @@
   function renumber() { rows.forEach(function (r, i) { r.seq = (i + 1) * 10; }); }
 
   function addRow(at) {
-    var row = { seq:0, name:'', mode:'起点から', base:'', direction:'前', days:1,
-                endDirection:'', endDays:'', startDate:'', endDate:'',
+    // 「この日にやる」と決まっている工程がほとんどなので、日付指定を既定にする
+    var row = { seq:0, name:'', mode:'日付指定', base:'', direction:'前', days:1,
+                endDirection:'', endDays:'', startDate:DATA.today, endDate:'',
                 unit:'営業日', adjust:'前営業日', owner:'', remindDays:'', note:'' };
     if (at === undefined || at > rows.length) rows.push(row);
     else rows.splice(at, 0, row);
