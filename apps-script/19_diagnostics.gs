@@ -75,6 +75,16 @@ function runDiagnostics() {
       + '　※開けない場合は再デプロイするか［WebアプリのURLを登録］で /dev のURLを登録';
   });
 
+  step('カレンダー同期', function () {
+    var settings = getSettings_();
+    if (!settingBool_(settings, 'カレンダー同期', false)) return 'OFF（カレンダーには書き込みません）';
+    if (typeof CalendarApp === 'undefined') {
+      return 'ON だが権限なし。appsscript.json に calendar スコープを足して承認し直してください';
+    }
+    var calId = settingText_(settings, 'カレンダーID', '');
+    return 'ON / ' + (calId || 'メインカレンダー') + '　※毎日1時と［カレンダーに同期］で反映';
+  });
+
   step('Chat通知の設定', function () {
     var url = settingText_(getSettings_(), 'ChatWebhookURL', '');
     if (!url) return '未設定（通知は送られません）';

@@ -39,7 +39,8 @@ function syncCalendar() {
     var dueKey = toDateKey(r['予定日']);
     var endKey = toDateKey(r['終了日']);
     var status = String(r['状態'] || '').trim();
-    var title = '【' + r['業務名'] + ' ' + r['回次'] + '】' + r['工程名'];
+    var period = periodText_(r['回次']);
+    var title = '【' + r['業務名'] + (period ? ' ' + period : '') + '】' + r['工程名'];
     var wanted = dueKey && dueKey >= fromKey && status !== STATUS.SKIP;
 
     if (!wanted) {

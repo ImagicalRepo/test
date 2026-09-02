@@ -1882,7 +1882,8 @@ function syncCalendar() {
     var dueKey = toDateKey(r['予定日']);
     var endKey = toDateKey(r['終了日']);
     var status = String(r['状態'] || '').trim();
-    var title = '【' + r['業務名'] + ' ' + r['回次'] + '】' + r['工程名'];
+    var period = periodText_(r['回次']);
+    var title = '【' + r['業務名'] + (period ? ' ' + period : '') + '】' + r['工程名'];
     var wanted = dueKey && dueKey >= fromKey && status !== STATUS.SKIP;
 
     if (!wanted) {
@@ -2069,6 +2070,7 @@ function onOpen() {
     .addItem('工程テンプレートを編集', 'showTemplateEditor')
     .addItem('工程表を再生成', 'menuGenerate')
     .addItem('休日を取り込む', 'menuSyncHolidays')
+    .addItem('カレンダーに同期', 'menuSyncCalendar')
     .addSeparator()
     .addItem('Chatにテスト通知', 'menuTestNotify')
     .addItem('動作診断', 'menuDiagnostics')
@@ -2271,6 +2273,16 @@ function menuGenerate() {
   try {
     var r = generateSchedules();
     var msg = '基準日を ' + r.anchorsAdded + ' 件追加し、工程表を ' + r.rows + ' 行にしました。';
+    // 工程表を作り直したらカレンダーもずれるので、ONならその場で合わせる
+    try {
+      var c = syncCalendarIfEnabled();
+      if (!c.skipped) {
+        msg += '\nカレンダーも同期しました（作成 ' + c.created
+          + ' / 更新 ' + c.updated + ' / 削除 ' + c.removed + '）。';
+      }
+    } catch (ce) {
+      msg += '\n\nカレンダーの同期は失敗しました:\n' + ce.message;
+    }
     if (r.errors.length) msg += '\n\n【要確認】\n' + r.errors.join('\n');
     SpreadsheetApp.getUi().alert('工程表の再生成', msg, SpreadsheetApp.getUi().ButtonSet.OK);
   } catch (e) {
@@ -2283,6 +2295,36 @@ function menuSyncHolidays() {
   var msg = '休日マスタを ' + r.count + ' 件にしました。';
   if (r.error) msg += '\n\n祝日CSVの取得に失敗しました（既存の祝日は維持）:\n' + r.error;
   SpreadsheetApp.getUi().alert('休日の取り込み', msg, SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
+/**
+ * カレンダーへ今すぐ同期する。
+ * 自動では毎日1時（nightlyRefresh）にしか走らないため、
+ * 日中に直した内容をすぐ反映したいときはここから実行する。
+ */
+function menuSyncCalendar() {
+  var ui = SpreadsheetApp.getUi();
+  var settings = getSettings_();
+
+  if (!settingBool_(settings, 'カレンダー同期', false)) {
+    ui.alert('カレンダー同期はOFFです',
+      '［設定］シートの「カレンダー同期」を ON にしてから実行してください。\n\n'
+      + 'あわせて appsscript.json の oauthScopes に\n'
+      + 'https://www.googleapis.com/auth/calendar\n'
+      + 'を追加し、承認をやり直す必要があります。',
+      ui.ButtonSet.OK);
+    return;
+  }
+
+  try {
+    var r = syncCalendar();
+    ui.alert('カレンダーに同期しました',
+      '作成 ' + r.created + ' 件／更新 ' + r.updated + ' 件／削除 ' + r.removed + ' 件\n\n'
+      + '（自動では毎日1時に同じ処理が走ります）',
+      ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('同期できませんでした', e.message, ui.ButtonSet.OK);
+  }
 }
 
 function menuTestNotify() {
@@ -3090,6 +3132,16 @@ function runDiagnostics() {
     if (!deployed) return '未デプロイ（メニューの［別ウィンドウで開く］の手順を参照）';
     return 'デプロイのURL ' + deployed
       + '　※開けない場合は再デプロイするか［WebアプリのURLを登録］で /dev のURLを登録';
+  });
+
+  step('カレンダー同期', function () {
+    var settings = getSettings_();
+    if (!settingBool_(settings, 'カレンダー同期', false)) return 'OFF（カレンダーには書き込みません）';
+    if (typeof CalendarApp === 'undefined') {
+      return 'ON だが権限なし。appsscript.json に calendar スコープを足して承認し直してください';
+    }
+    var calId = settingText_(settings, 'カレンダーID', '');
+    return 'ON / ' + (calId || 'メインカレンダー') + '　※毎日1時と［カレンダーに同期］で反映';
   });
 
   step('Chat通知の設定', function () {
