@@ -21,7 +21,7 @@ function dailyReminder() {
     return { total: 0 };
   }
 
-  var text = buildChatText(digest, today);
+  var text = buildChatText(digest, today, webAppUrl_('', settings));
   var res = postToChat_(settings, text);
   log_('日次リマインド', res.ok,
     '超過 ' + digest.overdue.length + ' / 本日 ' + digest.today.length + ' / まもなく ' + digest.soon.length
@@ -45,6 +45,7 @@ function buildDigestFromSheet_(settings, cal, today) {
     if (!dueKey || dueKey < minKey) return null;
     var remind = r['リマインド営業日前'];
     return {
+      key: String(r['キー']).trim(),
       workId: String(r['業務ID']).trim(),
       workName: String(r['業務名'] || ''),
       color: colorByWork[String(r['業務ID']).trim()],
@@ -103,7 +104,7 @@ function sendTestNotification() {
   var today = todayKey_();
   var digest = buildDigestFromSheet_(settings, cal, today);
   var text = digest.total
-    ? buildChatText(digest, today)
+    ? buildChatText(digest, today, webAppUrl_('', settings))
     : '*' + formatShortDate(today) + ' の業務スケジュール*\n\n通知対象の工程はありません。';
   var res = postToChat_(settings, text);
   log_('テスト通知', res.ok, res.message || '送信しました');

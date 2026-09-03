@@ -237,6 +237,144 @@ function saveWork(work) {
   return { id: id, generate: generateSchedules() };
 }
 
+/**
+ * 業務を1件まるごと削除する。
+ * 業務マスタ・工程テンプレート・起点の日・工程表の該当行をすべて消す。
+ */
+function deleteWork(workId) {
+  workId = String(workId || '').trim();
+  if (!workId) throw new Error('業務が選ばれていません');
+
+  var counts = countWorkRows_(workId);
+  if (!counts.work) throw new Error('業務が見つかりません: ' + workId);
+
+  // 工程表の行を消すとイベントIDも失われ、カレンダーに予定が取り残される。
+  // 先にカレンダーから消しておく。
+  var removedEvents = deleteWorkEvents_(workId);
+
+  [SHEET.WORK, SHEET.TEMPLATE, SHEET.ANCHOR, SHEET.SCHEDULE].forEach(function (name) {
+    var t = readTable_(name);
+    var kept = t.rows.filter(function (r) { return String(r['業務ID']).trim() !== workId; });
+    if (kept.length === t.rows.length) return;
+    replaceTable_(name, kept.map(function (r) {
+      var o = {};
+      t.headers.forEach(function (h) { if (h) o[h] = r[h]; });
+      return o;
+    }));
+  });
+  applyScheduleCheckboxes_();
+
+  log_('業務の削除', true, workId + ' / 工程 ' + counts.template + ' 起点 ' + counts.anchor
+    + ' 工程表 ' + counts.schedule + ' 予定 ' + removedEvents);
+  return {
+    workId: workId,
+    template: counts.template,
+    anchor: counts.anchor,
+    schedule: counts.schedule,
+    events: removedEvents
+  };
+}
+
+/** 削除の確認に出すための件数を数える */
+function countWorkRows_(workId) {
+  function n(name) {
+    return readTable_(name).rows.filter(function (r) {
+      return String(r['業務ID']).trim() === workId;
+    }).length;
+  }
+  return {
+    work: n(SHEET.WORK),
+    template: n(SHEET.TEMPLATE),
+    anchor: n(SHEET.ANCHOR),
+    schedule: n(SHEET.SCHEDULE)
+  };
+}
+
+/** その業務のカレンダー予定を消す（同期が OFF なら何もしない） */
+function deleteWorkEvents_(workId) {
+  var settings = getSettings_();
+  if (!settingBool_(settings, 'カレンダー同期', false)) return 0;
+  if (typeof CalendarApp === 'undefined') return 0;
+
+  var removed = 0;
+  try {
+    var calId = settingText_(settings, 'カレンダーID', '');
+    var cal = calId ? CalendarApp.getCalendarById(calId) : CalendarApp.getDefaultCalendar();
+    if (!cal) return 0;
+    readTable_(SHEET.SCHEDULE).rows.forEach(function (r) {
+      if (String(r['業務ID']).trim() !== workId) return;
+      var id = String(r['イベントID'] || '').trim();
+      if (!id) return;
+      try {
+        var ev = cal.getEventById(id);
+        if (ev) { ev.deleteEvent(); removed++; }
+      } catch (e) { /* すでに消えている */ }
+    });
+  } catch (e) {
+    log_('業務の削除', false, 'カレンダーの予定を消せませんでした: ' + e.message);
+  }
+  return removed;
+}
+
+/** 削除の確認ダイアログ用に、消える件数だけ返す */
+function getWorkDeleteInfo(workId) {
+  return countWorkRows_(String(workId || '').trim());
+}
+
+/**
+ * 1業務ぶんの工程表の行を、回次ごとにまとめて返す（進捗のまとめ設定用）
+ */
+function getWorkProgress(workId) {
+  workId = String(workId || '').trim();
+  var today = todayKey_();
+  var groups = {};
+  var order = [];
+
+  readTable_(SHEET.SCHEDULE).rows.forEach(function (r) {
+    if (String(r['業務ID']).trim() !== workId) return;
+    var dueKey = toDateKey(r['予定日']);
+    if (!dueKey) return;
+    var period = periodText_(r['回次']);
+    if (!groups[period]) {
+      groups[period] = { period: period, anchorKey: toDateKey(r['基準日']), items: [] };
+      order.push(period);
+    }
+    groups[period].items.push({
+      key: String(r['キー']).trim(),
+      seq: Number(r['工程No']) || 0,
+      name: String(r['工程名'] || ''),
+      dueKey: dueKey,
+      endKey: toDateKey(r['終了日']),
+      status: String(r['状態'] || STATUS.NOT_STARTED).trim(),
+      owner: String(r['担当'] || ''),
+      past: (toDateKey(r['終了日']) || dueKey) < today
+    });
+  });
+
+  var list = order.map(function (p) { return groups[p]; });
+  list.forEach(function (g) {
+    g.items.sort(function (a, b) {
+      if (a.dueKey !== b.dueKey) return a.dueKey < b.dueKey ? -1 : 1;
+      return a.seq - b.seq;
+    });
+  });
+  list.sort(function (a, b) {
+    var x = a.items[0] ? a.items[0].dueKey : '';
+    var y = b.items[0] ? b.items[0].dueKey : '';
+    return x < y ? -1 : x > y ? 1 : 0;
+  });
+
+  // 「過去なのに未着手」が何件あるか。0 件なら案内を出す必要がない
+  var stale = 0;
+  list.forEach(function (g) {
+    g.items.forEach(function (i) {
+      if (i.past && i.status === STATUS.NOT_STARTED) stale++;
+    });
+  });
+
+  return { workId: workId, today: today, groups: list, stale: stale, statusList: STATUS_LIST };
+}
+
 /** 使われていない業務IDを採番する（W1, W2, …） */
 function nextWorkId_(rows) {
   var used = {};

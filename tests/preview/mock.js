@@ -84,6 +84,7 @@ const LANES = [
 ];
 
 const digestItems = (arr) => arr.map(x=>({
+  key: x.workId+'|'+x.period+'|'+x.seq,
   workId:x.workId, workName:x.workName, color:x.color, period:x.period,
   seq:x.seq, name:x.name, dueKey:x.dueKey, owner:x.owner, status:x.status,
   note:'', remainingBusinessDays:x.remainingBusinessDays
@@ -122,11 +123,36 @@ window.MOCK_DATA = {
   statusList: ['未着手','着手中','完了','対象外']
 };
 
-// google.script.run のスタブ
-window.google = { script: { run: new Proxy({}, {
-  get(t, prop) {
-    if (prop === 'withSuccessHandler') return (fn)=>{ window.__ok = fn; return window.google.script.run; };
-    if (prop === 'withFailureHandler') return ()=> window.google.script.run;
-    return (...args)=>{ setTimeout(()=> window.__ok && window.__ok(window.MOCK_DATA), 10); };
-  }
-})}};
+// google.script.run のスタブ。
+// 呼び出しごとにハンドラを束ね、処理ごとに違う値を返す（本物と同じ形）
+window.MOCK_CALLS = {};
+window.MOCK_DELAY = function () { return 10; };
+
+const handlers = {
+  getGanttData: () => window.MOCK_DATA,
+  updateItemStatus: (key, status) => ({ key, status, updated: 1 }),
+  updateItemsStatus: (keys, status) => ({ updated: (keys || []).length, keys: keys || [] }),
+  updateAnchorDate: () => ({ rows: 0, errors: [] })
+};
+
+window.google = { script: { run: (function () {
+  let ok = null, ng = null;
+  const runner = new Proxy({}, {
+    get(t, prop) {
+      if (prop === 'withSuccessHandler') return (fn) => { ok = fn; return runner; };
+      if (prop === 'withFailureHandler') return (fn) => { ng = fn; return runner; };
+      return (...args) => {
+        const onOk = ok, onNg = ng;
+        ok = null; ng = null;
+        window.MOCK_CALLS[prop] = (window.MOCK_CALLS[prop] || 0) + 1;
+        const fn = handlers[prop];
+        setTimeout(() => {
+          if (!fn) { if (onNg) onNg(new Error('未実装のモック: ' + String(prop))); return; }
+          try { if (onOk) onOk(fn.apply(null, args)); }
+          catch (e) { if (onNg) onNg(e); }
+        }, window.MOCK_DELAY(String(prop)));
+      };
+    }
+  });
+  return runner;
+})(), host: { close() {} } } };

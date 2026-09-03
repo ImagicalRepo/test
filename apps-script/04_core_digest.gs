@@ -28,6 +28,7 @@ function buildDigest(rows, cal, todayKey, opts) {
 
     var remaining = countFrom(r.dueKey);
     var item = {
+      key: r.key || '',
       workId: r.workId,
       workName: r.workName,
       color: r.color,
@@ -72,6 +73,16 @@ function formatShortDate(key) {
   return Number(m[2]) + '/' + Number(m[3]) + '(' + WEEKDAY_LABELS[dayOfWeek(key)] + ')';
 }
 
+/**
+ * 「業務名 回次」の表示。
+ * 日付指定だけで組んだ工程は回次を持たないため、空なら区切りを入れない
+ * （入れると「指定難病 医療費助成 ｜本日」のように余分な空白が残る）。
+ */
+function formatWorkLabel(item) {
+  var period = String(item.period === undefined || item.period === null ? '' : item.period).trim();
+  return period ? item.workName + ' ' + period : String(item.workName || '');
+}
+
 /** 1件分の表示行 */
 function formatDigestLine(item, kind) {
   var head;
@@ -83,14 +94,14 @@ function formatDigestLine(item, kind) {
     head = '<b>' + formatShortDate(item.dueKey) + '</b> あと' + item.remainingBusinessDays + '営業日';
   }
   var tail = item.owner ? '（' + item.owner + '）' : '';
-  return head + '　' + item.workName + ' ' + item.period + '\n　' + item.name + tail;
+  return head + '　' + formatWorkLabel(item) + '\n　' + item.name + tail;
 }
 
 /**
  * Google Chat へ投稿する本文（テキスト形式）を組み立てる。
  * カード形式より崩れにくく、スマホでも読みやすい。
  */
-function buildChatText(digest, todayKey) {
+function buildChatText(digest, todayKey, appUrl) {
   if (!digest.total) return '';
   var lines = [];
   lines.push('*' + formatShortDate(todayKey) + ' の業務スケジュール*');
@@ -110,6 +121,13 @@ function buildChatText(digest, todayKey) {
     lines.push('🔵 *まもなく ' + digest.soon.length + '件*');
     digest.soon.forEach(function (i) { lines.push(chatLine_(i, 'soon')); });
   }
+
+  // 通知から画面へ飛べるように、末尾に1本だけリンクを置く。
+  // 各行に付けると読みにくくなるため、まとめてここに出す。
+  if (appUrl) {
+    lines.push('');
+    lines.push('<' + appUrl + '|スケジュール画面を開く>');
+  }
   return lines.join('\n');
 }
 
@@ -123,5 +141,5 @@ function chatLine_(item, kind) {
     when = formatShortDate(item.dueKey) + '・あと' + item.remainingBusinessDays + '営業日';
   }
   var owner = item.owner ? ' 〈' + item.owner + '〉' : '';
-  return '• *' + item.name + '*' + owner + '\n　' + item.workName + ' ' + item.period + '｜' + when;
+  return '• *' + item.name + '*' + owner + '\n　' + formatWorkLabel(item) + '｜' + when;
 }

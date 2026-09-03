@@ -390,6 +390,52 @@
     border-radius: 50%; margin: 0 auto 12px; animation: spin .8s linear infinite;
   }
 
+  /* 検索と担当の絞り込み */
+  .finder { position: relative; display: inline-flex; align-items: center; }
+  .finder .find-i {
+    position: absolute; left: 8px; width: 14px; height: 14px; stroke: var(--muted);
+    fill: none; stroke-width: 2; pointer-events: none;
+  }
+  .finder input {
+    width: 150px; padding: 6px 24px 6px 27px; font-size: 12px;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text);
+  }
+  .finder input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .finder input::-webkit-search-cancel-button { display: none; }
+  .q-x {
+    position: absolute; right: 4px; border: none; background: none; color: var(--muted);
+    font-size: 15px; line-height: 1; padding: 2px 5px; border-radius: 50%; cursor: pointer;
+  }
+  .q-x:hover { background: var(--surface-2); color: var(--text); }
+  #ownerSel { max-width: 140px; }
+  .filter-note {
+    font-size: 11.5px; color: var(--muted); padding: 7px 12px; border-bottom: 1px solid var(--border);
+    background: var(--surface-2); display: flex; align-items: center; gap: 10px;
+  }
+  .filter-note b { color: var(--text); }
+
+  /* 回次まるごとの操作 */
+  .kase-bulk { margin-left: auto; display: flex; gap: 6px; }
+  .kase-bulk button { font-size: 11px; padding: 4px 9px; }
+
+  /* 基準日の入力 */
+  .dlg-back {
+    position: fixed; inset: 0; background: rgba(15, 23, 42, .28); z-index: 60;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .dlg {
+    background: var(--surface); border-radius: 12px; padding: 16px 18px; min-width: 290px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, .22); animation: popIn .18s var(--ease);
+  }
+  .dlg h3 { margin: 0 0 4px; font-size: 14px; }
+  .dlg .sub { font-size: 11.5px; color: var(--muted); margin-bottom: 12px; line-height: 1.6; }
+  .dlg input[type=date] {
+    width: 100%; padding: 7px 9px; font-size: 13px; font-family: inherit;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text);
+  }
+  .dlg .row { display: flex; gap: 7px; justify-content: flex-end; margin-top: 14px; }
+  .dlg .err { color: var(--danger); font-size: 11.5px; margin-top: 7px; }
+
   /* ============ 印刷 ============ */
   /* 画面では出さず、紙にだけ出す見出し */
   .print-head { display: none; }
@@ -419,7 +465,7 @@
     .content { overflow: visible; }
 
     /* 操作部と「今日やること」は紙には要らない */
-    header.top, aside, #detail, .theme-pop, .insert { display: none !important; }
+    header.top, aside, #detail, .theme-pop, .insert, .kase-bulk, .dlg-back { display: none !important; }
     .legend .chip { pointer-events: none; }
 
     .view { animation: none; display: block; }
@@ -481,6 +527,15 @@
     </span>
 
     <span class="spacer"></span>
+
+    <span class="finder">
+      <svg class="icon find-i" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path>
+      </svg>
+      <input id="q" type="search" placeholder="工程名で探す" aria-label="工程名・業務名・メモで探す">
+      <button id="qClear" class="q-x" type="button" title="検索を消す" aria-label="検索を消す" hidden>×</button>
+    </span>
+    <select id="ownerSel" aria-label="担当で絞り込む"><option value="">担当：すべて</option></select>
 
     <span class="zoom" id="zoom">
       <button data-w="12">小</button>
@@ -677,6 +732,100 @@ var PRINT_W = Math.floor((297 - 16) / 25.4 * 96);   // ≒1062px
 var LABEL_W = 260;                                   // ラベル列（--label-w と合わせる）
 var dayW = 22;
 var hidden = {};          // 業務IDごとの表示/非表示（ガント・月間）
+var query = '';           // 工程名・業務名・メモの検索語
+var ownerFilter = '';     // 担当での絞り込み
+
+/**
+ * 検索と担当の絞り込み。
+ * 凡例チップ（hidden）とは別に、3ビューと左パネルすべてに効かせる。
+ */
+function filterOn() { return !!(query || ownerFilter); }
+
+function matchItem(item, lane) {
+  if (ownerFilter && String(item.owner || '') !== ownerFilter) return false;
+  if (!query) return true;
+  var q = query;
+  return (item.name || '').toLowerCase().indexOf(q) >= 0
+    || (lane && (lane.workName || '').toLowerCase().indexOf(q) >= 0)
+    || (item.note || '').toLowerCase().indexOf(q) >= 0
+    || (item.owner || '').toLowerCase().indexOf(q) >= 0;
+}
+
+/** 表示対象の工程だけを返す */
+function laneItems(lane) {
+  if (!filterOn()) return lane.items;
+  return lane.items.filter(function (it) { return matchItem(it, lane); });
+}
+
+/** 表示対象のレーン（業務を隠していない・中身が残っている） */
+function visibleLanes() {
+  return DATA.lanes.filter(function (l) {
+    return !hidden[l.workId] && laneItems(l).length;
+  });
+}
+
+/** 左パネル用。ダイジェストにも同じ絞り込みを効かせる */
+function filterDigest(list) {
+  return (list || []).filter(function (i) {
+    if (hidden[i.workId]) return false;
+    return matchItem(i, { workName: i.workName });
+  });
+}
+
+/** 担当の選択肢を工程表の実データから作る */
+function fillOwners() {
+  var sel = document.getElementById('ownerSel');
+  var seen = {};
+  DATA.lanes.forEach(function (l) {
+    l.items.forEach(function (i) { if (i.owner) seen[i.owner] = true; });
+  });
+  var names = Object.keys(seen).sort();
+  var keep = ownerFilter;
+  sel.innerHTML = '';
+  var o0 = document.createElement('option');
+  o0.value = ''; o0.textContent = '担当：すべて';
+  sel.appendChild(o0);
+  names.forEach(function (n) {
+    var o = document.createElement('option');
+    o.value = n; o.textContent = '担当：' + n;
+    sel.appendChild(o);
+  });
+  sel.value = names.indexOf(keep) >= 0 ? keep : '';
+  ownerFilter = sel.value;
+  sel.style.display = names.length ? '' : 'none';
+}
+
+/** 絞り込み中であることの注記（何件に絞られているか） */
+function filterNote() {
+  if (!filterOn()) return null;
+  var n = 0;
+  DATA.lanes.forEach(function (l) { if (!hidden[l.workId]) n += laneItems(l).length; });
+  var note = el('div', 'filter-note');
+  var parts = [];
+  if (query) parts.push('「' + query + '」');
+  if (ownerFilter) parts.push('担当：' + ownerFilter);
+  var txt = el('span');
+  txt.appendChild(document.createTextNode('絞り込み中　'));
+  txt.appendChild(el('b', '', parts.join('　')));
+  txt.appendChild(document.createTextNode('　' + n + '件'));
+  note.appendChild(txt);
+  var clear = el('button', 'linklike', 'すべて表示に戻す');
+  clear.type = 'button';
+  clear.onclick = clearFilter;
+  note.appendChild(clear);
+  return note;
+}
+
+function clearFilter() {
+  query = '';
+  ownerFilter = '';
+  document.getElementById('q').value = '';
+  document.getElementById('qClear').hidden = true;
+  document.getElementById('ownerSel').value = '';
+  renderAll();
+}
+
+function renderAll() { renderSide(); renderView(); }
 var selectedWork = null;  // 業務別ビューで選択中の業務
 var calMonth = null;      // 月間ビューで表示中の月 'YYYY-MM'
 var expandedCells = {};
@@ -842,8 +991,8 @@ function onData() {
     var first = DATA.works.filter(function (w) { return w.enabled; })[0];
     selectedWork = first ? first.id : null;
   }
-  renderSide();
-  renderView();
+  fillOwners();
+  renderAll();
 }
 
 // =====================================================================
@@ -853,11 +1002,16 @@ function renderSide() {
   var side = document.getElementById('side');
   side.innerHTML = '';
   var d = DATA.digest;
+  var over = filterDigest(d.overdue), tod = filterDigest(d.today), soon = filterDigest(d.soon);
   var n = 0;
-  n = section(side, '期限超過', 'var(--danger)', d.overdue, 'overdue', n);
-  n = section(side, '本日', 'var(--warn)', d.today, 'today', n);
-  n = section(side, 'まもなく', 'var(--accent)', d.soon, 'soon', n);
-  if (!d.total) side.appendChild(el('div', 'empty', '直近で対応が必要な工程はありません。'));
+  n = section(side, '期限超過', 'var(--danger)', over, 'overdue', n);
+  n = section(side, '本日', 'var(--warn)', tod, 'today', n);
+  n = section(side, 'まもなく', 'var(--accent)', soon, 'soon', n);
+  if (!over.length && !tod.length && !soon.length) {
+    side.appendChild(el('div', 'empty', filterOn()
+      ? '絞り込みに当てはまる工程はありません。'
+      : '直近で対応が必要な工程はありません。'));
+  }
 }
 
 function section(parent, title, color, items, kind, start) {
@@ -934,6 +1088,9 @@ function renderGantt(root) {
     legend.appendChild(chip);
   });
   wrap.appendChild(legend);
+
+  var note = filterNote();
+  if (note) wrap.appendChild(note);
 
   var scroll = el('div', 'scroll');
   scroll.id = 'scroll';
@@ -1016,9 +1173,11 @@ function drawGantt(grid) {
   head.appendChild(ticks);
   grid.appendChild(head);
 
-  var shown = DATA.lanes.filter(function (l) { return !hidden[l.workId]; });
+  var shown = visibleLanes();
   if (!shown.length) {
-    grid.appendChild(el('div', 'empty', '表示できる工程がありません。凡例で業務を表示に戻すか、［工程表を再生成］を実行してください。'));
+    grid.appendChild(el('div', 'empty', filterOn()
+      ? '絞り込みに当てはまる工程はありません。検索欄を空にするか、担当を「すべて」に戻してください。'
+      : '表示できる工程がありません。凡例で業務を表示に戻すか、［工程表を再生成］を実行してください。'));
     return;
   }
   shown.forEach(function (lane, li) {
@@ -1064,7 +1223,7 @@ function renderLane(lane, trackW, laneIndex, repeat) {
     track.appendChild(span);
   }
 
-  lane.items.forEach(function (it, ii) {
+  laneItems(lane).forEach(function (it, ii) {
     var i = indexOf[it.dueKey];
     if (i === undefined) return;
 
@@ -1135,9 +1294,13 @@ function renderWorkView(root) {
     bar.appendChild(chip);
   });
   wrap.appendChild(bar);
+  var note = filterNote();
+  if (note) wrap.appendChild(note);
 
   var scroll = el('div', 'work-scroll');
-  var lanes = DATA.lanes.filter(function (l) { return l.workId === selectedWork; });
+  var lanes = DATA.lanes.filter(function (l) {
+    return l.workId === selectedWork && laneItems(l).length;
+  });
   if (!lanes.length) {
     scroll.appendChild(el('div', 'empty', 'この業務には表示できる回次がありません。'));
   }
@@ -1177,6 +1340,20 @@ function renderKase(lane, laneIndex) {
   prog.appendChild(bar);
   head.appendChild(prog);
   head.appendChild(el('span', 'kase-count', lane.doneCount + ' / ' + lane.items.length + ' 完了'));
+
+  // 回次まるごとの操作。年度途中の登録や、今回は該当なしの回で使う
+  var bulk = el('div', 'kase-bulk');
+  var bDone = el('button', '', 'まとめて完了');
+  bDone.type = 'button';
+  bDone.title = 'この回次の工程をすべて完了にします';
+  bDone.onclick = function () { bulkStatus(lane, '完了', bDone); };
+  bulk.appendChild(bDone);
+  var bSkip = el('button', '', 'この回次を対象外');
+  bSkip.type = 'button';
+  bSkip.title = 'この回次の工程をすべて対象外にします（通知にも出なくなります）';
+  bSkip.onclick = function () { bulkStatus(lane, '対象外', bSkip); };
+  bulk.appendChild(bSkip);
+  head.appendChild(bulk);
   box.appendChild(head);
 
   // プログレスバーは描画後に伸ばす（アニメーションさせるため）
@@ -1184,7 +1361,7 @@ function renderKase(lane, laneIndex) {
   setTimeout(function () { bar.style.width = pct + '%'; }, 80 + laneIndex * 60);
 
   var steps = el('div', 'steps');
-  lane.items.forEach(function (it, ii) {
+  laneItems(lane).forEach(function (it, ii) {
     steps.appendChild(renderStep(lane, it, ii, color));
   });
   box.appendChild(steps);
@@ -1263,12 +1440,14 @@ function renderMonth(root) {
     legend.appendChild(chip);
   });
   wrap.appendChild(legend);
+  var note = filterNote();
+  if (note) wrap.appendChild(note);
 
   // 日付ごとに工程を集める
   var byDate = {};
   DATA.lanes.forEach(function (lane) {
     if (hidden[lane.workId]) return;
-    lane.items.forEach(function (it) {
+    laneItems(lane).forEach(function (it) {
       if (!byDate[it.dueKey]) byDate[it.dueKey] = [];
       // 期間を持つ工程は、開始日と終了日の両方に出す（間の日は埋めない）
       byDate[it.dueKey].push({ lane: lane, item: it, edge: it.endKey ? 'start' : '' });
@@ -1415,11 +1594,17 @@ function closeDetail() {
 function setStatus(ctx, status, btn) {
   btn.disabled = true;
   btn.textContent = '更新中…';
-  // 画面上は先に反映しておき、サーバー側の完了を待って再読み込みする
-  ctx.item.status = status;
+  var before = ctx.item.status;
   google.script.run
-    .withSuccessHandler(function () { closeDetail(); load(true); })
+    .withSuccessHandler(function () {
+      closeDetail();
+      // 全部を取り直すと数秒かかり、その間なにも変わらないので、
+      // 手元のデータを書き換えてその場で描き直す（シートは更新済み）
+      applyStatusLocally([ctx.item.key], status);
+      renderAll();
+    })
     .withFailureHandler(function (err) {
+      ctx.item.status = before;
       btn.disabled = false;
       btn.textContent = status;
       alert('更新に失敗しました：' + err.message);
@@ -1427,30 +1612,145 @@ function setStatus(ctx, status, btn) {
     .updateItemStatus(ctx.item.key, status);
 }
 
-function changeAnchor(lane) {
-  var input = prompt(
-    lane.workName + ' ' + lane.period + ' の' + lane.anchorName + 'を変更します。\n'
-    + '新しい日付を YYYY-MM-DD で入力してください。\n'
-    + '（この回次の工程がすべて計算し直されます）',
-    lane.anchorKey);
-  if (!input) return;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.trim())) {
-    alert('YYYY-MM-DD の形式で入力してください。');
-    return;
-  }
-  var c = document.getElementById('content');
-  c.innerHTML = '';
-  var l = el('div');
-  l.id = 'loading';
-  l.appendChild(el('div', 'spinner'));
-  l.appendChild(document.createTextNode('計算し直しています…'));
-  c.appendChild(l);
+/**
+ * 手元のデータに状態の変更を反映する。
+ * 遅延の判定と、左パネル（期限超過／本日／まもなく）からの除外もここで行う。
+ */
+function applyStatusLocally(keys, status) {
+  var set = {};
+  keys.forEach(function (k) { set[k] = true; });
+  var done = status === '完了' || status === '対象外';
+
+  DATA.lanes.forEach(function (lane) {
+    var changed = false;
+    lane.items.forEach(function (it) {
+      if (!set[it.key]) return;
+      it.status = status;
+      var deadline = it.endKey || it.dueKey;
+      it.overdue = !done && deadline < DATA.today;
+      changed = true;
+    });
+    if (changed) {
+      lane.doneCount = lane.items.filter(function (i) { return i.status === '完了'; }).length;
+    }
+  });
+
+  // 完了・対象外になった工程は通知の対象から外れる
+  ['overdue', 'today', 'soon'].forEach(function (k) {
+    DATA.digest[k] = (DATA.digest[k] || []).filter(function (i) {
+      if (!set[i.key]) return true;
+      return !done;
+    }).map(function (i) {
+      if (set[i.key]) i.status = status;
+      return i;
+    });
+  });
+  DATA.digest.total = DATA.digest.overdue.length + DATA.digest.today.length + DATA.digest.soon.length;
+}
+
+/** 回次まるごとの状態変更 */
+function bulkStatus(lane, status, btn) {
+  var items = laneItems(lane).filter(function (i) { return i.status !== status; });
+  if (!items.length) { alert('変更が必要な工程はありません。'); return; }
+  var label = lane.workName + '　' + periodLabel(lane.period);
+  if (!confirm(label + ' の ' + items.length + ' 工程を「' + status + '」にします。よろしいですか？')) return;
+
+  var keys = items.map(function (i) { return i.key; });
+  var text = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '更新中…';
   google.script.run
-    .withSuccessHandler(function () { load(true); })
-    .withFailureHandler(function (err) {
-      showFatal('基準日の変更に失敗しました。', err && err.message ? err.message : String(err));
+    .withSuccessHandler(function () {
+      applyStatusLocally(keys, status);
+      renderAll();
     })
-    .updateAnchorDate(lane.workId, lane.period, input.trim());
+    .withFailureHandler(function (err) {
+      btn.disabled = false;
+      btn.textContent = text;
+      alert('更新に失敗しました：' + err.message);
+    })
+    .updateItemsStatus(keys, status);
+}
+
+/**
+ * 小さなダイアログ。日付はカレンダーで選べるようにする。
+ * @param {Object} o {title, sub, value, okLabel, onOk(value, setError)}
+ */
+function openDateDialog(o) {
+  var back = el('div', 'dlg-back');
+  back.id = 'dateDialog';
+  var box = el('div', 'dlg');
+  box.setAttribute('role', 'dialog');
+  box.setAttribute('aria-modal', 'true');
+  box.onclick = function (ev) { ev.stopPropagation(); };
+
+  box.appendChild(el('h3', '', o.title));
+  if (o.sub) box.appendChild(el('div', 'sub', o.sub));
+
+  var input = el('input');
+  input.type = 'date';
+  input.value = o.value || '';
+  input.setAttribute('aria-label', o.title);
+  box.appendChild(input);
+
+  var err = el('div', 'err');
+  err.hidden = true;
+  err.setAttribute('role', 'alert');
+  box.appendChild(err);
+
+  function setError(msg) { err.textContent = msg; err.hidden = !msg; }
+
+  var row = el('div', 'row');
+  var cancel = el('button', '', 'キャンセル');
+  cancel.type = 'button';
+  cancel.onclick = close;
+  var ok = el('button', 'primary', o.okLabel || '変更する');
+  ok.type = 'button';
+  ok.onclick = function () {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.value)) { setError('日付を選んでください。'); return; }
+    o.onOk(input.value, setError, close, ok);
+  };
+  row.appendChild(cancel);
+  row.appendChild(ok);
+  box.appendChild(row);
+
+  back.appendChild(box);
+  back.onclick = close;
+  document.body.appendChild(back);
+  input.focus();
+
+  function close() {
+    if (back.parentNode) back.parentNode.removeChild(back);
+    document.removeEventListener('keydown', onKey);
+  }
+  function onKey(ev) {
+    if (ev.key === 'Escape') close();
+    if (ev.key === 'Enter' && document.getElementById('dateDialog')) ok.click();
+  }
+  document.addEventListener('keydown', onKey);
+  return close;
+}
+
+function changeAnchor(lane) {
+  openDateDialog({
+    title: lane.anchorName + 'を変更',
+    sub: lane.workName + '　' + periodLabel(lane.period) + '\n'
+      + 'この回次の工程がすべて計算し直されます。',
+    value: lane.anchorKey,
+    okLabel: '変更する',
+    onOk: function (value, setError, close, btn) {
+      btn.disabled = true;
+      btn.textContent = '計算中…';
+      google.script.run
+        .withSuccessHandler(function () { close(); load(true); })
+        .withFailureHandler(function (err) {
+          btn.disabled = false;
+          btn.textContent = '変更する';
+          setError(err && err.message ? err.message : String(err));
+        })
+        .updateAnchorDate(lane.workId, lane.period, value);
+    }
+  });
 }
 
 // =====================================================================
@@ -1584,6 +1884,24 @@ document.getElementById('zoom').onclick = function (ev) {
 };
 
 document.getElementById('btnPrint').onclick = startPrint;
+
+// 検索と担当の絞り込み
+var qTimer = null;
+document.getElementById('q').addEventListener('input', function () {
+  var v = this.value;
+  document.getElementById('qClear').hidden = !v;
+  // 打つたびに全部組み直すと重いので、少しだけ待つ
+  clearTimeout(qTimer);
+  qTimer = setTimeout(function () {
+    query = v.trim().toLowerCase();
+    if (DATA) renderAll();
+  }, 180);
+});
+document.getElementById('qClear').onclick = clearFilter;
+document.getElementById('ownerSel').onchange = function () {
+  ownerFilter = this.value;
+  if (DATA) renderAll();
+};
 document.getElementById('btnReload').onclick = function () { load(); };
 document.getElementById('btnToday').onclick = scrollToToday;
 

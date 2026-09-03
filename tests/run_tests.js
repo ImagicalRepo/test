@@ -599,6 +599,31 @@ check('Chat投稿本文に3区分が並ぶ', () => {
   eq(G.buildChatText({ overdue: [], today: [], soon: [], total: 0 }, '2026-09-09'), '', '対象ゼロなら空文字');
 });
 
+check('回次が無い工程で余分な空白を入れない', () => {
+  // 日付指定だけで組んだ工程は回次を持たない
+  eq(G.formatWorkLabel({ workName: '定例の事務', period: '' }), '定例の事務');
+  eq(G.formatWorkLabel({ workName: '定例の事務' }), '定例の事務', '未定義でも同じ');
+  eq(G.formatWorkLabel({ workName: '指定難病', period: '2026-09' }), '指定難病 2026-09');
+  const d = G.buildDigest(
+    [{ workId: 'X', workName: '定例の事務', color: '青', period: '', seq: 10,
+       name: '窓口点検', dueKey: '2026-09-09', owner: '', status: '未着手', remindDays: 3, note: '' }],
+    cal, '2026-09-09', {});
+  const text = G.buildChatText(d, '2026-09-09');
+  eq(text.includes('定例の事務｜本日'), true, '「定例の事務 ｜本日」にならないこと');
+});
+
+check('通知の末尾に画面へのリンクを付ける', () => {
+  const d = G.buildDigest(DIGEST_ROWS, cal, '2026-09-09', {});
+  const url = 'https://script.google.com/macros/s/ABC/exec';
+  const withUrl = G.buildChatText(d, '2026-09-09', url);
+  eq(withUrl.includes('<' + url + '|スケジュール画面を開く>'), true);
+  eq(withUrl.trim().split('\n').pop().indexOf('<' + url) === 0, true, '末尾に1本だけ');
+  const without = G.buildChatText(d, '2026-09-09', '');
+  eq(without.includes('スケジュール画面を開く'), false, '未登録なら付けない');
+  eq(G.buildChatText({ overdue: [], today: [], soon: [], total: 0 }, '2026-09-09', url), '',
+    '対象ゼロならリンクも出さない');
+});
+
 check('日付の表示形式', () => {
   eq(G.formatShortDate('2026-09-09'), '9/9(水)');
 });
