@@ -6,7 +6,7 @@
     "test": "node tests/run_tests.js",
     "preview": "node tests/preview/preview.js",
     "preview:shot": "node tests/preview/preview.js --shot",
-    "test:ui": "node tests/preview/preview.js && node tests/preview/interact.js",
+    "test:ui": "node tests/preview/preview.js && node tests/preview/interact.js && node tests/preview/printcheck.js",
     "bundle": "node tools/bundle.js"
   },
   "license": "MIT",

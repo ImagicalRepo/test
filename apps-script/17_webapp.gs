@@ -198,24 +198,65 @@ function listHolidays_(fromKey, toKey) {
   return out;
 }
 
-/** 工程の状態を更新する（ガント画面から呼ばれる） */
+/** 工程1件の状態を更新する（ガント画面から呼ばれる） */
 function updateItemStatus(key, status) {
+  var r = updateItemsStatus([key], status);
+  return { key: key, status: status, updated: r.updated };
+}
+
+/**
+ * 複数の工程の状態をまとめて更新する。
+ *
+ * 1件ずつ setValue すると件数ぶんだけシートへの往復が増えるため、
+ * 列ごとに1回の書き込みにまとめている（回次まるごとの完了で効く）。
+ */
+function updateItemsStatus(keys, status) {
   if (STATUS_LIST.indexOf(status) < 0) throw new Error('不正な状態です: ' + status);
+  var wanted = {};
+  (keys || []).forEach(function (k) {
+    k = String(k).trim();
+    if (k) wanted[k] = true;
+  });
+  if (!Object.keys(wanted).length) return { updated: 0, keys: [] };
+
   var t = readTable_(SHEET.SCHEDULE);
   var idx = headerIndex_(t.headers);
-  var target = null;
-  for (var i = 0; i < t.rows.length; i++) {
-    if (String(t.rows[i]['キー']).trim() === key) { target = t.rows[i]; break; }
-  }
-  if (!target) throw new Error('工程が見つかりません: ' + key);
+  if (!idx['状態']) throw new Error('工程表に「状態」列がありません');
+  if (!t.rows.length) return { updated: 0, keys: [] };
 
-  t.sheet.getRange(target._row, idx['状態']).setValue(status);
-  if (idx['完']) t.sheet.getRange(target._row, idx['完']).setValue(status === STATUS.DONE);
-  if (idx['完了日']) {
-    t.sheet.getRange(target._row, idx['完了日'])
-      .setValue(status === STATUS.DONE ? keyToSheetDate_(todayKey_()) : '');
-  }
-  return { key: key, status: status };
+  var done = status === STATUS.DONE;
+  var doneDate = done ? keyToSheetDate_(todayKey_()) : '';
+
+  // readTable_ は空行を飛ばすので、行番号（_row）で位置を決める。
+  // 既存の値を読んでおき、該当行だけ差し替えて書き戻す。
+  var lastRow = t.sheet.getLastRow();
+  if (lastRow < 2) return { updated: 0, keys: [] };
+  var n = lastRow - 1;
+
+  var statusCol = t.sheet.getRange(2, idx['状態'], n, 1).getValues();
+  var checkCol = idx['完'] ? t.sheet.getRange(2, idx['完'], n, 1).getValues() : null;
+  var dateCol = idx['完了日'] ? t.sheet.getRange(2, idx['完了日'], n, 1).getValues() : null;
+
+  var hit = [];
+  t.rows.forEach(function (r) {
+    var key = String(r['キー']).trim();
+    if (!wanted[key]) return;
+    var i = r._row - 2;
+    if (i < 0 || i >= n) return;
+    hit.push(key);
+    statusCol[i][0] = status;
+    if (checkCol) checkCol[i][0] = done;
+    if (dateCol) dateCol[i][0] = doneDate;
+  });
+
+  if (!hit.length) throw new Error('工程が見つかりません: ' + Object.keys(wanted).join(', '));
+
+  t.sheet.getRange(2, idx['状態'], n, 1).setValues(statusCol);
+  if (checkCol) t.sheet.getRange(2, idx['完'], n, 1).setValues(checkCol);
+  if (dateCol) t.sheet.getRange(2, idx['完了日'], n, 1).setValues(dateCol);
+
+  if (hit.length > 1) log_('状態の一括更新', true, hit.length + '件 → ' + status);
+  return { updated: hit.length, keys: hit };
 }
 
 /** 基準日（審査会日など）を変更して、その回次の工程を組み直す */

@@ -168,15 +168,28 @@
   .head-label {
     position: sticky; left: 0; z-index: 6; background: var(--surface);
     width: var(--label-w); flex: 0 0 var(--label-w); border-right: 1px solid var(--border);
+    /* flex の min-width:auto で中身のぶんだけ広がると、
+       絶対配置の網掛け（.bg-layer）と目盛りがずれる */
+    min-width: 0;
   }
   .month-cell {
     font-size: 11px; font-weight: 700; color: var(--muted);
     border-left: 1px solid var(--border); padding-left: 7px;
     display: flex; align-items: center; white-space: nowrap; overflow: hidden;
+    min-width: 0;
   }
-  .day { font-size: 10px; color: var(--muted); text-align: center; line-height: 22px; flex: 0 0 auto; }
-  .day.we { color: var(--muted); background: var(--surface-3); }
-  .day.today { background: var(--danger-soft); color: var(--danger); font-weight: 700; }
+  /* マスは背景だけ。min-width を許すと中身のぶん広がって網掛けとずれる */
+  .day { flex: 0 0 auto; min-width: 0; }
+  /* 日付の文字はマスの上に重ねる。隣のマスの背景に欠けない */
+  .tick-layer { position: absolute; top: 22px; height: 22px; pointer-events: none; }
+  .tick {
+    position: absolute; top: 0; transform: translateX(-50%);
+    font-size: 10px; line-height: 22px; color: var(--muted); white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .tick.today { color: var(--danger); font-weight: 700; }
+  .day.we { background: var(--surface-3); }
+  .day.today { background: var(--danger-soft); }
 
   .lane { display: flex; border-bottom: 1px solid var(--border); min-height: 46px; }
   .lane:hover { background: var(--surface-2); }
@@ -184,9 +197,14 @@
     position: sticky; left: 0; z-index: 3; background: var(--surface);
     width: var(--label-w); flex: 0 0 var(--label-w); border-right: 1px solid var(--border);
     padding: 6px 10px; display: flex; flex-direction: column; justify-content: center; gap: 3px;
+    /* 業務名が長くても列幅を押し広げない（押し広げると、その行だけ目盛りとずれる） */
+    min-width: 0; overflow: hidden;
   }
   .lane:hover .lane-label { background: var(--surface-2); }
-  .lane-title { font-weight: 600; font-size: 12px; display: flex; align-items: center; gap: 6px; line-height: 1.3; }
+  .lane-title {
+    font-weight: 600; font-size: 12px; display: flex; align-items: center; gap: 6px;
+    line-height: 1.3; min-width: 0; overflow-wrap: anywhere;
+  }
   .lane-title.repeat { opacity: .42; font-weight: 500; }
   .lane-sub .period { font-weight: 700; color: var(--text); }
   .lane-sub { font-size: 10.5px; color: var(--muted); display: flex; align-items: center; gap: 9px; }
@@ -380,12 +398,14 @@
     position: absolute; font-size: 8.5px; line-height: 1.3; white-space: nowrap;
     background: var(--surface); border: 1px solid var(--border); border-radius: 4px;
     padding: 1px 4px; color: var(--text); pointer-events: none;
+    /* 引き出し線より必ず上に描く。下にすると線が吹き出しを突き抜けて見える */
+    z-index: 2;
   }
   .plabel .pdate {
     font-weight: 700; font-variant-numeric: tabular-nums; margin-right: 4px;
     color: var(--muted);
   }
-  .pleader { position: absolute; width: 1px; background: var(--border); pointer-events: none; }
+  .pleader { position: absolute; width: 1px; background: var(--border); pointer-events: none; z-index: 1; }
 
   @page { size: A4 landscape; margin: 8mm; }
 
@@ -404,7 +424,9 @@
 
     .view { animation: none; display: block; }
     .scroll, .work-scroll, .cal-wrap { overflow: visible !important; height: auto !important; }
-    .grid { width: auto !important; }
+    /* .grid の幅は印刷用に計算した値（ラベル列＋日数×1日の幅）。
+       auto にすると track だけが伸びて、絶対配置の網掛けとずれる */
+    .track { flex: 0 0 auto !important; }
     /* sticky は解くが、土日の網掛けより上に描くため位置指定は残す
        （static にすると背景レイヤーが上に来て、月名が読めなくなる） */
     .head, .head-label, .lane-label { position: relative !important; }
@@ -650,6 +672,9 @@ function renderThemeGrid() {
 // =====================================================================
 var DATA = null;
 var view = 'gantt';
+/** A4横（297mm）から余白8mm×2 を引いた刷り幅。96dpi 換算の px */
+var PRINT_W = Math.floor((297 - 16) / 25.4 * 96);   // ≒1062px
+var LABEL_W = 260;                                   // ラベル列（--label-w と合わせる）
 var dayW = 22;
 var hidden = {};          // 業務IDごとの表示/非表示（ガント・月間）
 var selectedWork = null;  // 業務別ビューで選択中の業務
@@ -927,7 +952,7 @@ function renderGantt(root) {
 
 function drawGantt(grid) {
   grid.innerHTML = '';
-  var labelW = 260;
+  var labelW = LABEL_W;
   var trackW = days.length * dayW;
   grid.style.width = (labelW + trackW) + 'px';
 
@@ -963,19 +988,32 @@ function drawGantt(grid) {
   }
   head.appendChild(monthRow);
 
+  // マスは背景と当たり判定だけを持たせ、日付の文字は上に重ねた層に置く。
+  // マスの中に入れると、1日の幅が狭いときに隣のマスの背景で数字が欠ける。
   var dayRow = el('div', 'head-row');
   dayRow.appendChild(el('div', 'head-label'));
   days.forEach(function (k) {
     var cls = 'day';
     if (isOff(k)) cls += ' we';
     if (k === DATA.today) cls += ' today';
-    var label = dayW >= 20 ? String(+k.slice(8, 10)) : (toDate(k).getUTCDay() === 1 ? String(+k.slice(8, 10)) : '');
-    var c = el('div', cls, label);
+    var c = el('div', cls);
     c.style.flex = '0 0 ' + dayW + 'px';
     c.title = fmtLong(k) + (holidayName[k] ? '　' + holidayName[k] : '');
     dayRow.appendChild(c);
   });
   head.appendChild(dayRow);
+
+  var ticks = el('div', 'tick-layer');
+  ticks.style.left = labelW + 'px';
+  ticks.style.width = trackW + 'px';
+  days.forEach(function (k, i) {
+    // 幅に余裕があれば毎日、狭ければ月曜だけに間引く
+    if (dayW < 20 && toDate(k).getUTCDay() !== 1) return;
+    var t = el('span', 'tick' + (k === DATA.today ? ' today' : ''), String(+k.slice(8, 10)));
+    t.style.left = (i * dayW + dayW / 2) + 'px';
+    ticks.appendChild(t);
+  });
+  head.appendChild(ticks);
   grid.appendChild(head);
 
   var shown = DATA.lanes.filter(function (l) { return !hidden[l.workId]; });
@@ -1425,8 +1463,7 @@ var savedDayW = null;
 
 /** A4横に収まる1日あたりの幅を求める */
 function printDayW() {
-  var budget = 1040 - 190;                       // 用紙幅 - ラベル列
-  var fit = Math.floor(budget / Math.max(days.length, 1));
+  var fit = Math.floor((PRINT_W - LABEL_W) / Math.max(days.length, 1));
   return Math.max(3, Math.min(dayW, fit));
 }
 
