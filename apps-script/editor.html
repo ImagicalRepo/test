@@ -8,6 +8,9 @@
     --ease:cubic-bezier(.4,0,.2,1);
   }
   * { box-sizing:border-box; }
+  /* display を指定した要素でも hidden 属性が効くようにする */
+  [hidden] { display: none !important; }
+
   html, body { margin:0; height:100%; }
   body {
     font-family:"Noto Sans JP","Yu Gothic","Hiragino Sans",system-ui,sans-serif;
@@ -232,6 +235,62 @@
   /* 入力中で、まだ計算し直していない状態 */
   .stale { opacity:.45; transition:opacity .15s var(--ease); }
 
+  /* 未保存の変更があることの表示 */
+  .dirty {
+    display:inline-flex; align-items:center; gap:5px; white-space:nowrap;
+    font-size:11.5px; font-weight:600; color:var(--warn);
+    background:var(--warn-soft); border-radius:999px; padding:4px 10px;
+  }
+  .dirty .icon { width:8px; height:8px; flex:0 0 8px; fill:currentColor; stroke:none; }
+
+  /* 取り消し用のトースト */
+  .toast {
+    position:fixed; left:50%; bottom:20px; transform:translateX(-50%);
+    display:flex; align-items:center; gap:12px; z-index:80;
+    background:var(--text); color:#fff; border-radius:10px;
+    padding:10px 12px 10px 15px; font-size:12px;
+    box-shadow:0 10px 30px rgba(0,0,0,.24); animation:toastIn .18s var(--ease);
+  }
+  .toast button {
+    border:none; background:rgba(255,255,255,.16); color:#fff;
+    font-size:12px; font-weight:600; padding:5px 11px; border-radius:7px;
+  }
+  .toast button:hover { background:rgba(255,255,255,.28); }
+  @keyframes toastIn { from { opacity:0; transform:translate(-50%,8px); } }
+
+  /* 進捗のまとめ設定 */
+  .modal-back {
+    position:fixed; inset:0; background:rgba(15,23,42,.3); z-index:70;
+    display:flex; align-items:center; justify-content:center; padding:24px;
+  }
+  .modal {
+    background:var(--surface); border-radius:12px; width:min(680px,100%);
+    max-height:100%; display:flex; flex-direction:column;
+    box-shadow:0 20px 54px rgba(0,0,0,.24); animation:detailIn .2s var(--ease);
+  }
+  .modal-head { padding:15px 18px 11px; border-bottom:1px solid var(--border); }
+  .modal-head h2 { margin:0 0 3px; font-size:14px; }
+  .modal-head .sub { font-size:11.5px; color:var(--muted); line-height:1.6; }
+  .modal-body { overflow:auto; padding:12px 18px; }
+  .modal-foot {
+    padding:11px 18px; border-top:1px solid var(--border);
+    display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+  }
+  .quick { display:flex; align-items:center; gap:7px; flex-wrap:wrap; margin-bottom:12px;
+           background:var(--soft); border-radius:9px; padding:9px 11px; font-size:11.5px; }
+  .quick input[type=date] { padding:4px 7px; font-size:11.5px; }
+  .pg-group { margin-bottom:14px; }
+  .pg-period { font-size:11.5px; font-weight:700; color:var(--muted); margin-bottom:5px; }
+  .pg-row {
+    display:flex; align-items:center; gap:9px; padding:5px 2px;
+    border-bottom:1px solid var(--border); font-size:12px;
+  }
+  .pg-row:last-child { border-bottom:none; }
+  .pg-date { font-variant-numeric:tabular-nums; color:var(--muted); white-space:nowrap; width:112px; flex:0 0 112px; }
+  .pg-row.past .pg-date { color:var(--warn); font-weight:600; }
+  .pg-name { flex:1; min-width:0; overflow-wrap:anywhere; }
+  .pg-row select { flex:0 0 96px; }
+
   #msg { font-size:12px; display:inline-flex; align-items:center; gap:5px; }
   #msg.err { color:var(--danger); }
   #msg.ok { color:var(--ok); }
@@ -280,7 +339,15 @@
     </button>
     <span class="spacer"></span>
     <a id="linkSchedule" class="applink" target="_blank" rel="noopener" hidden>スケジュールを見る ↗</a>
+    <span id="dirty" class="dirty" hidden>
+      <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/></svg>
+      未保存の変更があります
+    </span>
     <span id="msg" role="status" aria-live="polite"></span>
+    <button id="btnProgress">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      進捗をまとめて設定
+    </button>
     <button id="btnSave" class="primary">
       <svg class="icon" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>
       保存して工程表を作り直す
@@ -331,6 +398,72 @@
   var rows = [];        // 編集中の工程
   var opened = {};      // 詳細を開いている行
   var dueByIndex = {};  // 行ごとの算出日
+  var savedSnapshot = '[]';   // 最後に保存した内容（未保存の判定に使う）
+
+  /**
+   * 未保存の変更があるか。
+   * 業務を切り替えると rows を丸ごと入れ替えるので、
+   * 気づかないうちに編集内容が消えないよう、ここで見張る。
+   */
+  function snapshot() { return JSON.stringify(rows); }
+  function isDirty() { return !!current && snapshot() !== savedSnapshot; }
+
+  function markSaved() {
+    savedSnapshot = snapshot();
+    showDirty();
+  }
+
+  function showDirty() {
+    var el2 = document.getElementById('dirty');
+    if (el2) el2.hidden = !isDirty();
+  }
+
+  /** 編集内容を捨ててよいか尋ねる（捨ててよければ true） */
+  function confirmDiscard(what) {
+    if (!isDirty()) return true;
+    return confirm('保存していない変更があります。\n'
+      + '［保存して工程表を作り直す］を押していないため、' + what + 'と失われます。\n\n'
+      + 'このまま続けますか？');
+  }
+
+  // タブやウィンドウを閉じるときの確認。
+  // シートのダイアログ内では出ないことがあるため、上の表示と併用する
+  window.addEventListener('beforeunload', function (ev) {
+    if (!isDirty()) return;
+    ev.preventDefault();
+    ev.returnValue = '';
+    return '';
+  });
+
+  /** 消したものを戻せるようにする（確認ダイアログの代わり） */
+  var toastTimer = null;
+  function toast(text, undoLabel, onUndo) {
+    var old = document.getElementById('toast');
+    if (old) old.parentNode.removeChild(old);
+    clearTimeout(toastTimer);
+
+    var box = el('div', 'toast');
+    box.id = 'toast';
+    box.setAttribute('role', 'status');
+    box.appendChild(el('span', '', text));
+    if (onUndo) {
+      var b = el('button', '', undoLabel || '元に戻す');
+      b.type = 'button';
+      b.onclick = function () { close(); onUndo(); };
+      box.appendChild(b);
+    }
+    var x = el('button', '', '閉じる');
+    x.type = 'button';
+    x.onclick = close;
+    box.appendChild(x);
+    document.body.appendChild(box);
+    toastTimer = setTimeout(close, 8000);
+
+    function close() {
+      clearTimeout(toastTimer);
+      if (box.parentNode) box.parentNode.removeChild(box);
+    }
+  }
   var dragFrom = null;
 
   var UNITS = ['営業日', '暦日'];
@@ -416,7 +549,13 @@
       var sel = document.getElementById('workSel');
       sel.innerHTML = '';
       d.works.forEach(function (w) { sel.appendChild(opt(w.id, w.name + (w.enabled ? '' : '（無効）'))); });
-      sel.onchange = function () { selectWork(sel.value); };
+      sel.onchange = function () {
+        if (!confirmDiscard('いま編集している工程を切り替える')) {
+          sel.value = current;   // 取り消したら選択を戻す
+          return;
+        }
+        selectWork(sel.value);
+      };
 
       // ウェブアプリとして開いているときだけ、スケジュール画面へのリンクを出す
       var link = document.getElementById('linkSchedule');
@@ -447,6 +586,7 @@
   function renderNoWork() {
     current = null;
     rows = [];
+    markSaved();
     document.getElementById('workBox').innerHTML = '';
     document.getElementById('anchorBox').innerHTML = '';
     document.getElementById('preview').innerHTML = '';
@@ -477,6 +617,7 @@
     opened = {};
     document.getElementById('workSel').value = id;
     rows = (DATA.templates[id] || []).map(function (r) { return JSON.parse(JSON.stringify(r)); });
+    markSaved();
     // 起点の日が無いなら空にする。今日を入れると「起点がある」ように見えてしまう
     var next = DATA.nextAnchors[id];
     document.getElementById('anchorInput').value = next ? next.dateKey : '';
@@ -624,6 +765,52 @@
     box.appendChild(field('色', select(DATA.colors, w.color, function (v) { w.color = v; saveWorkMeta(); })));
     box.appendChild(field('有効', select(['ON', 'OFF'], w.enabled ? 'ON' : 'OFF',
       function (v) { w.enabled = (v === 'ON'); saveWorkMeta(); })));
+
+    var del = el('button', 'ghost danger');
+    del.type = 'button';
+    del.style.marginLeft = 'auto';
+    del.appendChild(svg('trash'));
+    del.appendChild(el('span', '', 'この業務を削除'));
+    del.onclick = function () { deleteWork(); };
+    box.appendChild(del);
+  }
+
+  /**
+   * 業務をまるごと削除する。
+   * 工程・起点の日・工程表の行も消えるので、件数を見せてから確認する。
+   */
+  function deleteWork() {
+    var w = work();
+    if (!w) return;
+    setMsg('確認中…');
+    google.script.run
+      .withSuccessHandler(function (info) {
+        setMsg('');
+        var lines = [
+          '「' + w.name + '」を削除します。',
+          '',
+          '　・工程テンプレート ' + info.template + ' 件',
+          '　・起点の日 ' + info.anchor + ' 件',
+          '　・工程表 ' + info.schedule + ' 行',
+          '',
+          'この操作は元に戻せません。よろしいですか？'
+        ];
+        if (!confirm(lines.join('\n'))) return;
+        setMsg('削除中…');
+        google.script.run
+          .withSuccessHandler(function (r) {
+            setMsg('「' + w.name + '」を削除しました', 'ok');
+            if (r && r.events) toast('カレンダーの予定 ' + r.events + ' 件もあわせて削除しました');
+            savedSnapshot = '[]';   // 消えたものに未保存もない
+            rows = [];
+            current = null;
+            load();
+          })
+          .withFailureHandler(function (e) { setMsg(e.message, 'err'); })
+          .deleteWork(w.id);
+      })
+      .withFailureHandler(function (e) { setMsg(e.message, 'err'); })
+      .getWorkDeleteInfo(w.id);
   }
 
   var NTHS = [
@@ -1063,10 +1250,15 @@
     del.setAttribute('aria-label', '「' + (r.name || '無題') + '」を削除');
     del.appendChild(svg('trash'));
     del.onclick = function () {
-      if (!confirm('「' + (r.name || '無題') + '」を削除しますか？')) return;
-      rows.splice(i, 1);
+      var removed = rows.splice(i, 1)[0];
+      var at = i;
       opened = {};
       renumber(); renderRows(); preview();
+      toast('「' + (removed.name || '無題') + '」を削除しました', '元に戻す', function () {
+        rows.splice(Math.min(at, rows.length), 0, removed);
+        opened = {};
+        renumber(); renderRows(); preview();
+      });
     };
     more.appendChild(del);
     sen.appendChild(more);
@@ -1203,6 +1395,7 @@
    * 起点の日の呼び方も、必要になってから業務設定で変えられる。
    */
   function addWork() {
+    if (!confirmDiscard('いま編集している工程を残したまま業務を足す')) return;
     var name = prompt(
       '業務名を入力してください。\n\n'
       + '例）指定難病 医療費助成（月次審査会）', '');
@@ -1243,6 +1436,7 @@
   function markStale() {
     document.getElementById('preview').classList.add('stale');
     document.getElementById('pvSummary').classList.add('stale');
+    showDirty();
   }
 
   function clearStale() {
@@ -1291,6 +1485,7 @@
   }
 
   function renderPreview(res, indices, anchor) {
+    showDirty();
     var box = document.getElementById('preview');
     var sum = document.getElementById('pvSummary');
     box.innerHTML = '';
@@ -1375,12 +1570,186 @@
     google.script.run
       .withSuccessHandler(function (res) {
         btn.disabled = false;
+        markSaved();
         if (res.errors && res.errors.length) setMsg('要確認：' + res.errors.join(' / '), 'err');
         else setMsg('保存しました（工程表 ' + res.rows + ' 行）', 'ok');
+        // 年度途中の登録では、過ぎた工程が未着手のまま残る。その場で片づけられるようにする
+        if (!res.errors || !res.errors.length) offerProgress();
       })
       .withFailureHandler(function (e) { btn.disabled = false; setMsg(e.message, 'err'); })
       .saveTemplate(current, rows.filter(function (r) { return r.name; }));
   };
+
+  // ---------- 進捗をまとめて設定 ----------
+  document.getElementById('btnProgress').onclick = function () { openProgress(false); };
+
+  /**
+   * 保存したあと、過ぎた工程が未着手のまま残っていれば案内を出す。
+   * 年度途中で業務を登録すると、過去の工程が全部「未着手」で並んでしまうため。
+   */
+  function offerProgress() {
+    if (!current) return;
+    google.script.run
+      .withSuccessHandler(function (data) {
+        if (!data || !data.stale) return;
+        openProgress(true, data);
+      })
+      .withFailureHandler(function () { /* 案内なので、失敗しても黙って諦める */ })
+      .getWorkProgress(current);
+  }
+
+  function openProgress(auto, preloaded) {
+    if (!current) return;
+    if (preloaded) { showProgress(preloaded, auto); return; }
+    setMsg('読み込み中…');
+    google.script.run
+      .withSuccessHandler(function (data) { setMsg(''); showProgress(data, auto); })
+      .withFailureHandler(function (e) { setMsg(e.message, 'err'); })
+      .getWorkProgress(current);
+  }
+
+  function showProgress(data, auto) {
+    if (!data.groups.length) {
+      setMsg('この業務にはまだ工程表の行がありません', 'err');
+      return;
+    }
+    var edited = {};   // キー -> 新しい状態
+
+    var back = el('div', 'modal-back');
+    back.id = 'progressModal';
+    var box = el('div', 'modal');
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-modal', 'true');
+    box.onclick = function (ev) { ev.stopPropagation(); };
+
+    var head = el('div', 'modal-head');
+    head.appendChild(el('h2', '', auto ? 'すでに終わっている工程はありますか？' : '進捗をまとめて設定'));
+    head.appendChild(el('div', 'sub', auto
+      ? '予定日が過ぎているのに未着手の工程が ' + data.stale + ' 件あります。\n'
+        + '年度の途中から使い始めた場合は、ここで終わっているものを完了にしておくと、'
+        + '通知に「期限超過」として出続けません。'
+      : work().name + ' の工程の状態をまとめて変えられます。'));
+    box.appendChild(head);
+
+    var body = el('div', 'modal-body');
+
+    // よく使う操作：ある日より前をまとめて完了にする
+    var quick = el('div', 'quick');
+    quick.appendChild(el('span', '', '予定日が'));
+    var qDate = el('input');
+    qDate.type = 'date';
+    qDate.value = data.today;
+    qDate.setAttribute('aria-label', 'この日より前をまとめて完了にする');
+    quick.appendChild(qDate);
+    quick.appendChild(el('span', '', 'より前の工程を'));
+    var qBtn = el('button', '', 'まとめて完了にする');
+    qBtn.type = 'button';
+    qBtn.onclick = function () {
+      var limit = qDate.value;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(limit)) return;
+      var n = 0;
+      data.groups.forEach(function (g) {
+        g.items.forEach(function (it) {
+          if ((it.endKey || it.dueKey) >= limit) return;
+          if (it.status === '完了') return;
+          edited[it.key] = '完了';
+          n++;
+        });
+      });
+      renderList();
+      count.textContent = n ? n + ' 件を完了にしました（まだ保存していません）' : '対象はありませんでした';
+    };
+    quick.appendChild(qBtn);
+    var count = el('span', '', '');
+    count.style.color = 'var(--muted)';
+    quick.appendChild(count);
+    body.appendChild(quick);
+
+    var list = el('div');
+    body.appendChild(list);
+    box.appendChild(body);
+
+    function renderList() {
+      list.innerHTML = '';
+      data.groups.forEach(function (g) {
+        var grp = el('div', 'pg-group');
+        grp.appendChild(el('div', 'pg-period', g.period ? g.period : '日付指定'));
+        g.items.forEach(function (it) {
+          var cur = edited[it.key] !== undefined ? edited[it.key] : it.status;
+          var row = el('div', 'pg-row' + (it.past && cur === '未着手' ? ' past' : ''));
+          row.appendChild(el('span', 'pg-date', fmtDate(it.dueKey)
+            + (it.endKey ? '〜' + fmtDate(it.endKey) : '')));
+          row.appendChild(el('span', 'pg-name', it.name));
+          var sel = select(data.statusList, cur, function (v) {
+            edited[it.key] = v;
+            renderList();
+          });
+          sel.setAttribute('aria-label', it.name + ' の状態');
+          row.appendChild(sel);
+          grp.appendChild(row);
+        });
+        list.appendChild(grp);
+      });
+    }
+    renderList();
+
+    var foot = el('div', 'modal-foot');
+    var note = el('span', '', '');
+    note.style.cssText = 'font-size:11.5px;color:var(--muted);margin-right:auto';
+    foot.appendChild(note);
+    var cancel = el('button', '', auto ? 'あとで' : '閉じる');
+    cancel.type = 'button';
+    cancel.onclick = close;
+    foot.appendChild(cancel);
+    var save = el('button', 'primary', 'この内容で反映する');
+    save.type = 'button';
+    save.onclick = function () {
+      // 同じ状態のものをまとめて送る（状態ごとに1回の書き込みで済む）
+      var byStatus = {};
+      Object.keys(edited).forEach(function (key) {
+        if (!byStatus[edited[key]]) byStatus[edited[key]] = [];
+        byStatus[edited[key]].push(key);
+      });
+      var kinds = Object.keys(byStatus);
+      if (!kinds.length) { close(); return; }
+
+      save.disabled = true;
+      save.textContent = '反映中…';
+      var left = kinds.length;
+      var failed = null;
+      kinds.forEach(function (st) {
+        google.script.run
+          .withSuccessHandler(function () { done(); })
+          .withFailureHandler(function (e) { failed = e; done(); })
+          .updateItemsStatus(byStatus[st], st);
+      });
+      function done() {
+        if (--left > 0) return;
+        if (failed) {
+          save.disabled = false;
+          save.textContent = 'この内容で反映する';
+          note.textContent = failed.message;
+          note.style.color = 'var(--danger)';
+          return;
+        }
+        close();
+        setMsg(Object.keys(edited).length + ' 件の状態を変えました', 'ok');
+      }
+    };
+    foot.appendChild(save);
+    box.appendChild(foot);
+
+    back.appendChild(box);
+    back.onclick = close;
+    document.body.appendChild(back);
+
+    function close() {
+      if (back.parentNode) back.parentNode.removeChild(back);
+      document.removeEventListener('keydown', onKey);
+    }
+    function onKey(ev) { if (ev.key === 'Escape') close(); }
+    document.addEventListener('keydown', onKey);
+  }
 
   function setMsg(text, kind) {
     var m = document.getElementById('msg');

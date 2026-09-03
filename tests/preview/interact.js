@@ -30,6 +30,14 @@ async function main() {
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
 
+  // confirm の応答をテスト側から切り替える
+  let dialogAction = 'accept';
+  let lastDialog = null;
+  page.on('dialog', d => {
+    lastDialog = d.message();
+    if (dialogAction === 'accept') d.accept(); else d.dismiss();
+  });
+
   await page.goto(EDITOR);
   await page.waitForSelector('.step');
   await page.waitForTimeout(600);
@@ -93,6 +101,132 @@ async function main() {
   check('「◯工程 全体で◯日間」が1つだけ', sum.summaries === 1, '見つかった数: ' + sum.summaries);
   check('工程一覧が1つだけ', sum.lists === 1, '見つかった数: ' + sum.lists);
   await page.evaluate(() => { window.MOCK_DELAY = () => 10; });
+
+  // ---- 未保存のまま業務を切り替えようとしたとき ----
+  console.log('\n未保存の変更');
+  const dirtyShown = await page.evaluate(() => {
+    const e = document.getElementById('dirty');
+    return getComputedStyle(e).display !== 'none' && !e.hidden === true;
+  });
+  check('「未保存の変更があります」が出る', dirtyShown);
+
+  lastDialog = null;
+  dialogAction = 'dismiss';
+  await page.selectOption('#workSel', 'KOSIN');
+  await page.waitForTimeout(400);
+  const kept = await page.evaluate(() => ({
+    sel: document.getElementById('workSel').value,
+    current: current
+  }));
+  check('切り替え前に確認が出る', !!lastDialog && lastDialog.indexOf('保存していない変更') >= 0,
+    String(lastDialog).slice(0, 40));
+  check('取り消すと切り替わらない', kept.current === 'NAN', kept.current);
+  check('ドロップダウンの選択も戻る', kept.sel === 'NAN', kept.sel);
+
+  dialogAction = 'accept';
+  await page.selectOption('#workSel', 'KOSIN');
+  await page.waitForTimeout(500);
+  const moved = await page.evaluate(() => ({
+    current: current,
+    dirty: getComputedStyle(document.getElementById('dirty')).display !== 'none'
+  }));
+  check('確認に応じれば切り替わる', moved.current === 'KOSIN', moved.current);
+  check('切り替え後は未保存が消える', !moved.dirty);
+
+  // ---- 工程の削除は元に戻せる ----
+  console.log('\n削除の取り消し');
+  await page.selectOption('#workSel', 'NAN');
+  await page.waitForTimeout(500);
+  const delBefore = await page.evaluate(() => ({
+    n: rows.length, name: rows[0].name
+  }));
+  await page.evaluate(() => {
+    document.querySelector('.step .more button.danger').click();
+  });
+  await page.waitForTimeout(300);
+  const afterDel = await page.evaluate(() => ({
+    n: rows.length,
+    toast: !!document.getElementById('toast'),
+    text: (document.getElementById('toast') || {}).textContent || ''
+  }));
+  check('確認ダイアログを出さずに消える', afterDel.n === delBefore.n - 1,
+    delBefore.n + ' → ' + afterDel.n);
+  check('［元に戻す］が出る', afterDel.toast && afterDel.text.indexOf('元に戻す') >= 0,
+    afterDel.text.slice(0, 40));
+  await page.evaluate(() => {
+    [...document.querySelectorAll('#toast button')].find(b => b.textContent === '元に戻す').click();
+  });
+  await page.waitForTimeout(300);
+  const undone = await page.evaluate(() => ({ n: rows.length, name: rows[0].name }));
+  check('元の位置に戻る', undone.n === delBefore.n && undone.name === delBefore.name,
+    undone.n + ' 件 / 先頭 ' + undone.name);
+
+  // ---- 進捗をまとめて設定 ----
+  console.log('\n進捗をまとめて設定');
+  await page.click('#btnProgress');
+  await page.waitForTimeout(500);
+  const pg = await page.evaluate(() => {
+    const m = document.getElementById('progressModal');
+    return m ? {
+      open: true,
+      groups: m.querySelectorAll('.pg-group').length,
+      rows: m.querySelectorAll('.pg-row').length,
+      selects: m.querySelectorAll('.pg-row select').length
+    } : { open: false };
+  });
+  check('進捗の画面が開く', pg.open);
+  check('回次ごとに並ぶ', pg.groups >= 2, pg.groups + ' 回次');
+  check('工程ごとに状態を選べる', pg.selects === pg.rows && pg.rows > 0, pg.rows + ' 行');
+
+  await page.evaluate(() => {
+    const m = document.getElementById('progressModal');
+    [...m.querySelectorAll('.quick button')][0].click();
+  });
+  await page.waitForTimeout(250);
+  const quick = await page.evaluate(() => {
+    const m = document.getElementById('progressModal');
+    const sels = [...m.querySelectorAll('.pg-row select')];
+    return {
+      done: sels.filter(s => s.value === '完了').length,
+      total: sels.length,
+      note: m.querySelector('.quick span:last-child').textContent
+    };
+  });
+  check('「◯日より前をまとめて完了」が効く', quick.done > 0,
+    quick.done + '/' + quick.total + '　' + quick.note);
+
+  await page.evaluate(() => {
+    const m = document.getElementById('progressModal');
+    [...m.querySelectorAll('.modal-foot button')].find(b => b.textContent.indexOf('反映') >= 0).click();
+  });
+  await page.waitForTimeout(600);
+  const saved = await page.evaluate(() => ({
+    closed: !document.getElementById('progressModal'),
+    calls: window.MOCK_CALLS.updateItemsStatus || 0
+  }));
+  check('反映すると閉じる', saved.closed);
+  check('状態ごとにまとめて送る', saved.calls >= 1 && saved.calls <= 2, saved.calls + ' 回');
+
+  // ---- 業務の削除 ----
+  console.log('\n業務の削除');
+  // このあとの確認で NAN を使うので、別の業務で試す
+  await page.selectOption('#workSel', 'SHOMAN');
+  await page.waitForTimeout(500);
+  const worksBefore = await page.evaluate(() => DATA.works.length);
+  lastDialog = null;
+  await page.evaluate(() => {
+    [...document.querySelectorAll('#workBox button.danger')][0].click();
+  });
+  await page.waitForTimeout(800);
+  const delWork = await page.evaluate(() => ({
+    works: DATA.works.length,
+    sel: [...document.getElementById('workSel').options].map(o => o.value)
+  }));
+  check('件数を見せて確認する', !!lastDialog && lastDialog.indexOf('工程テンプレート') >= 0,
+    String(lastDialog).replace(/\n/g, ' ').slice(0, 60));
+  check('業務が消える', delWork.works === worksBefore - 1,
+    worksBefore + ' → ' + delWork.works);
+  check('一覧からも消える', delWork.sel.indexOf('SHOMAN') < 0, JSON.stringify(delWork.sel));
 
   // ---- 起点の日が無い業務 ----
   console.log('\n起点の日がない業務');

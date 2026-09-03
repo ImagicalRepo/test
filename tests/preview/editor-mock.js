@@ -130,8 +130,50 @@
       }
       return { id: id, generate: { rows: 0, errors: [] } };
     },
-    saveTemplate: function () { return { rows: 42, errors: [] }; }
+    saveTemplate: function () { return { rows: 42, errors: [] }; },
+    getWorkDeleteInfo: function (id) {
+      return { work: 1, template: (EDITOR_DATA.templates[id] || []).length,
+               anchor: (EDITOR_DATA.anchors[id] || []).length, schedule: 42 };
+    },
+    deleteWork: function (id) {
+      EDITOR_DATA.works = EDITOR_DATA.works.filter(function (w) { return w.id !== id; });
+      delete EDITOR_DATA.templates[id];
+      delete EDITOR_DATA.anchors[id];
+      delete EDITOR_DATA.nextAnchors[id];
+      return { workId: id, template: 0, anchor: 0, schedule: 42, events: 0 };
+    },
+    updateItemsStatus: function (keys, status) {
+      (keys || []).forEach(function (k) { PROGRESS_STATUS[k] = status; });
+      return { updated: (keys || []).length, keys: keys || [] };
+    },
+    getWorkProgress: function (id) {
+      // 工程テンプレートから、9月と10月の2回次ぶんを組み立てる
+      var tpl = EDITOR_DATA.templates[id] || [];
+      var groups = [['2026-09', '2026-09-09'], ['2026-10', '2026-10-14']].map(function (p) {
+        return {
+          period: p[0],
+          anchorKey: p[1],
+          items: tpl.map(function (r, i) {
+            var key = id + '|' + p[0] + '|' + ((i + 1) * 10);
+            var due = p[0] + '-' + String(((i % 27) + 1)).padStart(2, '0');
+            return {
+              key: key, seq: (i + 1) * 10, name: r.name, dueKey: due, endKey: '',
+              status: PROGRESS_STATUS[key] || '未着手', owner: r.owner || '',
+              past: due < EDITOR_DATA.today
+            };
+          })
+        };
+      });
+      var stale = 0;
+      groups.forEach(function (g) {
+        g.items.forEach(function (i) { if (i.past && i.status === '未着手') stale++; });
+      });
+      return { workId: id, today: EDITOR_DATA.today, groups: groups,
+               stale: stale, statusList: ['未着手', '着手中', '完了', '対象外'] };
+    }
   };
+
+  var PROGRESS_STATUS = {};
 
   window.google = { script: { run: makeRunner(), host: { close: function () {} } } };
 

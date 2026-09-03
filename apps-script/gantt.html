@@ -23,6 +23,9 @@
   }
 
   * { box-sizing: border-box; }
+  /* display を指定した要素でも hidden 属性が効くようにする */
+  [hidden] { display: none !important; }
+
   html, body { margin: 0; height: 100%; }
   body {
     font-family: "Noto Sans JP", "Yu Gothic", "Hiragino Sans", system-ui, sans-serif;
