@@ -167,6 +167,56 @@ async function main() {
   const closed = await page.evaluate(() => !document.getElementById('dateDialog'));
   check('Escape で閉じる', closed);
 
+  // ---- 表示サイズ（小・中・大）----
+  console.log('\n表示サイズ');
+  // 直前のテストで業務別ビューにいるので、ガントに戻す
+  await page.evaluate(() => document.querySelector('#tabs button[data-view="gantt"]').click());
+  await page.waitForSelector('#grid .lane');
+  await page.waitForTimeout(400);
+  const size = s => page.evaluate(v => {
+    [...document.querySelectorAll('#zoom button')].find(b => b.textContent === v).click();
+  }, s);
+  const snap = () => page.evaluate(() => {
+    const g = document.getElementById('grid'), sc = document.getElementById('scroll');
+    return {
+      tick: parseFloat(getComputedStyle(g.querySelector('.tick')).fontSize),
+      title: parseFloat(getComputedStyle(g.querySelector('.lane-title')).fontSize),
+      dayW: window.dayW,
+      labels: g.querySelectorAll('.plabel').length,
+      leaders: g.querySelectorAll('.pleader').length,
+      used: g.offsetHeight,
+      avail: sc.clientHeight,
+      laneH: Number(document.querySelector('#zoom button.on').getAttribute('data-h') || 0),
+      minLane: Math.min(...[...g.querySelectorAll('.lane')].map(l => l.offsetHeight))
+    };
+  });
+
+  await size('中'); await page.waitForTimeout(400);
+  const mid = await snap();
+  await size('大'); await page.waitForTimeout(400);
+  const big = await snap();
+  await size('小'); await page.waitForTimeout(400);
+  const sm = await snap();
+
+  check('大きくすると1日の幅が広がる', big.dayW > mid.dayW && mid.dayW > sm.dayW,
+    sm.dayW + ' / ' + mid.dayW + ' / ' + big.dayW);
+  check('大きくすると文字も大きくなる', big.tick > mid.tick && big.title > mid.title,
+    '目盛り ' + mid.tick + '→' + big.tick + ' / 業務名 ' + mid.title + '→' + big.title);
+  check('目盛りが 11px 以上ある（従来は 10px）', mid.tick >= 11, String(mid.tick));
+  check('中・大では工程名が吹き出しで出る', mid.labels > 0 && big.labels > 0,
+    mid.labels + ' / ' + big.labels);
+  check('引き出し線が吹き出しと同数', mid.leaders === mid.labels, mid.leaders + ' vs ' + mid.labels);
+  check('小は俯瞰用なので吹き出しを出さない', sm.labels === 0, String(sm.labels));
+  check('行が縦の余白ぶん広がる', mid.laneH > 0 && mid.minLane > mid.laneH,
+    mid.minLane + ' > ' + mid.laneH);
+  check('広げても画面からはみ出さない', mid.used <= mid.avail, mid.used + ' / ' + mid.avail);
+
+  // 選んだサイズが次回に引き継がれること
+  const saved = await page.evaluate(() => localStorage.getItem('schedule.size'));
+  check('選んだサイズが保存される', saved === '小', String(saved));
+  await size('中');
+  await page.waitForTimeout(300);
+
   await page.screenshot({ path: path.join(OUT, 'gantt-filter.png') });
   await browser.close();
 

@@ -20,6 +20,18 @@
     --radius: 10px;
     --dur: .28s;
     --ease: cubic-bezier(.4, 0, .2, 1);
+
+    /* ============ 表示サイズ ============
+       ヘッダーの［小］［中］［大］が --sc（文字の倍率）と1日の幅をまとめて変える。
+       文字サイズは下の4段階に寄せてあるので、--sc を変えれば全体が同じ比で動く。 */
+    --sc: 1;
+    --fs-xs: calc(11px * var(--sc));    /* 目盛り・注釈 */
+    --fs-sm: calc(12px * var(--sc));    /* メタ情報 */
+    --fs-md: calc(13.5px * var(--sc));  /* 本文 */
+    --fs-lg: calc(15.5px * var(--sc));  /* 見出し */
+    /* ガント1行の高さ。画面に余白があるときは JS がこれ以上に広げる */
+    --lane-h: 60px;
+    --head-h: calc(23px * var(--sc));
   }
 
   * { box-sizing: border-box; }
@@ -31,7 +43,7 @@
     font-family: "Noto Sans JP", "Yu Gothic", "Hiragino Sans", system-ui, sans-serif;
     color: var(--text);
     background: var(--bg);
-    font-size: 13px;
+    font-size: var(--fs-md);
     -webkit-font-smoothing: antialiased;
   }
   body, header.top, aside, .surface, .lane-label, .head, .head-label,
@@ -125,7 +137,7 @@
 
   /* ============ 左パネル ============ */
   .group-title {
-    font-size: 10.5px; font-weight: 700; letter-spacing: .06em;
+    font-size: var(--fs-xs); font-weight: 700; letter-spacing: .06em;
     display: flex; align-items: center; gap: 6px; margin: 15px 0 7px;
   }
   .group-title:first-child { margin-top: 0; }
@@ -137,18 +149,18 @@
   }
   .card:hover { border-color: var(--accent); transform: translateX(2px); }
   .card .name { font-weight: 600; line-height: 1.35; }
-  .card .meta { color: var(--muted); font-size: 11px; margin-top: 3px; line-height: 1.45; white-space: pre-line; }
+  .card .meta { color: var(--muted); font-size: var(--fs-sm); margin-top: 3px; line-height: 1.45; white-space: pre-line; }
   .card.overdue { border-left: 3px solid var(--danger); }
   .card.today { border-left: 3px solid var(--warn); }
   .card.soon { border-left: 3px solid var(--accent); }
-  .empty { color: var(--muted); font-size: 12px; padding: 10px 2px; line-height: 1.6; }
+  .empty { color: var(--muted); font-size: var(--fs-md); padding: 10px 2px; line-height: 1.6; }
 
   /* ============ 凡例 ============ */
   .legend { display: flex; flex-wrap: wrap; gap: 6px; padding: 9px 13px; border-bottom: 1px solid var(--border); background: var(--surface); }
   .chip {
     display: inline-flex; align-items: center; gap: 6px;
     border: 1px solid var(--border); border-radius: 999px;
-    padding: 4px 11px; font-size: 11px; cursor: pointer; user-select: none;
+    padding: 4px 11px; font-size: var(--fs-sm); cursor: pointer; user-select: none;
     background: var(--surface); color: var(--text);
   }
   .chip:hover { transform: translateY(-1px); }
@@ -167,7 +179,7 @@
   }
 
   .head { position: sticky; top: 0; z-index: 5; background: var(--surface); border-bottom: 1px solid var(--border); }
-  .head-row { display: flex; height: 22px; }
+  .head-row { display: flex; height: var(--head-h); }
   .head-label {
     position: sticky; left: 0; z-index: 6; background: var(--surface);
     width: var(--label-w); flex: 0 0 var(--label-w); border-right: 1px solid var(--border);
@@ -176,7 +188,7 @@
     min-width: 0;
   }
   .month-cell {
-    font-size: 11px; font-weight: 700; color: var(--muted);
+    font-size: var(--fs-sm); font-weight: 700; color: var(--muted);
     border-left: 1px solid var(--border); padding-left: 7px;
     display: flex; align-items: center; white-space: nowrap; overflow: hidden;
     min-width: 0;
@@ -184,17 +196,17 @@
   /* マスは背景だけ。min-width を許すと中身のぶん広がって網掛けとずれる */
   .day { flex: 0 0 auto; min-width: 0; }
   /* 日付の文字はマスの上に重ねる。隣のマスの背景に欠けない */
-  .tick-layer { position: absolute; top: 22px; height: 22px; pointer-events: none; }
+  .tick-layer { position: absolute; top: var(--head-h); height: var(--head-h); pointer-events: none; }
   .tick {
     position: absolute; top: 0; transform: translateX(-50%);
-    font-size: 10px; line-height: 22px; color: var(--muted); white-space: nowrap;
+    font-size: var(--fs-xs); line-height: var(--head-h); color: var(--muted); white-space: nowrap;
     font-variant-numeric: tabular-nums;
   }
   .tick.today { color: var(--danger); font-weight: 700; }
   .day.we { background: var(--surface-3); }
   .day.today { background: var(--danger-soft); }
 
-  .lane { display: flex; border-bottom: 1px solid var(--border); min-height: 46px; }
+  .lane { display: flex; border-bottom: 1px solid var(--border); min-height: var(--lane-h); }
   .lane:hover { background: var(--surface-2); }
   .lane-label {
     position: sticky; left: 0; z-index: 3; background: var(--surface);
@@ -205,12 +217,12 @@
   }
   .lane:hover .lane-label { background: var(--surface-2); }
   .lane-title {
-    font-weight: 600; font-size: 12px; display: flex; align-items: center; gap: 6px;
+    font-weight: 600; font-size: var(--fs-md); display: flex; align-items: center; gap: 6px;
     line-height: 1.3; min-width: 0; overflow-wrap: anywhere;
   }
   .lane-title.repeat { opacity: .42; font-weight: 500; }
   .lane-sub .period { font-weight: 700; color: var(--text); }
-  .lane-sub { font-size: 10.5px; color: var(--muted); display: flex; align-items: center; gap: 9px; }
+  .lane-sub { font-size: var(--fs-xs); color: var(--muted); display: flex; align-items: center; gap: 9px; }
   .lane-sub a { color: var(--accent); text-decoration: none; cursor: pointer; }
   .lane-sub a:hover { text-decoration: underline; }
   .swatch { width: 3px; height: 15px; border-radius: 2px; flex: 0 0 3px; }
@@ -220,11 +232,14 @@
     position: absolute; height: 8px; top: 50%; margin-top: -4px; border-radius: 4px;
     transform-origin: left center; animation: growX .5s var(--ease) backwards;
   }
-  body.printing .lane { align-items: flex-end; }
-  body.printing .mark, body.printing .range, body.printing .span {
+  /* 工程名を吹き出しで出すときは、マーカーを行の下端に寄せて上に積む。
+     印刷（.printing）と、画面に縦の余裕があるとき（.labels）で同じ配置を使う */
+  body.printing .lane, body.labels .lane { align-items: flex-end; }
+  body.printing .mark, body.printing .range, body.printing .span,
+  body.labels .mark, body.labels .range, body.labels .span {
     top: auto !important; bottom: 5px; margin-top: 0 !important;
   }
-  body.printing .lane-label { align-self: flex-end; padding-bottom: 4px; }
+  body.printing .lane-label, body.labels .lane-label { align-self: flex-end; padding-bottom: 4px; }
   .mark {
     position: absolute; top: 50%; width: 13px; height: 13px; margin-top: -6.5px;
     border-radius: 50%; border: 2px solid var(--surface); cursor: pointer;
@@ -258,13 +273,13 @@
     display: flex; align-items: center; gap: 12px; padding: 11px 14px;
     border-bottom: 1px solid var(--border); flex-wrap: wrap;
   }
-  .kase-period { font-weight: 700; font-size: 14px; }
-  .kase-anchor { font-size: 11.5px; color: var(--muted); }
+  .kase-period { font-weight: 700; font-size: var(--fs-lg); }
+  .kase-anchor { font-size: var(--fs-sm); color: var(--muted); }
   .kase-anchor a { color: var(--accent); text-decoration: none; cursor: pointer; }
   .kase-anchor a:hover { text-decoration: underline; }
   .progress { flex: 1; min-width: 120px; max-width: 320px; height: 6px; background: var(--surface-3); border-radius: 999px; overflow: hidden; }
   .progress i { display: block; height: 100%; border-radius: 999px; transition: width .6s var(--ease); }
-  .kase-count { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .kase-count { font-size: var(--fs-sm); color: var(--muted); font-variant-numeric: tabular-nums; }
 
   .steps { padding: 6px 14px 12px; }
   .row-item {
@@ -284,14 +299,14 @@
     border: 2px solid var(--surface); box-shadow: 0 0 0 1px rgba(0,0,0,.12);
   }
   .row-date {
-    font-size: 11.5px; font-variant-numeric: tabular-nums; width: 76px; flex: 0 0 76px;
+    font-size: var(--fs-sm); font-variant-numeric: tabular-nums; width: 76px; flex: 0 0 76px;
     color: var(--muted); font-weight: 600;
   }
   .row-date.wide { width: 148px; flex: 0 0 148px; }
-  .row-name { flex: 1; font-size: 12.5px; line-height: 1.4; min-width: 0; }
-  .row-owner { font-size: 11px; color: var(--muted); }
+  .row-name { flex: 1; font-size: var(--fs-md); line-height: 1.4; min-width: 0; }
+  .row-owner { font-size: var(--fs-sm); color: var(--muted); }
   .pill {
-    font-size: 10.5px; padding: 2px 9px; border-radius: 999px;
+    font-size: var(--fs-xs); padding: 2px 9px; border-radius: 999px;
     border: 1px solid var(--border); color: var(--muted); white-space: nowrap;
   }
   .pill.done { background: var(--surface-3); }
@@ -307,14 +322,14 @@
     border-bottom: 1px solid var(--border); background: var(--surface);
   }
   .chip { white-space: nowrap; }
-  .cal-title { font-size: 15px; font-weight: 700; min-width: 132px; }
+  .cal-title { font-size: var(--fs-lg); font-weight: 700; min-width: 132px; }
   /* 月グリッドは縦スクロールさせず、画面の高さに合わせて行を分け合う */
   .cal-wrap {
     flex: 1; min-height: 0; overflow: hidden;
     padding: 10px 14px 12px; display: flex; flex-direction: column;
   }
   .cal-head { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 6px; }
-  .cal-head div { text-align: center; font-size: 11px; font-weight: 700; color: var(--muted); padding: 3px 0; }
+  .cal-head div { text-align: center; font-size: var(--fs-sm); font-weight: 700; color: var(--muted); padding: 3px 0; }
   .cal-head div.sun { color: #d93025; }
   .cal-head div.sat { color: #1a73e8; }
   .cal-grid {
@@ -335,26 +350,26 @@
     .cal-wrap { padding: 6px 10px 8px; }
     .cal-grid, .cal-head { gap: 4px; }
     .cell { padding: 3px 5px; border-radius: 7px; }
-    .cell-num { font-size: 11px; }
-    .ev { font-size: 10px; padding: 2px 5px; }
+    .cell-num { font-size: var(--fs-sm); }
+    .ev { font-size: var(--fs-xs); padding: 2px 5px; }
     .legend { padding: 6px 10px; }
     .cal-bar { padding: 6px 10px; }
     header.top { padding: 6px 12px; }
   }
   @media (max-height: 640px) {
-    .cal-head div { font-size: 10px; padding: 1px 0; }
-    .ev { font-size: 9.5px; line-height: 1.25; }
+    .cal-head div { font-size: var(--fs-xs); padding: 1px 0; }
+    .ev { font-size: var(--fs-xs); line-height: 1.25; }
     .cell-hol { display: none; }
   }
   .cell.out { opacity: .4; }
   .cell.we { background: var(--surface-2); }
   .cell.today { border-color: var(--danger); box-shadow: 0 0 0 2px var(--danger-soft); }
   .cell-head { display: flex; align-items: baseline; gap: 5px; }
-  .cell-num { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .cell-num { font-size: var(--fs-md); font-weight: 700; font-variant-numeric: tabular-nums; }
   .cell.today .cell-num { color: var(--danger); }
-  .cell-hol { font-size: 9.5px; color: var(--danger); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cell-hol { font-size: var(--fs-xs); color: var(--danger); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ev {
-    display: flex; align-items: center; gap: 5px; font-size: 10.5px; line-height: 1.35;
+    display: flex; align-items: center; gap: 5px; font-size: var(--fs-xs); line-height: 1.35;
     padding: 3px 6px; border-radius: 5px; cursor: pointer;
     animation: popIn .26s var(--ease) backwards; overflow: hidden;
   }
@@ -363,7 +378,7 @@
   .ev i { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 6px; }
   .ev.done { opacity: .5; text-decoration: line-through; }
   .ev.overdue { box-shadow: inset 0 0 0 1.5px var(--danger); }
-  .ev-more { font-size: 10px; color: var(--muted); cursor: pointer; padding: 1px 6px; }
+  .ev-more { font-size: var(--fs-xs); color: var(--muted); cursor: pointer; padding: 1px 6px; }
   .ev-more:hover { color: var(--accent); }
 
   /* ============ 詳細カード ============ */
@@ -373,12 +388,12 @@
     box-shadow: var(--shadow); padding: 15px; display: none;
   }
   #detail.open { display: block; animation: popIn .22s var(--ease); }
-  #detail h3 { margin: 0 22px 5px 0; font-size: 14px; line-height: 1.35; }
-  #detail .sub { color: var(--muted); font-size: 11.5px; margin-bottom: 10px; line-height: 1.6; white-space: pre-line; }
+  #detail h3 { margin: 0 22px 5px 0; font-size: var(--fs-lg); line-height: 1.35; }
+  #detail .sub { color: var(--muted); font-size: var(--fs-sm); margin-bottom: 10px; line-height: 1.6; white-space: pre-line; }
   #detail .actions { display: flex; gap: 6px; margin-top: 11px; flex-wrap: wrap; }
   #detail .note {
     background: var(--surface-2); border-radius: 7px; padding: 8px 10px;
-    font-size: 11.5px; color: var(--muted); line-height: 1.55; margin-top: 8px;
+    font-size: var(--fs-sm); color: var(--muted); line-height: 1.55; margin-top: 8px;
   }
   .close-x {
     position: absolute; top: 8px; right: 8px; border: none; background: none;
@@ -412,14 +427,14 @@
   .q-x:hover { background: var(--surface-2); color: var(--text); }
   #ownerSel { max-width: 140px; }
   .filter-note {
-    font-size: 11.5px; color: var(--muted); padding: 7px 12px; border-bottom: 1px solid var(--border);
+    font-size: var(--fs-sm); color: var(--muted); padding: 7px 12px; border-bottom: 1px solid var(--border);
     background: var(--surface-2); display: flex; align-items: center; gap: 10px;
   }
   .filter-note b { color: var(--text); }
 
   /* 回次まるごとの操作 */
   .kase-bulk { margin-left: auto; display: flex; gap: 6px; }
-  .kase-bulk button { font-size: 11px; padding: 4px 9px; }
+  .kase-bulk button { font-size: var(--fs-sm); padding: 4px 9px; }
 
   /* 基準日の入力 */
   .dlg-back {
@@ -430,21 +445,21 @@
     background: var(--surface); border-radius: 12px; padding: 16px 18px; min-width: 290px;
     box-shadow: 0 18px 48px rgba(0, 0, 0, .22); animation: popIn .18s var(--ease);
   }
-  .dlg h3 { margin: 0 0 4px; font-size: 14px; }
-  .dlg .sub { font-size: 11.5px; color: var(--muted); margin-bottom: 12px; line-height: 1.6; }
+  .dlg h3 { margin: 0 0 4px; font-size: var(--fs-lg); }
+  .dlg .sub { font-size: var(--fs-sm); color: var(--muted); margin-bottom: 12px; line-height: 1.6; }
   .dlg input[type=date] {
-    width: 100%; padding: 7px 9px; font-size: 13px; font-family: inherit;
+    width: 100%; padding: 7px 9px; font-size: var(--fs-md); font-family: inherit;
     border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text);
   }
   .dlg .row { display: flex; gap: 7px; justify-content: flex-end; margin-top: 14px; }
-  .dlg .err { color: var(--danger); font-size: 11.5px; margin-top: 7px; }
+  .dlg .err { color: var(--danger); font-size: var(--fs-sm); margin-top: 7px; }
 
   /* ============ 印刷 ============ */
   /* 画面では出さず、紙にだけ出す見出し */
   .print-head { display: none; }
 
   .plabel {
-    position: absolute; font-size: 8.5px; line-height: 1.3; white-space: nowrap;
+    position: absolute; font-size: calc(10.5px * var(--sc)); line-height: 1.3; white-space: nowrap;
     background: var(--surface); border: 1px solid var(--border); border-radius: 4px;
     padding: 1px 4px; color: var(--text); pointer-events: none;
     /* 引き出し線より必ず上に描く。下にすると線が吹き出しを突き抜けて見える */
@@ -461,6 +476,11 @@
   @media print {
     /* 背景色を紙にも出す（工程の色分けが意味を持つため） */
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+    /* 紙は幅が決まっているので、画面側の表示サイズは持ち込まない */
+    /* JS がインラインで指定するので、紙側は !important で押し戻す */
+    :root { --sc: 1 !important; --lane-h: 46px !important; }
+    .plabel { font-size: 8.5px; }
 
     html, body { height: auto; background: #fff; }
     #app { height: auto; display: block; }
@@ -541,9 +561,9 @@
     <select id="ownerSel" aria-label="担当で絞り込む"><option value="">担当：すべて</option></select>
 
     <span class="zoom" id="zoom">
-      <button data-w="12">小</button>
-      <button data-w="22" class="on">中</button>
-      <button data-w="34">大</button>
+      <button data-w="18" data-sc=".94" data-h="50">小</button>
+      <button data-w="30" data-sc="1" data-h="62" class="on">中</button>
+      <button data-w="44" data-sc="1.12" data-h="78">大</button>
     </span>
     <button id="btnToday">今日へ</button>
 
@@ -733,7 +753,10 @@ var view = 'gantt';
 /** A4横（297mm）から余白8mm×2 を引いた刷り幅。96dpi 換算の px */
 var PRINT_W = Math.floor((297 - 16) / 25.4 * 96);   // ≒1062px
 var LABEL_W = 260;                                   // ラベル列（--label-w と合わせる）
-var dayW = 22;
+var dayW = 30;            // 1日あたりの幅。［小］［中］［大］で変わる
+var laneH = 62;           // ガント1行の高さの下限。同上
+var showLabels = false;   // 縦に余裕があるときは、工程名を吹き出しで出す
+var SIZE_KEY = 'schedule.size';
 var hidden = {};          // 業務IDごとの表示/非表示（ガント・月間）
 var query = '';           // 工程名・業務名・メモの検索語
 var ownerFilter = '';     // 担当での絞り込み
@@ -1181,11 +1204,62 @@ function drawGantt(grid) {
     grid.appendChild(el('div', 'empty', filterOn()
       ? '絞り込みに当てはまる工程はありません。検索欄を空にするか、担当を「すべて」に戻してください。'
       : '表示できる工程がありません。凡例で業務を表示に戻すか、［工程表を再生成］を実行してください。'));
+    fitLanes(grid, 0);
     return;
   }
+
+  // 1行に割ける高さを先に見ておく。十分に高いなら、丸だけでは何の工程か
+  // 分からないので工程名を吹き出しで出す。
+  showLabels = !printing && laneRoom(grid, shown.length) >= LABEL_ROOM && dayW >= LABEL_DAYW;
+  document.body.classList.toggle('labels', showLabels);
+
   shown.forEach(function (lane, li) {
     var repeat = li > 0 && shown[li - 1].workId === lane.workId;
     grid.appendChild(renderLane(lane, trackW, li, repeat));
+  });
+
+  if (showLabels || printing) layoutLabels();
+  if (!printing) spreadLanes(grid);
+}
+
+/** 吹き出しを出すのに要る1行の高さ。これを下回るなら丸だけにする */
+var LABEL_ROOM = 64;
+/** ［小］は全体を俯瞰するための表示なので、吹き出しは出さない */
+var LABEL_DAYW = 24;
+/** 余白を分けるとき、1行に足してよい上限。全部を分けると間延びして読みづらい */
+var LANE_GROW = 48;
+
+/** 1行あたりに割ける高さ。吹き出しを出すかどうかの判断だけに使う */
+function laneRoom(grid, count) {
+  if (printing) {
+    grid.style.removeProperty('--lane-h');
+    return 0;
+  }
+  grid.style.setProperty('--lane-h', laneH + 'px');
+  var sc = grid.parentNode;
+  var head = grid.querySelector('.head');
+  if (!count || !sc || !head) return laneH;
+  return Math.floor((sc.clientHeight - head.offsetHeight - 4) / count);
+}
+
+/**
+ * 画面の下に余白が残るとき、各行に少しずつ分けて広げる。
+ *
+ * 余りを全部分けると、工程が1つしかない行まで縦に伸びて間延びするので、
+ * 1行あたり LANE_GROW までにとどめる。埋めきらない余白はそのまま残す
+ * （表示する月数を増やせば、行そのものが増えて埋まる）。
+ */
+function spreadLanes(grid) {
+  var lanes = grid.querySelectorAll('.lane');
+  var sc = grid.parentNode;
+  if (!lanes.length || !sc) return;
+  var add = Math.min(Math.floor((sc.clientHeight - grid.offsetHeight - 4) / lanes.length), LANE_GROW);
+  if (add <= 0) return;
+  // 中身は行の下端に寄せてあるので、足したぶんをそのまま高さにすると
+  // 余白が全部バーの上に乗る。半分を下の余白に回して上下に散らす。
+  Array.prototype.forEach.call(lanes, function (l) {
+    l.style.minHeight = (l.offsetHeight + add) + 'px';
+    l.style.paddingBottom = Math.round(add / 2) + 'px';
   });
 }
 
@@ -1257,7 +1331,7 @@ function renderLane(lane, trackW, laneIndex, repeat) {
     mk.onclick = function (ev) { ev.stopPropagation(); openDetail(ev, { lane: lane, item: it }); };
     track.appendChild(mk);
 
-    if (printing) {
+    if (printing || showLabels) {
       var lab = el('div', 'plabel');
       lab.appendChild(el('span', 'pdate', it.endKey
         ? shortMD(it.dueKey) + '〜' + shortMD(it.endKey)
@@ -1788,7 +1862,9 @@ function printHeader() {
  * 吹き出しを段組みして重なりを避ける。
  * 左端をマーカーに合わせ、同じ段の直前の吹き出しと重なるなら1段上げる。
  */
-function layoutPrintLabels() {
+function layoutLabels() {
+  var grid = document.getElementById('grid');
+  var floor = grid ? parseFloat(grid.style.getPropertyValue('--lane-h')) || 0 : 0;
   var laneEls = document.querySelectorAll('#grid .lane');
   Array.prototype.forEach.call(laneEls, function (laneEl) {
     var track = laneEl.querySelector('.track');
@@ -1817,8 +1893,9 @@ function layoutPrintLabels() {
     // 決め打ちにすると、文字サイズや行間の違いでわずかに接触してしまう。
     var lineH = Math.max(12, (boxes[0].el.offsetHeight || 12) + 3);
     var baseBottom = 16;                     // マーカーの上に空ける高さ
+    // 画面では、余白を埋めるために広げた高さより低くはしない
     var needed = baseBottom + (maxLevel + 1) * lineH + 6;
-    laneEl.style.minHeight = needed + 'px';
+    laneEl.style.minHeight = Math.max(needed, floor) + 'px';
 
     boxes.forEach(function (b) {
       b.el.style.left = b.left + 'px';
@@ -1846,9 +1923,8 @@ function startPrint() {
   if (view === 'gantt') {
     savedDayW = dayW;
     dayW = printDayW();
+    // 印刷時はマーカーを行の下に寄せ、上に吹き出しを積む（drawGantt の中で配置する）
     drawGantt(document.getElementById('grid'));
-    // 印刷時はマーカーを行の下に寄せ、上に吹き出しを積む
-    layoutPrintLabels();
   }
   window.print();
 }
@@ -1877,13 +1953,37 @@ document.getElementById('tabs').onclick = function (ev) {
   if (DATA) renderView();
 };
 
-document.getElementById('zoom').onclick = function (ev) {
-  var b = ev.target.closest('button');
+/**
+ * ［小］［中］［大］を反映する。
+ * 1日の幅だけでなく、文字の倍率（--sc）と行の高さもまとめて動かす。
+ * 文字サイズは --fs-* に寄せてあるので、--sc を変えれば画面全体が同じ比で変わる。
+ */
+function applySize(b, rerender) {
   if (!b) return;
-  dayW = Number(b.getAttribute('data-w'));
-  Array.prototype.forEach.call(this.querySelectorAll('button'), function (x) { x.classList.remove('on'); });
+  dayW = Number(b.getAttribute('data-w')) || 30;
+  laneH = Number(b.getAttribute('data-h')) || 62;
+  document.documentElement.style.setProperty('--sc', b.getAttribute('data-sc') || '1');
+  var zoom = document.getElementById('zoom');
+  Array.prototype.forEach.call(zoom.querySelectorAll('button'), function (x) { x.classList.remove('on'); });
   b.classList.add('on');
-  if (DATA) { drawGantt(document.getElementById('grid')); setTimeout(scrollToToday, 40); }
+  try { localStorage.setItem(SIZE_KEY, b.textContent); } catch (e) { /* 保存できなくても動作に影響はない */ }
+  if (rerender && DATA) { renderView(); setTimeout(scrollToToday, 40); }
+}
+
+/** 前回選んだ表示サイズを復元する（未保存なら［中］のまま） */
+function loadSize() {
+  var saved = null;
+  try { saved = localStorage.getItem(SIZE_KEY); } catch (e) { /* 読めなくてもよい */ }
+  var zoom = document.getElementById('zoom');
+  var btn = null;
+  Array.prototype.forEach.call(zoom.querySelectorAll('button'), function (x) {
+    if (saved && x.textContent === saved) btn = x;
+  });
+  applySize(btn || zoom.querySelector('.on'), false);
+}
+
+document.getElementById('zoom').onclick = function (ev) {
+  applySize(ev.target.closest('button'), true);
 };
 
 document.getElementById('btnPrint').onclick = startPrint;
@@ -1932,6 +2032,7 @@ window.addEventListener('resize', function () {
 
 loadTheme();
 applyTheme(themeId, false);
+loadSize();
 movePill();
 load();
 </script>
