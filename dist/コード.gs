@@ -102,7 +102,7 @@ var DEFAULT_SETTINGS = [
   ['ガント表示_前月数', '1', 'ガント画面で今日より何ヶ月前から表示するか'],
   ['ガント表示_後月数', '3', 'ガント画面で今日より何ヶ月先まで表示するか'],
   ['画面をGitHubから読み込む', 'OFF', 'ON にすると、スケジュール画面と編集画面のHTMLを下のURLから読み込む。コードを貼り直す手間が減る。取得できないときはプロジェクト内のファイルを使う'],
-  ['画面の取得元URL', 'https://raw.githubusercontent.com/pspcfwuytrewq-design/test/claude/rare-disease-subsidy-schedule-21xoll/dist/', 'HTMLの取得元。raw.githubusercontent.com のみ。末尾は / で終わらせる'],
+  ['画面の取得元URL', 'https://raw.githubusercontent.com/ImagicalRepo/test/claude/rare-disease-subsidy-schedule-21xoll/dist/', 'HTMLの取得元。raw.githubusercontent.com のみ。末尾は / で終わらせる'],
   ['WebアプリURL', '', 'ブラウザで実際に開けたウェブアプリのURL（末尾が /exec でも /dev でも可）。メニューの［WebアプリのURLを登録］から設定する。空ならデプロイのURLを自動で使う'],
   ['画面の幅', '1400', 'スケジュール画面の幅（px）。ブラウザの幅より大きくはなりません'],
   ['画面の高さ', '800', 'スケジュール画面の高さ（px）。画面が小さいPCでは 640 程度に下げてください']
