@@ -24,7 +24,7 @@
     /* ============ 表示サイズ ============
        ヘッダーの［小］［中］［大］が --sc（文字の倍率）と1日の幅をまとめて変える。
        文字サイズは下の4段階に寄せてあるので、--sc を変えれば全体が同じ比で動く。 */
-    --sc: 1;
+    --sc: 1.14;
     --fs-xs: calc(11px * var(--sc));    /* 目盛り・注釈 */
     --fs-sm: calc(12px * var(--sc));    /* メタ情報 */
     --fs-md: calc(13.5px * var(--sc));  /* 本文 */
@@ -60,16 +60,16 @@
     padding: 9px 16px; border-bottom: 1px solid var(--border);
     background: var(--surface); flex: 0 0 auto; position: relative; z-index: 20;
   }
-  header.top h1 { font-size: 14.5px; margin: 0; font-weight: 700; letter-spacing: .02em; white-space: nowrap; }
+  header.top h1 { font-size: 15.5px; margin: 0; font-weight: 700; letter-spacing: .02em; white-space: nowrap; }
   .today-badge {
-    font-size: 11.5px; color: var(--muted); white-space: nowrap;
+    font-size: 12.5px; color: var(--muted); white-space: nowrap;
     background: var(--surface-2); border: 1px solid var(--border);
     padding: 4px 11px; border-radius: 999px;
   }
   .spacer { flex: 1; }
 
   button {
-    font-family: inherit; font-size: 12px; cursor: pointer;
+    font-family: inherit; font-size: 13px; cursor: pointer;
     border: 1px solid var(--border); background: var(--surface); color: var(--text);
     padding: 6px 12px; border-radius: 7px;
   }
@@ -78,6 +78,8 @@
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   button.primary:hover { filter: brightness(1.08); }
   button:disabled { opacity: .45; cursor: default; transform: none; }
+  /* 押している状態を保つボタン（工程名の表示など） */
+  button.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 700; }
 
   /* ビュー切替タブ */
   .tabs { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; padding: 2px; position: relative; }
@@ -95,7 +97,7 @@
   }
 
   .applink {
-    font-size: 12px; color: var(--accent); text-decoration: none; white-space: nowrap;
+    font-size: 13px; color: var(--accent); text-decoration: none; white-space: nowrap;
     border: 1px solid var(--border); border-radius: 7px; padding: 6px 12px;
     display: inline-flex; align-items: center; gap: 5px;
   }
@@ -415,7 +417,7 @@
     fill: none; stroke-width: 2; pointer-events: none;
   }
   .finder input {
-    width: 150px; padding: 6px 24px 6px 27px; font-size: 12px;
+    width: 160px; padding: 6px 24px 6px 27px; font-size: 13px;
     border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text);
   }
   .finder input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
@@ -561,10 +563,12 @@
     <select id="ownerSel" aria-label="担当で絞り込む"><option value="">担当：すべて</option></select>
 
     <span class="zoom" id="zoom">
-      <button data-w="18" data-sc=".94" data-h="50">小</button>
-      <button data-w="30" data-sc="1" data-h="62" class="on">中</button>
-      <button data-w="44" data-sc="1.12" data-h="78">大</button>
+      <button data-w="18" data-sc="1" data-h="56">小</button>
+      <button data-w="30" data-sc="1.14" data-h="72" class="on">中</button>
+      <button data-w="44" data-sc="1.3" data-h="92">大</button>
     </span>
+    <button id="btnLabels" title="ガントの丸に工程名を添えて表示する（印刷には必ず出ます）"
+            aria-pressed="false">工程名</button>
     <button id="btnToday">今日へ</button>
 
     <span class="theme-wrap">
@@ -754,9 +758,11 @@ var view = 'gantt';
 var PRINT_W = Math.floor((297 - 16) / 25.4 * 96);   // ≒1062px
 var LABEL_W = 260;                                   // ラベル列（--label-w と合わせる）
 var dayW = 30;            // 1日あたりの幅。［小］［中］［大］で変わる
-var laneH = 62;           // ガント1行の高さの下限。同上
-var showLabels = false;   // 縦に余裕があるときは、工程名を吹き出しで出す
+var laneH = 72;           // ガント1行の高さの下限。同上
+var labelsOn = false;     // ガントに工程名を出すか（［工程名］ボタン。既定は出さない）
+var showLabels = false;   // 実際に出しているか（印刷中は必ず出す）
 var SIZE_KEY = 'schedule.size';
+var LABELS_KEY = 'schedule.labels';
 var hidden = {};          // 業務IDごとの表示/非表示（ガント・月間）
 var query = '';           // 工程名・業務名・メモの検索語
 var ownerFilter = '';     // 担当での絞り込み
@@ -1208,9 +1214,8 @@ function drawGantt(grid) {
     return;
   }
 
-  // 1行に割ける高さを先に見ておく。十分に高いなら、丸だけでは何の工程か
-  // 分からないので工程名を吹き出しで出す。
-  showLabels = !printing && laneRoom(grid, shown.length) >= LABEL_ROOM && dayW >= LABEL_DAYW;
+  laneRoom(grid);
+  showLabels = !printing && labelsOn;
   document.body.classList.toggle('labels', showLabels);
 
   shown.forEach(function (lane, li) {
@@ -1222,24 +1227,13 @@ function drawGantt(grid) {
   if (!printing) spreadLanes(grid);
 }
 
-/** 吹き出しを出すのに要る1行の高さ。これを下回るなら丸だけにする */
-var LABEL_ROOM = 64;
-/** ［小］は全体を俯瞰するための表示なので、吹き出しは出さない */
-var LABEL_DAYW = 24;
 /** 余白を分けるとき、1行に足してよい上限。全部を分けると間延びして読みづらい */
 var LANE_GROW = 48;
 
-/** 1行あたりに割ける高さ。吹き出しを出すかどうかの判断だけに使う */
-function laneRoom(grid, count) {
-  if (printing) {
-    grid.style.removeProperty('--lane-h');
-    return 0;
-  }
-  grid.style.setProperty('--lane-h', laneH + 'px');
-  var sc = grid.parentNode;
-  var head = grid.querySelector('.head');
-  if (!count || !sc || !head) return laneH;
-  return Math.floor((sc.clientHeight - head.offsetHeight - 4) / count);
+/** 行の高さの下限を置く。紙は行数がそのまま高さになるので指定しない */
+function laneRoom(grid) {
+  if (printing) grid.style.removeProperty('--lane-h');
+  else grid.style.setProperty('--lane-h', laneH + 'px');
 }
 
 /**
@@ -1255,11 +1249,10 @@ function spreadLanes(grid) {
   if (!lanes.length || !sc) return;
   var add = Math.min(Math.floor((sc.clientHeight - grid.offsetHeight - 4) / lanes.length), LANE_GROW);
   if (add <= 0) return;
-  // 中身は行の下端に寄せてあるので、足したぶんをそのまま高さにすると
-  // 余白が全部バーの上に乗る。半分を下の余白に回して上下に散らす。
+  // 行に padding を足すと、その帯だけ土日の網掛けが業務名の列にはみ出して
+  // 見えてしまう（ラベルは中身の高さぶんしか覆わないため）。高さだけを足す。
   Array.prototype.forEach.call(lanes, function (l) {
     l.style.minHeight = (l.offsetHeight + add) + 'px';
-    l.style.paddingBottom = Math.round(add / 2) + 'px';
   });
 }
 
@@ -1950,8 +1943,14 @@ document.getElementById('tabs').onclick = function (ev) {
   b.classList.add('on');
   movePill();
   closeDetail();
+  syncLabelBtn();
   if (DATA) renderView();
 };
+
+/** ［工程名］はガントだけの操作なので、他のビューでは隠す */
+function syncLabelBtn() {
+  document.getElementById('btnLabels').hidden = view !== 'gantt';
+}
 
 /**
  * ［小］［中］［大］を反映する。
@@ -1980,11 +1979,30 @@ function loadSize() {
     if (saved && x.textContent === saved) btn = x;
   });
   applySize(btn || zoom.querySelector('.on'), false);
+
+  var lab = null;
+  try { lab = localStorage.getItem(LABELS_KEY); } catch (e) { /* 読めなくてもよい */ }
+  applyLabels(lab === 'on', false);
 }
 
 document.getElementById('zoom').onclick = function (ev) {
   applySize(ev.target.closest('button'), true);
 };
+
+/** ガントに工程名を出すかを切り替える */
+function applyLabels(on, rerender) {
+  labelsOn = !!on;
+  var b = document.getElementById('btnLabels');
+  b.classList.toggle('on', labelsOn);
+  b.setAttribute('aria-pressed', labelsOn ? 'true' : 'false');
+  try { localStorage.setItem(LABELS_KEY, labelsOn ? 'on' : 'off'); } catch (e) { /* 保存できなくてもよい */ }
+  if (rerender && DATA && view === 'gantt') {
+    drawGantt(document.getElementById('grid'));
+    setTimeout(scrollToToday, 40);
+  }
+}
+
+document.getElementById('btnLabels').onclick = function () { applyLabels(!labelsOn, true); };
 
 document.getElementById('btnPrint').onclick = startPrint;
 

@@ -202,11 +202,8 @@ async function main() {
     sm.dayW + ' / ' + mid.dayW + ' / ' + big.dayW);
   check('大きくすると文字も大きくなる', big.tick > mid.tick && big.title > mid.title,
     '目盛り ' + mid.tick + '→' + big.tick + ' / 業務名 ' + mid.title + '→' + big.title);
-  check('目盛りが 11px 以上ある（従来は 10px）', mid.tick >= 11, String(mid.tick));
-  check('中・大では工程名が吹き出しで出る', mid.labels > 0 && big.labels > 0,
-    mid.labels + ' / ' + big.labels);
-  check('引き出し線が吹き出しと同数', mid.leaders === mid.labels, mid.leaders + ' vs ' + mid.labels);
-  check('小は俯瞰用なので吹き出しを出さない', sm.labels === 0, String(sm.labels));
+  check('目盛りが 12px 以上ある（従来は 10px）', mid.tick >= 12, String(mid.tick));
+  check('業務名が 15px 以上ある（従来は 12px）', mid.title >= 15, String(mid.title));
   check('行が縦の余白ぶん広がる', mid.laneH > 0 && mid.minLane > mid.laneH,
     mid.minLane + ' > ' + mid.laneH);
   check('広げても画面からはみ出さない', mid.used <= mid.avail, mid.used + ' / ' + mid.avail);
@@ -215,6 +212,39 @@ async function main() {
   const saved = await page.evaluate(() => localStorage.getItem('schedule.size'));
   check('選んだサイズが保存される', saved === '小', String(saved));
   await size('中');
+  await page.waitForTimeout(300);
+
+  // ---- 工程名の ON/OFF ----
+  console.log('\n工程名の表示');
+  const off0 = await snap();
+  check('既定では工程名を出さない', off0.labels === 0, String(off0.labels));
+
+  await page.click('#btnLabels');
+  await page.waitForTimeout(400);
+  const on = await snap();
+  check('［工程名］で吹き出しが出る', on.labels > 0, String(on.labels));
+  check('引き出し線が吹き出しと同数', on.leaders === on.labels, on.leaders + ' vs ' + on.labels);
+  check('押している状態が見て分かる',
+    await page.evaluate(() => {
+      const b = document.getElementById('btnLabels');
+      return b.classList.contains('on') && b.getAttribute('aria-pressed') === 'true';
+    }));
+  check('ON にしても画面からはみ出さない', on.used <= on.avail, on.used + ' / ' + on.avail);
+
+  await page.click('#btnLabels');
+  await page.waitForTimeout(400);
+  const off1 = await snap();
+  check('もう一度押すと消える', off1.labels === 0 && off1.leaders === 0,
+    off1.labels + ' / ' + off1.leaders);
+  check('ON/OFF が保存される',
+    await page.evaluate(() => localStorage.getItem('schedule.labels')) === 'off');
+
+  await page.evaluate(() => document.querySelector('#tabs button[data-view="month"]').click());
+  await page.waitForTimeout(300);
+  check('ガント以外では［工程名］を隠す',
+    await page.evaluate(() => document.getElementById('btnLabels').hidden));
+  await page.evaluate(() => document.querySelector('#tabs button[data-view="gantt"]').click());
+  await page.waitForSelector('#grid .lane');
   await page.waitForTimeout(300);
 
   await page.screenshot({ path: path.join(OUT, 'gantt-filter.png') });
