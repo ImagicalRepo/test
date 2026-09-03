@@ -65,14 +65,29 @@ const body = gsFiles.map(file => {
   ].join('\n');
 }).join('\n');
 
+// 00_config.gs の VERSION を dist にも持ち出す。
+// スプレッドシート側の［更新を確認］がこれと比べる。
+const versionSrc = fs.readFileSync(path.join(SRC, '00_config.gs'), 'utf8');
+const vm = /var VERSION = '([^']+)'/.exec(versionSrc);
+if (!vm) {
+  console.error('00_config.gs に VERSION が見つかりません');
+  process.exit(1);
+}
+const VERSION = vm[1];
+
 fs.writeFileSync(path.join(OUT, 'コード.gs'), header + body);
 for (const file of htmlFiles) {
-  fs.copyFileSync(path.join(SRC, file), path.join(OUT, file));
+  // HTML を GitHub から読み込んだとき、どの版かを更新履歴に残せるようにする
+  const html = fs.readFileSync(path.join(SRC, file), 'utf8');
+  fs.writeFileSync(path.join(OUT, file), '<!-- version: ' + VERSION + ' -->\n' + html);
 }
 fs.copyFileSync(path.join(SRC, 'appsscript.json'), path.join(OUT, 'appsscript.json'));
+fs.writeFileSync(path.join(OUT, 'version.json'),
+  JSON.stringify({ version: VERSION, builtAt: new Date().toISOString() }, null, 2) + '\n');
 
 const size = fs.statSync(path.join(OUT, 'コード.gs')).size;
 console.log('dist/ を作成しました（関数名の重複なし）');
 console.log('  コード.gs        ' + gsFiles.length + 'ファイル分 / ' + Math.round(size / 1024) + ' KB');
 htmlFiles.forEach(f => console.log('  ' + f));
 console.log('  appsscript.json');
+console.log('  version.json     ' + VERSION);

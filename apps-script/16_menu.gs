@@ -14,6 +14,9 @@ function onOpen() {
     .addItem('休日を取り込む', 'menuSyncHolidays')
     .addItem('カレンダーに同期', 'menuSyncCalendar')
     .addSeparator()
+    .addItem('画面を最新にする', 'menuRefreshHtml')
+    .addItem('更新を確認', 'menuCheckUpdate')
+    .addSeparator()
     .addItem('Chatにテスト通知', 'menuTestNotify')
     .addItem('動作診断', 'menuDiagnostics')
     .addItem('通知トリガーを再設定', 'menuInstallTriggers')
@@ -34,7 +37,7 @@ function onOpen() {
  */
 function showGantt() {
   var settings = getSettings_();
-  var html = HtmlService.createTemplateFromFile('gantt')
+  var html = loadHtml_('gantt', settings)
     .evaluate()
     .setWidth(clampSize_(settingNumber_(settings, '画面の幅', 1400), 800, 2000))
     .setHeight(clampSize_(settingNumber_(settings, '画面の高さ', 800), 480, 1400));
@@ -43,7 +46,7 @@ function showGantt() {
 
 function showTemplateEditor() {
   var settings = getSettings_();
-  var html = HtmlService.createTemplateFromFile('editor')
+  var html = loadHtml_('editor', settings)
     .evaluate()
     .setWidth(clampSize_(settingNumber_(settings, '画面の幅', 1400) - 250, 800, 1700))
     .setHeight(clampSize_(settingNumber_(settings, '画面の高さ', 800), 480, 1400));
@@ -161,6 +164,61 @@ function menuSetAppUrl() {
   setSetting_('WebアプリURL', url);
   ui.alert('登録しました', url, ui.ButtonSet.OK);
   showAppUrl();
+}
+
+/**
+ * GitHub から画面を取り直す。
+ * キャッシュを捨てるだけで、次に画面を開いたときに新しいものが読まれる。
+ */
+function menuRefreshHtml() {
+  var ui = SpreadsheetApp.getUi();
+  var settings = getSettings_();
+  if (!settingBool_(settings, '画面をGitHubから読み込む', false)) {
+    ui.alert('GitHubからの読み込みはOFFです',
+      '［設定］シートの「画面をGitHubから読み込む」を ON にすると、\n'
+      + 'スケジュール画面と編集画面のHTMLを貼り直さなくてよくなります。\n\n'
+      + '取得できないときは、これまでどおりプロジェクト内のファイルを使います。',
+      ui.ButtonSet.OK);
+    return;
+  }
+  clearRemoteHtmlCache_();
+
+  // その場で取りに行き、結果をここで見せる（次に開くまで分からないと不安なので）
+  var got = [];
+  var failed = [];
+  ['gantt', 'editor'].forEach(function (n) {
+    var text = fetchRemoteHtml_(n, settings);
+    if (text) got.push(n + '.html（' + text.length + '文字）');
+    else failed.push(n + '.html');
+  });
+
+  ui.alert(failed.length ? '一部を取得できませんでした' : '取り込みました',
+    (got.length ? '取得できたもの:\n　' + got.join('\n　') + '\n\n' : '')
+    + (failed.length
+      ? '取得できなかったもの:\n　' + failed.join('\n　')
+      + '\n\nこれらはプロジェクト内のファイルを使います。\n'
+      + '詳しい理由は［更新履歴］シートを見てください。'
+      : '次に画面を開くと反映されます。\n記録は［更新履歴］シートに残ります。'),
+    ui.ButtonSet.OK);
+}
+
+/** GitHub 側の版と比べて、更新があるか知らせる */
+function menuCheckUpdate() {
+  var ui = SpreadsheetApp.getUi();
+  var r = checkForUpdate();
+  if (!r.ok) {
+    ui.alert('確認できませんでした', r.message, ui.ButtonSet.OK);
+    return;
+  }
+  if (r.newer) {
+    ui.alert('新しい版があります',
+      'いまの版：' + r.current + '\n最新の版：' + r.latest + '\n\n'
+      + 'GitHub の dist から コード.gs を貼り直してください。\n'
+      + '（画面のHTMLは「画面をGitHubから読み込む」が ON なら自動で更新されます）',
+      ui.ButtonSet.OK);
+  } else {
+    ui.alert('最新です', 'いまの版：' + r.current, ui.ButtonSet.OK);
+  }
 }
 
 function menuSetup() {

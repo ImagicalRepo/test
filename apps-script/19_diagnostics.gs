@@ -75,6 +75,19 @@ function runDiagnostics() {
       + '　※開けない場合は再デプロイするか［WebアプリのURLを登録］で /dev のURLを登録';
   });
 
+  step('画面の取得元', function () {
+    var settings = getSettings_();
+    if (!settingBool_(settings, '画面をGitHubから読み込む', false)) {
+      return 'プロジェクト内のファイル（版 ' + VERSION + '）';
+    }
+    var base = remoteBase_(settings);
+    if (!base) return 'ON だが取得元URLが不正（raw.githubusercontent.com のみ）';
+    var got = ['gantt', 'editor'].filter(function (n) {
+      return !!fetchRemoteHtml_(n, settings);
+    });
+    return 'GitHub ' + got.length + '/2 取得可（版 ' + VERSION + '）　' + base;
+  });
+
   step('カレンダー同期', function () {
     var settings = getSettings_();
     if (!settingBool_(settings, 'カレンダー同期', false)) return 'OFF（カレンダーには書き込みません）';

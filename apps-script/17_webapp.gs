@@ -15,7 +15,7 @@ function doGet(e) {
   var page = (e && e.parameter && e.parameter.page) || 'schedule';
   var file = page === 'editor' ? 'editor' : 'gantt';
   var title = page === 'editor' ? '工程テンプレートの編集' : '業務スケジュール';
-  return HtmlService.createTemplateFromFile(file)
+  return loadHtml_(file)
     .evaluate()
     .setTitle(title)
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
