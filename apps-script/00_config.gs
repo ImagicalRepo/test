@@ -25,7 +25,7 @@ var SHEET = {
  * このコードの版。配布元の版と比べて更新の有無を知らせる。
  * dist を作り直すときに手で上げる。
  */
-var VERSION = '2.1.0';
+var VERSION = '2.2.0';
 
 /** 各シートのヘッダー定義（列は名前で参照するため、並び替えても壊れない） */
 var SHEET_DEFS = [
@@ -68,8 +68,25 @@ var SHEET_DEFS = [
   // 任意の部品を入れたときは、その部品が EXTRA_SHEET_DEFS で自分のシートを足す
 ];
 
+/**
+ * スケジュール名の既定値。
+ * 初期セットアップで実際の業務名を聞き、［設定］シートに入れる。
+ * 既定のままなら「まだ決めていない」とみなして聞き直す。
+ */
+var DEFAULT_TITLE = '業務スケジュール';
+
+/** いまのスケジュール名。設定シートが無くても落ちない */
+function scheduleTitle_(settings) {
+  try {
+    return settingText_(settings || getSettings_(), 'スケジュール名', DEFAULT_TITLE);
+  } catch (e) {
+    return DEFAULT_TITLE;
+  }
+}
+
 /** 設定シートの既定値 */
 var DEFAULT_SETTINGS = [
+  ['スケジュール名', DEFAULT_TITLE, 'このシートで管理するスケジュールの名前。画面・印刷・Chat通知・メニューに出る（例：◯◯申請の処理）'],
   ['ChatWebhookURL', '', 'Google Chat のスペースで作成した Webhook URL。ここに日次リマインドを投稿する'],
   ['通知時刻', '8', '日次リマインドを送る時刻（0〜23）。変更したら［トリガーを再設定］を実行'],
   ['休日は通知しない', 'ON', 'ON にすると土日祝・閉庁日は通知しない'],

@@ -80,6 +80,7 @@ function getEditorData() {
     anchors: anchorsByWork,
     defaultRemind: settingNumber_(settings, '既定リマインド営業日前', 3),
     colors: COLOR_ORDER,
+    title: scheduleTitle_(settings),
     scheduleUrl: webAppUrl_('')
   };
 }

@@ -101,10 +101,10 @@ function formatDigestLine(item, kind) {
  * Google Chat へ投稿する本文（テキスト形式）を組み立てる。
  * カード形式より崩れにくく、スマホでも読みやすい。
  */
-function buildChatText(digest, todayKey, appUrl) {
+function buildChatText(digest, todayKey, appUrl, title) {
   if (!digest.total) return '';
   var lines = [];
-  lines.push('*' + formatShortDate(todayKey) + ' の業務スケジュール*');
+  lines.push('*' + formatShortDate(todayKey) + ' の' + (title || '業務スケジュール') + '*');
 
   if (digest.overdue.length) {
     lines.push('');

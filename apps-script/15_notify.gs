@@ -21,7 +21,7 @@ function dailyReminder() {
     return { total: 0 };
   }
 
-  var text = buildChatText(digest, today, webAppUrl_('', settings));
+  var text = buildChatText(digest, today, webAppUrl_('', settings), scheduleTitle_(settings));
   var res = postToChat_(settings, text);
   log_('日次リマインド', res.ok,
     '超過 ' + digest.overdue.length + ' / 本日 ' + digest.today.length + ' / まもなく ' + digest.soon.length
@@ -103,9 +103,10 @@ function sendTestNotification() {
   var cal = loadBusinessCalendar_(settings);
   var today = todayKey_();
   var digest = buildDigestFromSheet_(settings, cal, today);
+  var title = scheduleTitle_(settings);
   var text = digest.total
-    ? buildChatText(digest, today, webAppUrl_('', settings))
-    : '*' + formatShortDate(today) + ' の業務スケジュール*\n\n通知対象の工程はありません。';
+    ? buildChatText(digest, today, webAppUrl_('', settings), title)
+    : '*' + formatShortDate(today) + ' の' + title + '*\n\n通知対象の工程はありません。';
   var res = postToChat_(settings, text);
   log_('テスト通知', res.ok, res.message || '送信しました');
   return res;

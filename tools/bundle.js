@@ -157,6 +157,38 @@ try {
   process.exit(1);
 }
 
+// ------------------------------------------------------------------
+// メニューが呼ぶ関数が、両方のビルドに揃っているかを見る。
+//
+// ファイルをまたいで関数を動かしたとき、配布用ビルドから静かに抜け落ちて
+// 「関数が見つかりません」になったことがある。Node 側で .gs のメニューを
+// 実行していないためテストでは気づけないので、ここで見る。
+// ------------------------------------------------------------------
+function menuHandlers(src, fromLabel) {
+  const body = src.slice(src.indexOf('function ' + fromLabel));
+  const scope = body.slice(0, body.indexOf('\n}'));
+  const names = new Set();
+  const re = /addItem\(\s*'[^']*'\s*,\s*'([A-Za-z0-9_$]+)'\s*\)/g;
+  let m;
+  while ((m = re.exec(scope))) names.add(m[1]);
+  return [...names];
+}
+
+function checkMenu(code, label) {
+  // onOpen が直接並べる項目に加え、任意の部品が足す項目（あれば）も見る
+  const wanted = menuHandlers(code, 'onOpen')
+    .concat(code.includes('function addExtraMenu_') ? menuHandlers(code, 'addExtraMenu_') : []);
+  const missing = wanted.filter(fn => !new RegExp('^function ' + fn + '\\s*\\(', 'm').test(code));
+  if (missing.length) {
+    console.error(label + ' のメニューが呼ぶ関数が見つかりません:\n  ' + missing.join('\n  '));
+    process.exit(1);
+  }
+  return wanted.length;
+}
+
+const fullMenu = checkMenu(header + body, 'dist');
+const soMenu = checkMenu(soCode, 'dist/standalone');
+
 fs.mkdirSync(STANDALONE, { recursive: true });
 fs.writeFileSync(path.join(STANDALONE, 'コード.gs'), soCode);
 for (const file of htmlFiles) {
@@ -172,6 +204,7 @@ console.log('  コード.gs        ' + gsFiles.length + 'ファイル分 / ' + M
 htmlFiles.forEach(f => console.log('  ' + f));
 console.log('  appsscript.json');
 console.log('  version.json     ' + VERSION);
+console.log('  メニュー ' + fullMenu + ' 項目すべてに実体あり');
 console.log('dist/standalone/ を作成しました（外部取得なし）');
 console.log('  コード.gs        ' + soFiles.length + 'ファイル分 / ' + Math.round(soSize / 1024) + ' KB');
 htmlFiles.forEach(f => console.log('  ' + f));

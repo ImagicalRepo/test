@@ -14,7 +14,7 @@
 function doGet(e) {
   var page = (e && e.parameter && e.parameter.page) || 'schedule';
   var file = page === 'editor' ? 'editor' : 'gantt';
-  var title = page === 'editor' ? '工程テンプレートの編集' : '業務スケジュール';
+  var title = page === 'editor' ? '工程テンプレートの編集' : scheduleTitle_();
   return loadHtml_(file)
     .evaluate()
     .setTitle(title)
@@ -192,6 +192,7 @@ function getGanttData() {
       total: digest.total
     },
     statusList: STATUS_LIST,
+    title: scheduleTitle_(settings),
     // 公開済みなら、画面から編集画面へ直接移動できるようにする
     editorUrl: webAppUrl_('editor', settings)
   };

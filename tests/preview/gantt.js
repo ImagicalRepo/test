@@ -177,6 +177,28 @@ async function main() {
   const closed = await page.evaluate(() => !document.getElementById('dateDialog'));
   check('Escape で閉じる', closed);
 
+  // ---- スケジュール名 ----
+  console.log('\nスケジュール名');
+  await page.evaluate(() => document.querySelector('#tabs button[data-view="gantt"]').click());
+  await page.waitForSelector('#grid .lane');
+  await page.waitForTimeout(300);
+  const named = await page.evaluate(() => ({
+    h1: document.getElementById('appTitle').textContent,
+    data: DATA.title
+  }));
+  check('見出しが設定の名前になる', named.h1 === named.data && !!named.data, named.h1);
+
+  const printTitle = await page.evaluate(() => {
+    window.print = function () {};
+    startPrint();
+    const t = document.querySelector('.print-head .t').textContent;
+    endPrint();
+    return t;
+  });
+  await page.waitForTimeout(500);
+  check('印刷の見出しにも名前が入る',
+    printTitle.indexOf(named.data) === 0 && printTitle.indexOf('ガント') > 0, printTitle);
+
   // ---- 表示サイズ（小・中・大）----
   console.log('\n表示サイズ');
   // 直前のテストで業務別ビューにいるので、ガントに戻す

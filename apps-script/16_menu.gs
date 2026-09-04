@@ -3,11 +3,13 @@
  */
 
 function onOpen() {
+  // 設定シートがまだ無い初回でも必ずメニューは出す（scheduleTitle_ が既定値に落ちる）
   var menu = SpreadsheetApp.getUi()
-    .createMenu('📅 業務スケジュール')
+    .createMenu('📅 ' + scheduleTitle_())
     .addItem('スケジュール画面を開く', 'showGantt')
     .addItem('別ウィンドウで開く（URLを表示）', 'showAppUrl')
     .addItem('WebアプリのURLを登録', 'menuSetAppUrl')
+    .addItem('スケジュール名を変更', 'menuSetScheduleName')
     .addSeparator()
     .addItem('工程テンプレートを編集', 'showTemplateEditor')
     .addItem('工程表を再生成', 'menuGenerate')
@@ -42,7 +44,7 @@ function showGantt() {
     .evaluate()
     .setWidth(clampSize_(settingNumber_(settings, '画面の幅', 1400), 800, 2000))
     .setHeight(clampSize_(settingNumber_(settings, '画面の高さ', 800), 480, 1400));
-  SpreadsheetApp.getUi().showModalDialog(html, '業務スケジュール');
+  SpreadsheetApp.getUi().showModalDialog(html, scheduleTitle_(settings));
 }
 
 function showTemplateEditor() {
@@ -292,6 +294,8 @@ function menuPrepareTemplate() {
   setSetting_('ChatWebhookURL', '');
   setSetting_('WebアプリURL', '');
   setSetting_('サンプルを入れる', 'OFF');
+  // 名前もリセットして、コピーした人の初期セットアップで聞かれるようにする
+  setSetting_('スケジュール名', DEFAULT_TITLE);
   log_('配布用に整える', true,
     '業務 ' + counts.work + '件 / 工程 ' + counts.tpl + '件 / 工程表 ' + counts.sched + '行 を消去');
 
@@ -308,4 +312,122 @@ function menuPrepareTemplate() {
     + '　・Chat の Webhook URL\n'
     + '　・Google アカウントの承認',
     ui.ButtonSet.OK);
+}
+
+/**
+ * このシートで管理するスケジュールの名前を尋ねる。
+ *
+ * 画面・印刷・通知・メニューに出る名前。既定のままのときだけ聞くので、
+ * 2回目以降の［初期セットアップ］では邪魔をしない。
+ * 入力を返すだけで、シートへの書き込みは呼び出し側に任せる
+ * （初回は設定シートがまだ無いため）。
+ */
+function askScheduleTitle_(ui, current) {
+  if (current && current !== DEFAULT_TITLE) return '';
+  var res = ui.prompt('このシートは何のスケジュールですか？',
+    '画面の見出し・印刷・Chat通知・メニュー名に使います。\n'
+    + '例）◯◯申請の処理、△△の月次事務\n\n'
+    + '空のままでよければ「' + DEFAULT_TITLE + '」のまま進みます。',
+    ui.ButtonSet.OK_CANCEL);
+  if (res.getSelectedButton() !== ui.Button.OK) return '';
+  return String(res.getResponseText() || '').trim().slice(0, 40);
+}
+
+/** あとから名前を変える */
+function menuSetScheduleName() {
+  var ui = SpreadsheetApp.getUi();
+  var now = scheduleTitle_();
+  var res = ui.prompt('スケジュール名を変更',
+    'いまの名前：' + now + '\n\n'
+    + '画面の見出し・印刷・Chat通知・メニュー名に使います。\n'
+    + 'メニュー名はシートを開き直すと変わります。',
+    ui.ButtonSet.OK_CANCEL);
+  if (res.getSelectedButton() !== ui.Button.OK) return;
+  var name = String(res.getResponseText() || '').trim().slice(0, 40) || DEFAULT_TITLE;
+  setSetting_('スケジュール名', name);
+  log_('スケジュール名の変更', true, now + ' → ' + name);
+  ui.alert('変更しました', '「' + name + '」にしました。\n\n'
+    + 'メニュー名は、シートを開き直すと変わります。', ui.ButtonSet.OK);
+}
+
+function menuSetup() {
+  var ui = SpreadsheetApp.getUi();
+  var res = ui.alert('初期セットアップ',
+    'シートの作成・書式設定・休日の取り込み・トリガー登録を行います。\n'
+    + '既存のデータは消しません。実行しますか？',
+    ui.ButtonSet.OK_CANCEL);
+  if (res !== ui.Button.OK) return;
+
+  // 設定シートがまだ無いことがあるので、聞くのは先・書くのは後
+  var title = askScheduleTitle_(ui, scheduleTitle_());
+  try {
+    var r = setupWorkbook();
+    if (title) setSetting_('スケジュール名', title);
+    var msg = 'セットアップが完了しました。\n\n'
+      + (r.seeded ? '・サンプルの業務と工程テンプレートを入れました\n' : '')
+      + '・工程表 ' + r.generate.rows + ' 行を生成しました\n'
+      + '・毎日の通知トリガーを登録しました\n\n'
+      + (title ? '名前を「' + title + '」にしました。'
+        + 'メニュー名はシートを開き直すと変わります。\n\n' : '')
+      + '次は［設定］シートの ChatWebhookURL を埋めてください。';
+    if (r.generate.errors.length) msg += '\n\n【要確認】\n' + r.generate.errors.join('\n');
+    ui.alert('完了', msg, ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('エラー', e.message, ui.ButtonSet.OK);
+  }
+}
+
+function menuReset() {
+  var ui = SpreadsheetApp.getUi();
+  var res = ui.alert('サンプルを削除して最初から作る',
+    '次の4つのシートの中身をすべて削除します。\n\n'
+    + '　・業務マスタ\n'
+    + '　・工程テンプレート\n'
+    + '　・基準日\n'
+    + '　・工程表\n\n'
+    + '設定・休日マスタ・実行ログはそのまま残ります。\n'
+    + '（手入力した閉庁日も残ります）\n\n'
+    + 'この操作は元に戻せません。実行しますか？',
+    ui.ButtonSet.OK_CANCEL);
+  if (res !== ui.Button.OK) return;
+
+  try {
+    resetBusinessData();
+  } catch (e) {
+    ui.alert('エラー', e.message, ui.ButtonSet.OK);
+    return;
+  }
+  ui.alert('削除しました',
+    '続けて［工程テンプレートを編集］を開きます。\n'
+    + '［＋ 業務を追加］から、実際の業務を登録してください。',
+    ui.ButtonSet.OK);
+  showTemplateEditor();
+}
+
+function menuGenerate() {
+  try {
+    var r = generateSchedules();
+    var msg = '基準日を ' + r.anchorsAdded + ' 件追加し、工程表を ' + r.rows + ' 行にしました。';
+    // 工程表を作り直したらカレンダーもずれるので、ONならその場で合わせる
+    try {
+      var c = syncCalendarIfEnabled();
+      if (!c.skipped) {
+        msg += '\nカレンダーも同期しました（作成 ' + c.created
+          + ' / 更新 ' + c.updated + ' / 削除 ' + c.removed + '）。';
+      }
+    } catch (ce) {
+      msg += '\n\nカレンダーの同期は失敗しました:\n' + ce.message;
+    }
+    if (r.errors.length) msg += '\n\n【要確認】\n' + r.errors.join('\n');
+    SpreadsheetApp.getUi().alert('工程表の再生成', msg, SpreadsheetApp.getUi().ButtonSet.OK);
+  } catch (e) {
+    SpreadsheetApp.getUi().alert('エラー', e.message, SpreadsheetApp.getUi().ButtonSet.OK);
+  }
+}
+
+function menuSyncHolidays() {
+  var r = syncHolidays();
+  var msg = '休日マスタを ' + r.count + ' 件にしました。';
+  if (r.error) msg += '\n\n祝日CSVの取得に失敗しました（既存の祝日は維持）:\n' + r.error;
+  SpreadsheetApp.getUi().alert('休日の取り込み', msg, SpreadsheetApp.getUi().ButtonSet.OK);
 }

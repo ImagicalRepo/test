@@ -612,6 +612,16 @@ check('回次が無い工程で余分な空白を入れない', () => {
   eq(text.includes('定例の事務｜本日'), true, '「定例の事務 ｜本日」にならないこと');
 });
 
+check('通知の見出しにスケジュール名を使う', () => {
+  const d = G.buildDigest(DIGEST_ROWS, cal, '2026-09-09', {});
+  const named = G.buildChatText(d, '2026-09-09', '', '窓口業務のスケジュール');
+  eq(named.split('\n')[0], '*9/9(水) の窓口業務のスケジュール*', '設定した名前が1行目に出る');
+  const plain = G.buildChatText(d, '2026-09-09', '');
+  eq(plain.split('\n')[0], '*9/9(水) の業務スケジュール*', '省略なら既定の名前');
+  eq(G.buildChatText(d, '2026-09-09', '', '').split('\n')[0], '*9/9(水) の業務スケジュール*',
+    '空文字でも既定に落とす');
+});
+
 check('通知の末尾に画面へのリンクを付ける', () => {
   const d = G.buildDigest(DIGEST_ROWS, cal, '2026-09-09', {});
   const url = 'https://script.google.com/macros/s/ABC/exec';

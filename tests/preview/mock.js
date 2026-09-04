@@ -120,7 +120,8 @@ window.MOCK_DATA = {
     ]),
     total: 6
   },
-  statusList: ['未着手','着手中','完了','対象外']
+  statusList: ['未着手','着手中','完了','対象外'],
+  title: '窓口業務のスケジュール'
 };
 
 // google.script.run のスタブ。

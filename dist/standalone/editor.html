@@ -636,6 +636,10 @@
   function load() {
     google.script.run.withSuccessHandler(function (d) {
       DATA = d;
+      // ブラウザのタブに、どのシートの編集かを出す
+      if (d.title) {
+        try { document.title = d.title + ' ─ 工程テンプレートの編集'; } catch (e) { /* ダイアログでは変えられない */ }
+      }
       var sel = document.getElementById('workSel');
       sel.innerHTML = '';
       d.works.forEach(function (w) { sel.appendChild(opt(w.id, w.name + (w.enabled ? '' : '（無効）'))); });
