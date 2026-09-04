@@ -54,7 +54,7 @@ function log_(process, ok, message) {
 function getSheet_(name, optional) {
   var sh = ss_().getSheetByName(name);
   if (!sh && !optional) {
-    throw new Error('シート「' + name + '」がありません。メニュー［難病スケジュール］→［初期セットアップ］を実行してください。');
+    throw new Error('シート「' + name + '」がありません。メニュー［業務スケジュール］→［初期セットアップ］を実行してください。');
   }
   return sh;
 }

@@ -1,4 +1,4 @@
-<!-- version: 2.0.0 -->
+<!-- version: 2.1.0 -->
 <!-- 工程テンプレート編集：各工程を「文章」として読み書きし、算出日をその場に出す -->
 <style>
   :root {
@@ -158,7 +158,7 @@
   .due.wait { background:var(--warn-soft); color:var(--warn); font-size:11px; }
   .same-day { color:var(--muted); }
 
-  /* 「〔審査会〕の〔20〕〔営業日〕〔前〕」を一文として読ませる */
+  /* 「〔会議〕の〔20〕〔営業日〕〔前〕」を一文として読ませる */
   .sentence { display:flex; align-items:center; gap:5px; flex-wrap:wrap; font-size:12px; color:var(--muted); }
   .sentence select, .sentence input { padding:4px 7px; font-size:12px; }
   .sentence .base { max-width:220px; font-weight:600; color:var(--text); }
@@ -374,7 +374,7 @@
         工程の日付は<b>［日付指定］</b>で「この日にやる」と直接書くのが基本です。<br>
         <b>［起点から］</b>を選ぶと「<b>どこを基準に、何日ずらすか</b>」で決まります。
         基準には<b>前の工程</b>も選べるので、「決裁完了は起案から3営業日後」のような連鎖もそのまま書けます。
-        審査会のように<b>回ごとに日が動く</b>業務は、上の［起点の日］にその日を足せば、
+        会議のように<b>回ごとに日が動く</b>業務は、上の［起点の日］にその日を足せば、
         ［起点から］の工程がまとめて追随します。<br>
         右端の日付が、その設定で実際に何日になるかです。［期間にする］で「◯日から◯日まで」にもできます。
       </p>
@@ -850,7 +850,7 @@
     anchorName.value = (w.anchorName === '起点' ? '' : (w.anchorName || ''));
     anchorName.style.width = '96px';
     anchorName.placeholder = '起点';
-    anchorName.title = 'この業務の起点の呼び方。審査会・締切日・発送日など自由に決められます。'
+    anchorName.title = 'この業務の起点の呼び方。会議・締切日・発送日など自由に決められます。'
       + '空欄なら「起点」と表示します';
     anchorName.onchange = function () {
       w.anchorName = anchorName.value.trim() || '起点';
@@ -1499,7 +1499,7 @@
     confirmDiscard('いま編集している工程を残したまま業務を足す', function () {
       ask({
         title: '業務を追加',
-        body: '業務名を入力してください。\n例）指定難病 医療費助成（月次審査会）',
+        body: '業務名を入力してください。\n例）月次の審査・通知発送',
         input: true,
         placeholder: '業務名',
         okLabel: '追加する',

@@ -2,7 +2,7 @@
  * 工程テンプレートから実際の日程を算出する（純粋関数）
  *
  * 各工程は「基準（基準日 or 別の工程）」からの相対日数で定義する。
- * これにより、審査会の日が動いても全工程が自動で追随する。
+ * これにより、基準の日が動いても全工程が自動で追随する。
  */
 
 var ANCHOR_ALIASES = ['起点', '起点の日', '基準日', '基準', 'アンカー', 'ANCHOR'];
@@ -46,7 +46,7 @@ function isAnchorRef(value) {
  * @param {Array<Object>} rows 工程テンプレート行
  *        {seq, name, mode, base, direction, days, endDirection, endDays,
  *         startDate, endDate, unit, adjust, owner, remindDays, note}
- * @param {string} anchorKey 基準日（審査会日など）の dateKey。空なら起点なし
+ * @param {string} anchorKey 基準日（会議の日など）の dateKey。空なら起点なし
  * @param {Object} cal 営業日カレンダー
  * @param {string} anchorName 基準日の別名（業務マスタの「基準日名称」）。base 欄でこの名前も基準日として扱う
  * @param {Object} [opts] {skipUnresolved: true} で、起点が無くて決められない工程を

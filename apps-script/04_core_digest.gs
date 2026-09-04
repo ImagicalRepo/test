@@ -76,7 +76,7 @@ function formatShortDate(key) {
 /**
  * 「業務名 回次」の表示。
  * 日付指定だけで組んだ工程は回次を持たないため、空なら区切りを入れない
- * （入れると「指定難病 医療費助成 ｜本日」のように余分な空白が残る）。
+ * （入れると「月次の審査 ｜本日」のように余分な空白が残る）。
  */
 function formatWorkLabel(item) {
   var period = String(item.period === undefined || item.period === null ? '' : item.period).trim();

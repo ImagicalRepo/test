@@ -120,8 +120,17 @@ const soBody = soFiles.map(file => {
 
 const soCode = soHeader + soBody;
 
-// 配布物に外部取得の痕跡が残っていないことを確かめる
+// 配布物に、外部取得の痕跡と特定業務に寄った表現が残っていないことを確かめる。
+// 配る相手の業務は分からないので、サンプルも説明文も一般的な言い方にしておく。
 const banned = [
+  ['指定難病', '特定の業務に寄った語'],
+  ['難病', '特定の業務に寄った語'],
+  ['小児慢性', '特定の業務に寄った語'],
+  ['医療費助成', '特定の業務に寄った語'],
+  ['審査会', '特定の業務に寄った語'],
+  ['受給者証', '特定の業務に寄った語'],
+  ['医療意見書', '特定の業務に寄った語'],
+  ['疾病', '特定の業務に寄った語'],
   ['GitHub', '固有名'],
   ['remote', '取り込み部品を指す語'],
   ['Remote', '取り込み部品を指す語'],
@@ -134,9 +143,10 @@ const banned = [
   ['menuRefreshHtml', '取り込みのメニュー'],
   ['menuCheckUpdate', '更新確認のメニュー']
 ];
-const hit = banned.filter(([word]) => soCode.includes(word));
+const soHtml = htmlFiles.map(f => fs.readFileSync(path.join(SRC, f), 'utf8')).join('\n');
+const hit = banned.filter(([word]) => soCode.includes(word) || soHtml.includes(word));
 if (hit.length) {
-  console.error('配布用ビルドに外部取得の痕跡が残っています:\n  '
+  console.error('配布用ビルドに残してはいけない表現があります:\n  '
     + hit.map(([w, why]) => w + '（' + why + '）').join('\n  '));
   process.exit(1);
 }

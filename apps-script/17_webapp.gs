@@ -274,7 +274,7 @@ function updateItemsStatus(keys, status) {
   return { updated: hit.length, keys: hit };
 }
 
-/** 基準日（審査会日など）を変更して、その回次の工程を組み直す */
+/** 基準日（会議の日など）を変更して、その回次の工程を組み直す */
 function updateAnchorDate(workId, period, dateKey) {
   keyToDate(dateKey); // 形式チェック
   var t = readTable_(SHEET.ANCHOR);
