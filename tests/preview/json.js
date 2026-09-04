@@ -13,6 +13,7 @@ const fs = require('fs');
 
 const OUT = path.join(__dirname, 'out');
 const PAGE = 'file://' + path.join(OUT, 'json-import.html');
+const EXPORT_PAGE = 'file://' + path.join(OUT, 'json-export.html');
 
 let pass = 0, fail = 0;
 function check(name, cond, detail) {
@@ -103,6 +104,54 @@ async function main() {
     return e ? e.textContent : null;
   });
   check('コード.gs の版が画面に出る', !!ver && ver.indexOf('版') >= 0, String(ver));
+
+  // ---- 書き出しに進捗を含める ----
+  console.log('\n進捗を含めて書き出す');
+  await page.goto(EXPORT_PAGE);
+  await page.waitForSelector('#btnCopy');
+  const exp0 = await page.evaluate(() => ({
+    box: document.getElementById('box').value,
+    checked: document.getElementById('withProgress').checked
+  }));
+  check('既定では進捗を含めない', exp0.checked === false);
+  check('定義だけが入っている', exp0.box.indexOf('progress') < 0, exp0.box.slice(0, 60));
+
+  await page.check('#withProgress');
+  await page.waitForTimeout(300);
+  const expOn = await page.evaluate(() => ({
+    calls: window.MOCK_CALLS,
+    box: document.getElementById('box').value,
+    msg: document.getElementById('msg').textContent
+  }));
+  check('入れると書き出し直す',
+    expOn.calls.some(c => c.fn === 'exportTemplatesJson' && c.withProgress === true),
+    JSON.stringify(expOn.calls));
+  check('進捗が入る', expOn.box.indexOf('"progress"') >= 0 && expOn.box.indexOf('完了') >= 0,
+    expOn.box.slice(0, 80));
+  check('入れたことが分かる', expOn.msg.indexOf('進捗を含めました') >= 0, expOn.msg);
+
+  await page.uncheck('#withProgress');
+  await page.waitForTimeout(300);
+  const expOff = await page.evaluate(() => ({
+    box: document.getElementById('box').value,
+    msg: document.getElementById('msg').textContent
+  }));
+  check('外すと定義だけに戻る', expOff.box.indexOf('"progress"') < 0, expOff.box.slice(0, 60));
+  check('外したことが分かる', expOff.msg.indexOf('進捗を外しました') >= 0, expOff.msg);
+
+  // ---- 読み込み側が復元件数を伝えること ----
+  console.log('\n進捗の復元');
+  await page.goto(PAGE);
+  await page.waitForSelector('#btnImport');
+  await page.evaluate(() => {
+    window.MOCK_IMPORT_RESULT = { rows: 42, errors: [], progress: { applied: 30, missing: 2 } };
+  });
+  await page.fill('#box', SAMPLE);
+  await page.click('#btnImport');
+  await page.waitForTimeout(300);
+  const restored = (await state()).msg;
+  check('復元した件数を出す', restored.indexOf('進捗 30 件を復元') >= 0, restored);
+  check('該当しなかった件数も出す', restored.indexOf('2 件') >= 0, restored);
 
   // ---- <script> の中にテンプレートの出力を混ぜていないこと ----
   // 書き出され方によっては JS ごと壊れ、「押しても何も起きない」になる。

@@ -52,11 +52,17 @@ function build() {
   fs.writeFileSync(editor, wrap('editor.html', core.concat([read('editor-mock.js')])));
 
   const jsonMock = read('json-mock.js');
-  const jsonImport = path.join(OUT_DIR, 'json-import.html');
-  fs.writeFileSync(jsonImport, '<!doctype html><html><head><meta charset="utf-8">'
-    + '<script>' + jsonMock + '</' + 'script></head><body>' + renderJson('import', '') + '</body></html>');
+  const jsonPage = (name, mode, payload) => {
+    const f = path.join(OUT_DIR, name);
+    fs.writeFileSync(f, '<!doctype html><html><head><meta charset="utf-8">'
+      + '<script>' + jsonMock + '</' + 'script></head><body>'
+      + renderJson(mode, payload) + '</body></html>');
+    return f;
+  };
+  const jsonImport = jsonPage('json-import.html', 'import', '');
+  const jsonExport = jsonPage('json-export.html', 'export', '{"format":"gyomu-schedule-template"}');
 
-  return { main, editor, jsonImport };
+  return { main, editor, jsonImport, jsonExport };
 }
 
 const SHOTS = [

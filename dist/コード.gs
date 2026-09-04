@@ -38,7 +38,7 @@ var SHEET = {
  * このコードの版。GitHub 側の版と比べて更新の有無を知らせる。
  * dist を作り直すときに手で上げる。
  */
-var VERSION = '1.6.0';
+var VERSION = '1.7.0';
 
 /** 各シートのヘッダー定義（列は名前で参照するため、並び替えても壊れない） */
 var SHEET_DEFS = [
@@ -3216,8 +3216,14 @@ function restoreAnchor(workId, period) {
 
 // ---- テンプレートの受け渡し（JSON） ----
 
-/** 業務マスタ＋工程テンプレートを JSON 文字列で書き出す（個人情報は含まない） */
-function exportTemplatesJson() {
+/**
+ * 業務マスタ＋工程テンプレートを JSON 文字列で書き出す（個人情報は含まない）。
+ *
+ * @param {boolean} withProgress true なら各工程の状態・完了日も含める。
+ *        別のシートへ引っ越すときや控えを取るときに使う。
+ *        他の団体へ定義だけを渡すときは false（既定）のままにする。
+ */
+function exportTemplatesJson(withProgress) {
   var works = readTable_(SHEET.WORK).rows.filter(function (w) { return String(w['業務ID']).trim(); });
   var templates = readTable_(SHEET.TEMPLATE).rows.filter(function (r) { return String(r['業務ID']).trim(); });
   var payload = {
@@ -3225,6 +3231,8 @@ function exportTemplatesJson() {
     // 版2で日付指定の工程（日付種別・開始日・終了日）を含めるようにした。
     // 版1の JSON もそのまま読める
     version: 2,
+    // 進捗を含むかどうかは、版ではなくこの旗で分かるようにしている
+    includesProgress: !!withProgress,
     exportedAt: todayKey_(),
     works: works.map(function (w) {
       return {
@@ -3247,7 +3255,78 @@ function exportTemplatesJson() {
       };
     })
   };
+
+  if (withProgress) payload.progress = readProgress_();
   return JSON.stringify(payload, null, 2);
+}
+
+/**
+ * 工程表から進捗だけを抜き出す。
+ *
+ * キーは「業務ID|回次|工程No」で、工程表の生成時に付けているものと同じ。
+ * 読み込み側は生成し直したあとに、このキーで突き合わせて戻す。
+ * 未着手の行は書かない（既定値なので、書いても意味がなく量が増えるだけ）。
+ */
+function readProgress_() {
+  var out = [];
+  readTable_(SHEET.SCHEDULE).rows.forEach(function (r) {
+    var key = String(r['キー']).trim();
+    if (!key) return;
+    var status = String(r['状態'] || '').trim();
+    var doneDate = toDateKey(r['完了日']);
+    if ((!status || status === STATUS.NOT_STARTED) && !doneDate) return;
+    out.push({ key: key, status: status || STATUS.NOT_STARTED, doneDate: doneDate });
+  });
+  return out;
+}
+
+/**
+ * 書き出した進捗を工程表へ戻す。
+ *
+ * 工程表を作り直した直後に呼ぶ。該当する行が無いものは数だけ返し、
+ * 読み込んだ人が「思ったより少ない」と気づけるようにする。
+ */
+function applyProgress_(list) {
+  var wanted = {};
+  var total = 0;
+  (list || []).forEach(function (p) {
+    var key = String(p && p.key || '').trim();
+    if (!key) return;
+    var status = String(p.status || '').trim();
+    if (STATUS_LIST.indexOf(status) < 0) return;   // 知らない状態は無視する
+    wanted[key] = { status: status, doneDate: toDateKey(p.doneDate) };
+    total++;
+  });
+  if (!total) return { applied: 0, missing: 0 };
+
+  var t = readTable_(SHEET.SCHEDULE);
+  var idx = headerIndex_(t.headers);
+  var lastRow = t.sheet.getLastRow();
+  if (!idx['状態'] || lastRow < 2) return { applied: 0, missing: total };
+  var n = lastRow - 1;
+
+  // 1行ずつ書くと件数ぶん往復が増えるので、列ごとに1回で書き戻す
+  var statusCol = t.sheet.getRange(2, idx['状態'], n, 1).getValues();
+  var checkCol = idx['完'] ? t.sheet.getRange(2, idx['完'], n, 1).getValues() : null;
+  var dateCol = idx['完了日'] ? t.sheet.getRange(2, idx['完了日'], n, 1).getValues() : null;
+
+  var applied = 0;
+  t.rows.forEach(function (r) {
+    var hit = wanted[String(r['キー']).trim()];
+    if (!hit) return;
+    var i = r._row - 2;                 // readTable_ は空行を飛ばすので行番号で位置を決める
+    if (i < 0 || i >= n) return;
+    applied++;
+    statusCol[i][0] = hit.status;
+    if (checkCol) checkCol[i][0] = hit.status === STATUS.DONE;
+    if (dateCol) dateCol[i][0] = hit.doneDate ? keyToSheetDate_(hit.doneDate) : '';
+  });
+
+  t.sheet.getRange(2, idx['状態'], n, 1).setValues(statusCol);
+  if (checkCol) t.sheet.getRange(2, idx['完'], n, 1).setValues(checkCol);
+  if (dateCol) t.sheet.getRange(2, idx['完了日'], n, 1).setValues(dateCol);
+
+  return { applied: applied, missing: total - applied };
 }
 
 /**
@@ -3324,8 +3403,17 @@ function importTemplatesJson_(json, mode) {
   replaceTable_(SHEET.TEMPLATE, tplRows);
   applyValidations_();
   var result = generateSchedules();
+
+  // 進捗は工程表を作り直したあとに戻す。含まれていなければ何もしない
+  // （同じシートで読み直す場合、状態は生成時にキーで引き継がれる）
+  if (payload.progress && payload.progress.length) {
+    result.progress = applyProgress_(payload.progress);
+  }
+
   log_('テンプレート読込', result.errors.length === 0,
-    '業務 ' + payload.works.length + '件 / 工程 ' + payload.templates.length + '件（' + mode + '）');
+    '業務 ' + payload.works.length + '件 / 工程 ' + payload.templates.length + '件（' + mode + '）'
+    + (result.progress ? '　進捗 ' + result.progress.applied + '件を復元'
+        + (result.progress.missing ? '（' + result.progress.missing + '件は該当なし）' : '') : ''));
   return result;
 }
 

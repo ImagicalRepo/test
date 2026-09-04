@@ -33,7 +33,18 @@ Object.defineProperty(window.google.script, 'run', {
         window.MOCK_CALLS.push({ fn: 'importTemplatesJson', mode: mode, length: (json || '').length });
         setTimeout(function () {
           if (window.MOCK_FAIL) handlers.ng(new Error(window.MOCK_FAIL));
-          else handlers.ok({ rows: 42, errors: [] });
+          else handlers.ok(window.MOCK_IMPORT_RESULT || { rows: 42, errors: [] });
+        }, 20);
+      },
+      exportTemplatesJson: function (withProgress) {
+        window.MOCK_CALLS.push({ fn: 'exportTemplatesJson', withProgress: withProgress });
+        setTimeout(function () {
+          if (window.MOCK_FAIL) handlers.ng(new Error(window.MOCK_FAIL));
+          else handlers.ok(JSON.stringify({
+            format: 'gyomu-schedule-template',
+            includesProgress: !!withProgress,
+            progress: withProgress ? [{ key: 'W1||10', status: '完了', doneDate: '2026-09-01' }] : undefined
+          }, null, 2));
         }, 20);
       }
     };

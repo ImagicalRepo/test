@@ -1,4 +1,4 @@
-<!-- version: 1.6.0 -->
+<!-- version: 1.7.0 -->
 <!-- テンプレートの書き出し／読み込み -->
 <style>
   * { box-sizing:border-box; }
@@ -32,7 +32,8 @@
 <? if (mode === 'export') { ?>
   <h1>テンプレートの書き出し</h1>
   <p>業務マスタと工程テンプレートを JSON で書き出します。<b>個人情報は含まれません</b>。
-     このテキストをコピーして渡せば、相手のシートで同じスケジュール定義を再現できます。</p>
+     このテキストをコピーして渡せば、相手のシートで同じスケジュール定義を再現できます。<br>
+     別のシートへ引っ越すときや控えを取るときは、下の「進捗も含める」を入れてください。</p>
 <? } else { ?>
   <h1>テンプレートの読み込み</h1>
   <p>受け取った JSON を貼り付けて読み込みます。基準日・進捗・休日マスタはそのまま残り、
@@ -43,8 +44,10 @@
 
 <div class="row">
   <? if (mode === 'export') { ?>
-    <button class="primary" id="btnCopy">コピー</button>
+    <label title="各工程の状態と完了日を含めます。他の団体へ定義だけを渡すときは外してください">
+      <input type="checkbox" id="withProgress"> 進捗（状態・完了日）も含める</label>
     <span class="spacer"></span>
+    <button class="primary" id="btnCopy">コピー</button>
     <button id="btnClose">閉じる</button>
   <? } else { ?>
     <label><input type="radio" name="mode" value="merge" checked> 同じ業務IDだけ上書き</label>
@@ -88,7 +91,10 @@
   var isExport = !!document.getElementById('btnCopy');
 
   if (isExport) {
-    document.getElementById('btnCopy').onclick = function () {
+    var copyBtn = document.getElementById('btnCopy');
+    var withProgress = document.getElementById('withProgress');
+
+    copyBtn.onclick = function () {
       var box = document.getElementById('box');
       box.select();
       box.setSelectionRange(0, box.value.length);
@@ -100,6 +106,30 @@
       }
     };
     document.getElementById('btnClose').onclick = function () { google.script.host.close(); };
+
+    // 進捗の有無で中身が変わるので、切り替えたら書き出し直す
+    if (withProgress) {
+      withProgress.onchange = function () {
+        var on = withProgress.checked;
+        withProgress.disabled = true;
+        copyBtn.disabled = true;
+        setMsg('書き出し中…');
+        google.script.run
+          .withSuccessHandler(function (text) {
+            document.getElementById('box').value = text;
+            withProgress.disabled = false;
+            copyBtn.disabled = false;
+            setMsg(on ? '進捗を含めました' : '進捗を外しました');
+          })
+          .withFailureHandler(function (e) {
+            withProgress.checked = !on;
+            withProgress.disabled = false;
+            copyBtn.disabled = false;
+            reportError('書き出し', e);
+          })
+          .exportTemplatesJson(on);
+      };
+    }
   } else {
     var btn = document.getElementById('btnImport');
     var cancel = document.getElementById('btnCancel');
@@ -162,9 +192,12 @@
           clearTimeout(watchdog);
           btn.disabled = false;
           disarm();
+          var p = res.progress;
           setMsg('読み込みました（工程表 ' + res.rows + ' 行）'
+            + (p ? '　進捗 ' + p.applied + ' 件を復元'
+                + (p.missing ? '（' + p.missing + ' 件は該当する工程がありません）' : '') : '')
             + (res.errors && res.errors.length ? ' 要確認: ' + res.errors.join(' / ') : ''),
-            res.errors && res.errors.length ? true : false);
+            (res.errors && res.errors.length) || (p && p.missing) ? true : false);
         })
         .withFailureHandler(function (e) {
           clearTimeout(watchdog);
