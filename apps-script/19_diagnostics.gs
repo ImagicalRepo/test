@@ -82,10 +82,10 @@ function runDiagnostics() {
     }
     var base = remoteBase_(settings);
     if (!base) return 'ON だが取得元URLが不正（raw.githubusercontent.com のみ）';
-    var got = ['gantt', 'editor'].filter(function (n) {
+    var got = REMOTE_FILES.filter(function (n) {
       return !!fetchRemoteHtml_(n, settings);
     });
-    return 'GitHub ' + got.length + '/2 取得可（版 ' + VERSION + '）　' + base;
+    return 'GitHub ' + got.length + '/' + REMOTE_FILES.length + ' 取得可（版 ' + VERSION + '）　' + base;
   });
 
   step('カレンダー同期', function () {

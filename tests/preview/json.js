@@ -96,6 +96,14 @@ async function main() {
   const nat = (await state()).native;
   check('confirm / alert / prompt を呼んでいない', nat.length === 0, JSON.stringify(nat));
 
+  // ---- 版が出ていること（画面だけ古いまま気づかない事故を防ぐ） ----
+  console.log('\n版の表示');
+  const ver = await page.evaluate(() => {
+    const e = document.querySelector('.ver');
+    return e ? e.textContent : null;
+  });
+  check('コード.gs の版が画面に出る', !!ver && ver.indexOf('版') >= 0, String(ver));
+
   // ---- 貼り忘れ ----
   console.log('\n貼り忘れ');
   await page.goto(PAGE);

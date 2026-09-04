@@ -186,7 +186,7 @@ function menuRefreshHtml() {
   // その場で取りに行き、結果をここで見せる（次に開くまで分からないと不安なので）
   var got = [];
   var failed = [];
-  ['gantt', 'editor'].forEach(function (n) {
+  REMOTE_FILES.forEach(function (n) {
     var text = fetchRemoteHtml_(n, settings);
     if (text) got.push(n + '.html（' + text.length + '文字）');
     else failed.push(n + '.html');

@@ -1,4 +1,4 @@
-<!-- version: 1.4.0 -->
+<!-- version: 1.5.0 -->
 <!-- テンプレートの書き出し／読み込み -->
 <style>
   * { box-sizing:border-box; }
@@ -24,6 +24,7 @@
   #msg.err { color:#d93025; }
   #msg.warn { color:#b06000; font-weight:600; }
   button.danger { background:#d93025; border-color:#d93025; color:#fff; }
+  .ver { font-size:11px; color:#9aa0a6; font-variant-numeric:tabular-nums; }
   [hidden] { display:none !important; }
   .spacer { flex:1; }
 </style>
@@ -53,6 +54,9 @@
     <button class="primary" id="btnImport">読み込む</button>
   <? } ?>
   <span id="msg"></span>
+  <span class="spacer"></span>
+  <!-- コード.gs 側の版。画面だけ古いまま貼り替え忘れていないかを見分ける -->
+  <span class="ver" title="コード.gs の版。この画面が対応していない版だと、ここが出ません">版 <?= version ?></span>
 </div>
 
 <script>
@@ -112,8 +116,15 @@
       btn.disabled = true;
       cancel.hidden = true;
       setMsg('読み込み中…');
+      // 応答が返らないまま黙って止まると原因が分からないので、待ちに上限を置く
+      var watchdog = setTimeout(function () {
+        btn.disabled = false;
+        disarm();
+        setMsg('応答がありません。［実行ログ］シートを確認してください。', true);
+      }, 90000);
       google.script.run
         .withSuccessHandler(function (res) {
+          clearTimeout(watchdog);
           btn.disabled = false;
           disarm();
           setMsg('読み込みました（工程表 ' + res.rows + ' 行）'
@@ -121,6 +132,7 @@
             res.errors && res.errors.length ? true : false);
         })
         .withFailureHandler(function (e) {
+          clearTimeout(watchdog);
           btn.disabled = false;
           disarm();
           setMsg(e.message, true);

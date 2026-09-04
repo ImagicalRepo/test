@@ -493,6 +493,16 @@ function exportTemplatesJson() {
  * @param {string} mode 'merge'（同じ業務IDは上書き）/ 'replace'（既存を全部消してから読み込む）
  */
 function importTemplatesJson(json, mode) {
+  try {
+    return importTemplatesJson_(json, mode);
+  } catch (e) {
+    // 画面側にメッセージが出ないことがあるので、実行ログにも必ず残す
+    log_('テンプレート読込', false, (mode || '') + '　' + e.message);
+    throw e;
+  }
+}
+
+function importTemplatesJson_(json, mode) {
   var payload;
   try {
     payload = JSON.parse(json);
@@ -563,16 +573,22 @@ function pickHeaders_(row, sheetName) {
   return o;
 }
 
-function showTemplateExport() {
-  var tpl = HtmlService.createTemplateFromFile('json');
-  tpl.mode = 'export';
-  tpl.payload = exportTemplatesJson();
-  SpreadsheetApp.getUi().showModalDialog(tpl.evaluate().setWidth(720).setHeight(620), 'テンプレートの書き出し');
+/**
+ * 受け渡しの画面を開く。
+ *
+ * loadHtml_ を通すので、［画面をGitHubから読み込む］が ON なら json.html も
+ * 自動で最新になる。画面の隅に版を出しているので、コード.gs と食い違って
+ * いないかをその場で確かめられる。
+ */
+function showTemplateDialog_(mode) {
+  var tpl = loadHtml_('json');
+  tpl.mode = mode;
+  tpl.payload = mode === 'export' ? exportTemplatesJson() : '';
+  tpl.version = VERSION;
+  SpreadsheetApp.getUi().showModalDialog(
+    tpl.evaluate().setWidth(720).setHeight(620),
+    mode === 'export' ? 'テンプレートの書き出し' : 'テンプレートの読み込み');
 }
 
-function showTemplateImport() {
-  var tpl = HtmlService.createTemplateFromFile('json');
-  tpl.mode = 'import';
-  tpl.payload = '';
-  SpreadsheetApp.getUi().showModalDialog(tpl.evaluate().setWidth(720).setHeight(620), 'テンプレートの読み込み');
-}
+function showTemplateExport() { showTemplateDialog_('export'); }
+function showTemplateImport() { showTemplateDialog_('import'); }

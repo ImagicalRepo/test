@@ -36,6 +36,7 @@ function renderJson(mode, payload) {
   s = s.replace(/<\?= mode === 'export' \? 'true' : 'false' \?>/g,
     mode === 'export' ? 'true' : 'false');
   s = s.replace(/<\?= payload \?>/g, payload || '');
+  s = s.replace(/<\?= version \?>/g, 'テスト');
   const left = s.match(/<\?[\s\S]*?\?>/g);
   if (left) throw new Error('json.html に展開できないスクリプトレットがあります: ' + left.join(' '));
   return s;

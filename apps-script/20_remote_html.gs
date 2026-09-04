@@ -12,6 +12,13 @@
 /** 取得を許すホスト。ここ以外は拒否する */
 var REMOTE_HOST = 'https://raw.githubusercontent.com/';
 
+/**
+ * GitHub から取ってくる HTML。
+ * json（テンプレートの受け渡し）を外していたため、コード.gs だけ貼り替えた人の手元で
+ * 画面と中身の版が食い違い、読み込みボタンが効かない不具合になっていた。
+ */
+var REMOTE_FILES = ['gantt', 'editor', 'json'];
+
 /** キャッシュの保持時間（秒）。毎回取りに行くと画面が開くまで待たされる */
 var REMOTE_CACHE_SEC = 3600;
 
@@ -113,7 +120,7 @@ function htmlVersion_(text) {
 /** キャッシュを捨てて次回に取り直させる */
 function clearRemoteHtmlCache_() {
   var cache = CacheService.getScriptCache();
-  ['gantt', 'editor'].forEach(function (n) {
+  REMOTE_FILES.forEach(function (n) {
     try { cache.remove('html_' + n); } catch (e) { /* 無視 */ }
   });
 }

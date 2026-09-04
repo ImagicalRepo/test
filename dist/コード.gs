@@ -38,7 +38,7 @@ var SHEET = {
  * このコードの版。GitHub 側の版と比べて更新の有無を知らせる。
  * dist を作り直すときに手で上げる。
  */
-var VERSION = '1.4.0';
+var VERSION = '1.5.0';
 
 /** 各シートのヘッダー定義（列は名前で参照するため、並び替えても壊れない） */
 var SHEET_DEFS = [
@@ -101,7 +101,7 @@ var DEFAULT_SETTINGS = [
   ['カレンダーID', '', 'カレンダー同期先のID。空ならスクリプト実行者のメインカレンダー'],
   ['ガント表示_前月数', '1', 'ガント画面で今日より何ヶ月前から表示するか'],
   ['ガント表示_後月数', '3', 'ガント画面で今日より何ヶ月先まで表示するか'],
-  ['画面をGitHubから読み込む', 'OFF', 'ON にすると、スケジュール画面と編集画面のHTMLを下のURLから読み込む。コードを貼り直す手間が減る。取得できないときはプロジェクト内のファイルを使う'],
+  ['画面をGitHubから読み込む', 'OFF', 'ON にすると、画面のHTML（gantt・editor・json）を下のURLから読み込む。コードを貼り直す手間が減る。取得できないときはプロジェクト内のファイルを使う'],
   ['画面の取得元URL', 'https://raw.githubusercontent.com/ImagicalRepo/test/claude/rare-disease-subsidy-schedule-21xoll/dist/', 'HTMLの取得元。raw.githubusercontent.com のみ。末尾は / で終わらせる'],
   ['WebアプリURL', '', 'ブラウザで実際に開けたウェブアプリのURL（末尾が /exec でも /dev でも可）。メニューの［WebアプリのURLを登録］から設定する。空ならデプロイのURLを自動で使う'],
   ['画面の幅', '1400', 'スケジュール画面の幅（px）。ブラウザの幅より大きくはなりません'],
@@ -2277,7 +2277,7 @@ function menuRefreshHtml() {
   // その場で取りに行き、結果をここで見せる（次に開くまで分からないと不安なので）
   var got = [];
   var failed = [];
-  ['gantt', 'editor'].forEach(function (n) {
+  REMOTE_FILES.forEach(function (n) {
     var text = fetchRemoteHtml_(n, settings);
     if (text) got.push(n + '.html（' + text.length + '文字）');
     else failed.push(n + '.html');
@@ -3256,6 +3256,16 @@ function exportTemplatesJson() {
  * @param {string} mode 'merge'（同じ業務IDは上書き）/ 'replace'（既存を全部消してから読み込む）
  */
 function importTemplatesJson(json, mode) {
+  try {
+    return importTemplatesJson_(json, mode);
+  } catch (e) {
+    // 画面側にメッセージが出ないことがあるので、実行ログにも必ず残す
+    log_('テンプレート読込', false, (mode || '') + '　' + e.message);
+    throw e;
+  }
+}
+
+function importTemplatesJson_(json, mode) {
   var payload;
   try {
     payload = JSON.parse(json);
@@ -3326,19 +3336,25 @@ function pickHeaders_(row, sheetName) {
   return o;
 }
 
-function showTemplateExport() {
-  var tpl = HtmlService.createTemplateFromFile('json');
-  tpl.mode = 'export';
-  tpl.payload = exportTemplatesJson();
-  SpreadsheetApp.getUi().showModalDialog(tpl.evaluate().setWidth(720).setHeight(620), 'テンプレートの書き出し');
+/**
+ * 受け渡しの画面を開く。
+ *
+ * loadHtml_ を通すので、［画面をGitHubから読み込む］が ON なら json.html も
+ * 自動で最新になる。画面の隅に版を出しているので、コード.gs と食い違って
+ * いないかをその場で確かめられる。
+ */
+function showTemplateDialog_(mode) {
+  var tpl = loadHtml_('json');
+  tpl.mode = mode;
+  tpl.payload = mode === 'export' ? exportTemplatesJson() : '';
+  tpl.version = VERSION;
+  SpreadsheetApp.getUi().showModalDialog(
+    tpl.evaluate().setWidth(720).setHeight(620),
+    mode === 'export' ? 'テンプレートの書き出し' : 'テンプレートの読み込み');
 }
 
-function showTemplateImport() {
-  var tpl = HtmlService.createTemplateFromFile('json');
-  tpl.mode = 'import';
-  tpl.payload = '';
-  SpreadsheetApp.getUi().showModalDialog(tpl.evaluate().setWidth(720).setHeight(620), 'テンプレートの読み込み');
-}
+function showTemplateExport() { showTemplateDialog_('export'); }
+function showTemplateImport() { showTemplateDialog_('import'); }
 
 
 // ===========================================================================
@@ -3429,10 +3445,10 @@ function runDiagnostics() {
     }
     var base = remoteBase_(settings);
     if (!base) return 'ON だが取得元URLが不正（raw.githubusercontent.com のみ）';
-    var got = ['gantt', 'editor'].filter(function (n) {
+    var got = REMOTE_FILES.filter(function (n) {
       return !!fetchRemoteHtml_(n, settings);
     });
-    return 'GitHub ' + got.length + '/2 取得可（版 ' + VERSION + '）　' + base;
+    return 'GitHub ' + got.length + '/' + REMOTE_FILES.length + ' 取得可（版 ' + VERSION + '）　' + base;
   });
 
   step('カレンダー同期', function () {
@@ -3503,6 +3519,13 @@ function menuDiagnostics() {
 
 /** 取得を許すホスト。ここ以外は拒否する */
 var REMOTE_HOST = 'https://raw.githubusercontent.com/';
+
+/**
+ * GitHub から取ってくる HTML。
+ * json（テンプレートの受け渡し）を外していたため、コード.gs だけ貼り替えた人の手元で
+ * 画面と中身の版が食い違い、読み込みボタンが効かない不具合になっていた。
+ */
+var REMOTE_FILES = ['gantt', 'editor', 'json'];
 
 /** キャッシュの保持時間（秒）。毎回取りに行くと画面が開くまで待たされる */
 var REMOTE_CACHE_SEC = 3600;
@@ -3605,7 +3628,7 @@ function htmlVersion_(text) {
 /** キャッシュを捨てて次回に取り直させる */
 function clearRemoteHtmlCache_() {
   var cache = CacheService.getScriptCache();
-  ['gantt', 'editor'].forEach(function (n) {
+  REMOTE_FILES.forEach(function (n) {
     try { cache.remove('html_' + n); } catch (e) { /* 無視 */ }
   });
 }
