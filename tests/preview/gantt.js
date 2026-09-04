@@ -20,7 +20,15 @@ async function main() {
   const errors = [];
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
-  page.on('dialog', d => d.accept());
+  // 確認は画面内のダイアログで出す。ネイティブのものが出たら不具合とみなす
+  // （スプレッドシートのダイアログでは window.confirm が無視されるため）
+  page.on('dialog', d => { errors.push('ネイティブの ' + d.type() + ' が出た: ' + d.message()); d.dismiss(); });
+  const answerConfirm = () => page.evaluate(() => {
+    const d = document.getElementById('confirmDialog');
+    if (!d) return false;
+    d.querySelectorAll('.row button')[1].click();
+    return true;
+  });
 
   await page.goto('file://' + path.join(OUT, 'index.html'));
   await page.waitForSelector('.lane');
@@ -128,7 +136,9 @@ async function main() {
   await page.evaluate(() => {
     document.querySelector('.kase-bulk button').click();
   });
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(250);
+  check('まとめて完了は画面内の確認を挟む', await answerConfirm());
+  await page.waitForTimeout(400);
   const bulkAfter = await page.evaluate(() => {
     const lane = DATA.lanes.find(l => l.laneKey === DATA.lanes.find(x => x.workId === selectedWork).laneKey);
     return {
@@ -230,6 +240,11 @@ async function main() {
       return b.classList.contains('on') && b.getAttribute('aria-pressed') === 'true';
     }));
   check('ON にしても画面からはみ出さない', on.used <= on.avail, on.used + ' / ' + on.avail);
+  // ラベルが行の高さぶん伸びないと、背景が欠けて裏の土日の網掛けが透けて見える
+  const labelFit = await page.evaluate(() => [...document.querySelectorAll('#grid .lane')]
+    .map(l => Math.round(l.getBoundingClientRect().height
+      - l.querySelector('.lane-label').getBoundingClientRect().height)));
+  check('業務名の列が行の高さいっぱいに広がる', labelFit.every(d => d <= 1), JSON.stringify(labelFit));
 
   await page.click('#btnLabels');
   await page.waitForTimeout(400);

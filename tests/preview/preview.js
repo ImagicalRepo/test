@@ -25,6 +25,22 @@ function wrap(pageFile, scripts) {
     + page + '</body></html>';
 }
 
+/**
+ * json.html は Apps Script のテンプレート（<? ?> / <?= ?>）なので、
+ * 指定したモードで展開してから素の HTML にする。
+ */
+function renderJson(mode, payload) {
+  let s = fs.readFileSync(path.join(ROOT, 'apps-script', 'json.html'), 'utf8');
+  s = s.replace(/<\? if \(mode === 'export'\) \{ \?>([\s\S]*?)<\? \} else \{ \?>([\s\S]*?)<\? \} \?>/g,
+    (m, a, b) => (mode === 'export' ? a : b));
+  s = s.replace(/<\?= mode === 'export' \? 'true' : 'false' \?>/g,
+    mode === 'export' ? 'true' : 'false');
+  s = s.replace(/<\?= payload \?>/g, payload || '');
+  const left = s.match(/<\?[\s\S]*?\?>/g);
+  if (left) throw new Error('json.html に展開できないスクリプトレットがあります: ' + left.join(' '));
+  return s;
+}
+
 function build() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const read = f => fs.readFileSync(path.join(__dirname, f), 'utf8');
@@ -36,7 +52,12 @@ function build() {
   const editor = path.join(OUT_DIR, 'editor.html');
   fs.writeFileSync(editor, wrap('editor.html', core.concat([read('editor-mock.js')])));
 
-  return { main, editor };
+  const jsonMock = read('json-mock.js');
+  const jsonImport = path.join(OUT_DIR, 'json-import.html');
+  fs.writeFileSync(jsonImport, '<!doctype html><html><head><meta charset="utf-8">'
+    + '<script>' + jsonMock + '</' + 'script></head><body>' + renderJson('import', '') + '</body></html>');
+
+  return { main, editor, jsonImport };
 }
 
 const SHOTS = [

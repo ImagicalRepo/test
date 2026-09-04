@@ -235,13 +235,17 @@
     transform-origin: left center; animation: growX .5s var(--ease) backwards;
   }
   /* 工程名を吹き出しで出すときは、マーカーを行の下端に寄せて上に積む。
-     印刷（.printing）と、画面に縦の余裕があるとき（.labels）で同じ配置を使う */
-  body.printing .lane, body.labels .lane { align-items: flex-end; }
+     印刷（.printing）と画面（.labels）で同じ配置を使う。
+     .lane に align-items:flex-end を掛けると業務名の列まで縮んで背景が欠け、
+     裏の土日の網掛けが透けるので、伸ばしたまま中身の位置だけを変える。 */
   body.printing .mark, body.printing .range, body.printing .span,
   body.labels .mark, body.labels .range, body.labels .span {
     top: auto !important; bottom: 5px; margin-top: 0 !important;
   }
-  body.printing .lane-label, body.labels .lane-label { align-self: flex-end; padding-bottom: 4px; }
+  /* align-self:flex-end にするとラベルが行の高さぶん伸びなくなり、
+     背景が欠けて裏の土日の網掛けが業務名の列に透けて見える。
+     枠は行いっぱいに保ったまま、中身だけを下に寄せる。 */
+  body.printing .lane-label, body.labels .lane-label { justify-content: flex-end; padding-bottom: 4px; }
   .mark {
     position: absolute; top: 50%; width: 13px; height: 13px; margin-top: -6.5px;
     border-radius: 50%; border: 2px solid var(--surface); cursor: pointer;
@@ -455,6 +459,18 @@
   }
   .dlg .row { display: flex; gap: 7px; justify-content: flex-end; margin-top: 14px; }
   .dlg .err { color: var(--danger); font-size: var(--fs-sm); margin-top: 7px; }
+  .dlg button.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+
+  /* 画面内の通知（alert の代わり） */
+  .notice {
+    position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+    z-index: 60; max-width: 640px;
+    background: var(--text); color: var(--bg);
+    font-size: var(--fs-sm); line-height: 1.5;
+    padding: 10px 16px; border-radius: 8px; box-shadow: var(--shadow);
+    animation: slideIn .22s var(--ease);
+  }
+  .notice.err { background: var(--danger); color: #fff; }
 
   /* ============ 印刷 ============ */
   /* 画面では出さず、紙にだけ出す見出し */
@@ -1677,7 +1693,7 @@ function setStatus(ctx, status, btn) {
       ctx.item.status = before;
       btn.disabled = false;
       btn.textContent = status;
-      alert('更新に失敗しました：' + err.message);
+      notice('更新に失敗しました：' + err.message, true);
     })
     .updateItemStatus(ctx.item.key, status);
 }
@@ -1721,10 +1737,17 @@ function applyStatusLocally(keys, status) {
 /** 回次まるごとの状態変更 */
 function bulkStatus(lane, status, btn) {
   var items = laneItems(lane).filter(function (i) { return i.status !== status; });
-  if (!items.length) { alert('変更が必要な工程はありません。'); return; }
+  if (!items.length) { notice('変更が必要な工程はありません。'); return; }
   var label = lane.workName + '　' + periodLabel(lane.period);
-  if (!confirm(label + ' の ' + items.length + ' 工程を「' + status + '」にします。よろしいですか？')) return;
+  askConfirm({
+    title: items.length + ' 工程を「' + status + '」にします',
+    sub: label + '\nよろしいですか？',
+    okLabel: status + 'にする',
+    onOk: function () { runBulk(lane, status, btn, items); }
+  });
+}
 
+function runBulk(lane, status, btn, items) {
   var keys = items.map(function (i) { return i.key; });
   var text = btn.textContent;
   btn.disabled = true;
@@ -1733,11 +1756,12 @@ function bulkStatus(lane, status, btn) {
     .withSuccessHandler(function () {
       applyStatusLocally(keys, status);
       renderAll();
+      notice(keys.length + ' 工程を「' + status + '」にしました');
     })
     .withFailureHandler(function (err) {
       btn.disabled = false;
       btn.textContent = text;
-      alert('更新に失敗しました：' + err.message);
+      notice('更新に失敗しました：' + err.message, true);
     })
     .updateItemsStatus(keys, status);
 }
@@ -1746,6 +1770,65 @@ function bulkStatus(lane, status, btn) {
  * 小さなダイアログ。日付はカレンダーで選べるようにする。
  * @param {Object} o {title, sub, value, okLabel, onOk(value, setError)}
  */
+/**
+ * 確認ダイアログ。
+ *
+ * window.confirm はスプレッドシートのダイアログ（サンドボックス化された iframe）では
+ * 「Ignored call to 'confirm()'」として無視され、常に false と同じ扱いになる。
+ * 押しても何も起きない不具合になるため、画面内のダイアログで置き換えている。
+ */
+function askConfirm(o) {
+  var back = el('div', 'dlg-back');
+  back.id = 'confirmDialog';
+  var box = el('div', 'dlg');
+  box.setAttribute('role', 'dialog');
+  box.setAttribute('aria-modal', 'true');
+  box.onclick = function (ev) { ev.stopPropagation(); };
+
+  box.appendChild(el('h3', '', o.title));
+  if (o.sub) box.appendChild(el('div', 'sub', o.sub));
+
+  var row = el('div', 'row');
+  var cancel = el('button', '', o.cancelLabel || 'キャンセル');
+  cancel.type = 'button';
+  cancel.onclick = close;
+  var ok = el('button', o.danger ? 'danger' : 'primary', o.okLabel || 'はい');
+  ok.type = 'button';
+  ok.onclick = function () { close(); o.onOk(); };
+  row.appendChild(cancel);
+  row.appendChild(ok);
+  box.appendChild(row);
+
+  back.appendChild(box);
+  back.onclick = close;
+  document.body.appendChild(back);
+  ok.focus();
+
+  function close() {
+    if (back.parentNode) back.parentNode.removeChild(back);
+    document.removeEventListener('keydown', onKey);
+  }
+  function onKey(ev) {
+    if (ev.key === 'Escape') close();
+    if (ev.key === 'Enter') ok.click();
+  }
+  document.addEventListener('keydown', onKey);
+  return close;
+}
+
+/** 画面下に短く出す通知。alert もダイアログでは無視されるため、こちらを使う */
+function notice(text, isError) {
+  var old = document.getElementById('notice');
+  if (old && old.parentNode) old.parentNode.removeChild(old);
+  var t = el('div', 'notice' + (isError ? ' err' : ''), text);
+  t.id = 'notice';
+  t.setAttribute('role', isError ? 'alert' : 'status');
+  document.body.appendChild(t);
+  setTimeout(function () {
+    if (t.parentNode) t.parentNode.removeChild(t);
+  }, isError ? 7000 : 3500);
+}
+
 function openDateDialog(o) {
   var back = el('div', 'dlg-back');
   back.id = 'dateDialog';

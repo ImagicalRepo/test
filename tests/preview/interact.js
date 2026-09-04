@@ -30,13 +30,26 @@ async function main() {
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
 
-  // confirm の応答をテスト側から切り替える
-  let dialogAction = 'accept';
-  let lastDialog = null;
-  page.on('dialog', d => {
-    lastDialog = d.message();
-    if (dialogAction === 'accept') d.accept(); else d.dismiss();
+  // 確認は画面内のダイアログで出る（window.confirm はシートのダイアログでは
+  // 無視されるため使っていない）。ネイティブのダイアログが出たら不具合とみなす
+  page.on('dialog', d => { errors.push('ネイティブの ' + d.type() + ' が出た: ' + d.message()); d.dismiss(); });
+  const askText = () => page.evaluate(() => {
+    const d = document.getElementById('askDialog');
+    return d ? d.textContent.replace(/\s+/g, ' ') : null;
   });
+  const askAnswer = yes => page.evaluate(y => {
+    const d = document.getElementById('askDialog');
+    if (!d) return false;
+    d.querySelectorAll('.modal-foot button')[y ? 1 : 0].click();
+    return true;
+  }, yes);
+  /** 業務を切り替える。未保存の確認が出たら「続ける」と答える */
+  const switchWork = async id => {
+    await page.selectOption('#workSel', id);
+    await page.waitForTimeout(250);
+    if (await page.evaluate(() => !!document.getElementById('askDialog'))) await askAnswer(true);
+    await page.waitForTimeout(400);
+  };
 
   await page.goto(EDITOR);
   await page.waitForSelector('.step');
@@ -110,21 +123,23 @@ async function main() {
   });
   check('「未保存の変更があります」が出る', dirtyShown);
 
-  lastDialog = null;
-  dialogAction = 'dismiss';
   await page.selectOption('#workSel', 'KOSIN');
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(300);
+  const askedSwitch = await askText();
+  check('切り替え前に確認が出る', !!askedSwitch && askedSwitch.indexOf('保存していない変更') >= 0,
+    String(askedSwitch).slice(0, 40));
+  await askAnswer(false);
+  await page.waitForTimeout(300);
   const kept = await page.evaluate(() => ({
     sel: document.getElementById('workSel').value,
     current: current
   }));
-  check('切り替え前に確認が出る', !!lastDialog && lastDialog.indexOf('保存していない変更') >= 0,
-    String(lastDialog).slice(0, 40));
   check('取り消すと切り替わらない', kept.current === 'NAN', kept.current);
   check('ドロップダウンの選択も戻る', kept.sel === 'NAN', kept.sel);
 
-  dialogAction = 'accept';
   await page.selectOption('#workSel', 'KOSIN');
+  await page.waitForTimeout(300);
+  await askAnswer(true);
   await page.waitForTimeout(500);
   const moved = await page.evaluate(() => ({
     current: current,
@@ -135,7 +150,7 @@ async function main() {
 
   // ---- 工程の削除は元に戻せる ----
   console.log('\n削除の取り消し');
-  await page.selectOption('#workSel', 'NAN');
+  await switchWork('NAN');
   await page.waitForTimeout(500);
   const delBefore = await page.evaluate(() => ({
     n: rows.length, name: rows[0].name
@@ -210,27 +225,29 @@ async function main() {
   // ---- 業務の削除 ----
   console.log('\n業務の削除');
   // このあとの確認で NAN を使うので、別の業務で試す
-  await page.selectOption('#workSel', 'SHOMAN');
+  await switchWork('SHOMAN');
   await page.waitForTimeout(500);
   const worksBefore = await page.evaluate(() => DATA.works.length);
-  lastDialog = null;
   await page.evaluate(() => {
     [...document.querySelectorAll('#workBox button.danger')][0].click();
   });
+  await page.waitForTimeout(500);
+  const askedDelete = await askText();
+  await askAnswer(true);
   await page.waitForTimeout(800);
   const delWork = await page.evaluate(() => ({
     works: DATA.works.length,
     sel: [...document.getElementById('workSel').options].map(o => o.value)
   }));
-  check('件数を見せて確認する', !!lastDialog && lastDialog.indexOf('工程テンプレート') >= 0,
-    String(lastDialog).replace(/\n/g, ' ').slice(0, 60));
+  check('件数を見せて確認する', !!askedDelete && askedDelete.indexOf('工程テンプレート') >= 0,
+    String(askedDelete).slice(0, 70));
   check('業務が消える', delWork.works === worksBefore - 1,
     worksBefore + ' → ' + delWork.works);
   check('一覧からも消える', delWork.sel.indexOf('SHOMAN') < 0, JSON.stringify(delWork.sel));
 
   // ---- 起点の日が無い業務 ----
   console.log('\n起点の日がない業務');
-  await page.selectOption('#workSel', 'W4');
+  await switchWork('W4');
   await page.waitForTimeout(900);
   const noAnchor = await page.evaluate(() => ({
     anchorInput: document.getElementById('anchorInput').value,
@@ -246,8 +263,12 @@ async function main() {
 
   // ---- 業務の追加で前の入力が残らないこと ----
   console.log('\n業務の追加');
-  await page.evaluate(() => { window.prompt = () => 'テスト業務'; });
   await page.click('#btnAddWork');
+  await page.waitForTimeout(300);
+  check('業務名は画面内の入力欄で聞く',
+    await page.evaluate(() => !!document.querySelector('#askDialog input[type=text]')));
+  await page.fill('#askDialog input[type=text]', 'テスト業務');
+  await askAnswer(true);
   await page.waitForTimeout(1000);
   const added = await page.evaluate(() => ({
     selected: document.getElementById('workSel').value,
@@ -276,7 +297,7 @@ async function main() {
 
   // ---- 前の工程を基準にできること ----
   console.log('\n他の工程を基準にする');
-  await page.selectOption('#workSel', 'NAN');
+  await switchWork('NAN');
   await page.waitForTimeout(700);
   const baseSel = await page.evaluate(() => {
     const sels = [...document.querySelectorAll('[data-focus="base"]')];

@@ -291,6 +291,16 @@
   .pg-name { flex:1; min-width:0; overflow-wrap:anywhere; }
   .pg-row select { flex:0 0 96px; }
 
+  /* 確認・入力（confirm / prompt の代わり）。
+     どちらもサンドボックス化された iframe では無視されるため画面内で出す */
+  .ask { width:min(460px,100%); }
+  .ask .modal-body { white-space:pre-line; line-height:1.7; font-size:12.5px; }
+  .ask .modal-foot { justify-content:flex-end; }
+  .ask input[type=text] { width:100%; padding:7px 9px; font-size:13px; font-family:inherit;
+                          border:1px solid var(--border); border-radius:7px; }
+  .ask .err { color:var(--danger); font-size:11.5px; margin-top:6px; }
+  button.danger { background:var(--danger); border-color:var(--danger); color:#fff; }
+
   #msg { font-size:12px; display:inline-flex; align-items:center; gap:5px; }
   #msg.err { color:var(--danger); }
   #msg.ok { color:var(--ok); }
@@ -418,12 +428,92 @@
     if (el2) el2.hidden = !isDirty();
   }
 
-  /** 編集内容を捨ててよいか尋ねる（捨ててよければ true） */
-  function confirmDiscard(what) {
-    if (!isDirty()) return true;
-    return confirm('保存していない変更があります。\n'
-      + '［保存して工程表を作り直す］を押していないため、' + what + 'と失われます。\n\n'
-      + 'このまま続けますか？');
+  /**
+   * 確認・入力のダイアログ。
+   *
+   * window.confirm / window.prompt は、スプレッドシートのダイアログ
+   * （サンドボックス化された iframe）では「Ignored call to ...」として無視され、
+   * 押しても何も起きない。画面内のダイアログで置き換えている。
+   *
+   * @param {{title,body,okLabel,danger,input,placeholder,onOk}} o
+   *        input を true にすると入力欄付き（prompt の代わり）
+   */
+  function ask(o) {
+    var back = el('div', 'modal-back');
+    back.id = 'askDialog';
+    var box = el('div', 'modal ask');
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-modal', 'true');
+    box.onclick = function (ev) { ev.stopPropagation(); };
+
+    var head = el('div', 'modal-head');
+    head.appendChild(el('h2', '', o.title));
+    box.appendChild(head);
+
+    var body = el('div', 'modal-body');
+    if (o.body) body.appendChild(document.createTextNode(o.body));
+    var input = null, err = null;
+    if (o.input) {
+      input = el('input');
+      input.type = 'text';
+      input.placeholder = o.placeholder || '';
+      input.setAttribute('aria-label', o.title);
+      body.appendChild(input);
+      err = el('div', 'err');
+      err.hidden = true;
+      err.setAttribute('role', 'alert');
+      body.appendChild(err);
+    }
+    box.appendChild(body);
+
+    var foot = el('div', 'modal-foot');
+    var cancel = el('button', '', 'キャンセル');
+    cancel.type = 'button';
+    cancel.onclick = close;
+    var ok = el('button', o.danger ? 'danger' : 'primary', o.okLabel || 'はい');
+    ok.type = 'button';
+    ok.onclick = function () {
+      if (input) {
+        var v = input.value.trim();
+        if (!v) { err.textContent = '入力してください。'; err.hidden = false; input.focus(); return; }
+        close();
+        o.onOk(v);
+        return;
+      }
+      close();
+      o.onOk();
+    };
+    foot.appendChild(cancel);
+    foot.appendChild(ok);
+    box.appendChild(foot);
+
+    back.appendChild(box);
+    back.onclick = close;
+    document.body.appendChild(back);
+    (input || ok).focus();
+
+    function close() {
+      if (back.parentNode) back.parentNode.removeChild(back);
+      document.removeEventListener('keydown', onKey);
+    }
+    function onKey(ev) {
+      if (ev.key === 'Escape') close();
+      if (ev.key === 'Enter' && document.getElementById('askDialog')) ok.click();
+    }
+    document.addEventListener('keydown', onKey);
+  }
+
+  /** 編集内容を捨ててよいか尋ねる。捨ててよいと答えたときだけ onOk を呼ぶ */
+  function confirmDiscard(what, onOk) {
+    if (!isDirty()) { onOk(); return; }
+    ask({
+      title: '保存していない変更があります',
+      body: '［保存して工程表を作り直す］を押していないため、'
+        + what + 'と失われます。\n\nこのまま続けますか？',
+      okLabel: '破棄して続ける',
+      danger: true,
+      onOk: onOk
+    });
   }
 
   // タブやウィンドウを閉じるときの確認。
@@ -550,11 +640,13 @@
       sel.innerHTML = '';
       d.works.forEach(function (w) { sel.appendChild(opt(w.id, w.name + (w.enabled ? '' : '（無効）'))); });
       sel.onchange = function () {
-        if (!confirmDiscard('いま編集している工程を切り替える')) {
-          sel.value = current;   // 取り消したら選択を戻す
-          return;
-        }
-        selectWork(sel.value);
+        var picked = sel.value;
+        // 確認は非同期なので、いったん選択を戻しておき、続けると答えたら切り替える
+        sel.value = current;
+        confirmDiscard('いま編集している工程を切り替える', function () {
+          sel.value = picked;
+          selectWork(picked);
+        });
       };
 
       // ウェブアプリとして開いているときだけ、スケジュール画面へのリンクを出す
@@ -663,12 +755,19 @@
       del.setAttribute('aria-label', fmtDate(a.dateKey) + ' を外す');
       del.textContent = '×';
       del.onclick = function () {
-        if (!confirm(fmtDate(a.dateKey) + ' を外します。この回の工程も消えます。よろしいですか？')) return;
-        setMsg('処理中…');
-        google.script.run
-          .withSuccessHandler(function () { setMsg('外しました', 'ok'); load(); })
-          .withFailureHandler(function (e) { setMsg(e.message, 'err'); })
-          .deleteAnchor(current, a.period);
+        ask({
+          title: fmtDate(a.dateKey) + ' を外します',
+          body: 'この回の工程も消えます。よろしいですか？',
+          okLabel: '外す',
+          danger: true,
+          onOk: function () {
+            setMsg('処理中…');
+            google.script.run
+              .withSuccessHandler(function () { setMsg('外しました', 'ok'); load(); })
+              .withFailureHandler(function (e) { setMsg(e.message, 'err'); })
+              .deleteAnchor(current, a.period);
+          }
+        });
       };
       chip.appendChild(del);
       chips.appendChild(chip);
@@ -786,28 +885,29 @@
     google.script.run
       .withSuccessHandler(function (info) {
         setMsg('');
-        var lines = [
-          '「' + w.name + '」を削除します。',
-          '',
-          '　・工程テンプレート ' + info.template + ' 件',
-          '　・起点の日 ' + info.anchor + ' 件',
-          '　・工程表 ' + info.schedule + ' 行',
-          '',
-          'この操作は元に戻せません。よろしいですか？'
-        ];
-        if (!confirm(lines.join('\n'))) return;
-        setMsg('削除中…');
-        google.script.run
-          .withSuccessHandler(function (r) {
-            setMsg('「' + w.name + '」を削除しました', 'ok');
-            if (r && r.events) toast('カレンダーの予定 ' + r.events + ' 件もあわせて削除しました');
-            savedSnapshot = '[]';   // 消えたものに未保存もない
-            rows = [];
-            current = null;
-            load();
-          })
-          .withFailureHandler(function (e) { setMsg(e.message, 'err'); })
-          .deleteWork(w.id);
+        ask({
+          title: '「' + w.name + '」を削除します',
+          body: '　・工程テンプレート ' + info.template + ' 件\n'
+            + '　・起点の日 ' + info.anchor + ' 件\n'
+            + '　・工程表 ' + info.schedule + ' 行\n\n'
+            + 'この操作は元に戻せません。よろしいですか？',
+          okLabel: '削除する',
+          danger: true,
+          onOk: function () {
+            setMsg('削除中…');
+            google.script.run
+              .withSuccessHandler(function (r) {
+                setMsg('「' + w.name + '」を削除しました', 'ok');
+                if (r && r.events) toast('カレンダーの予定 ' + r.events + ' 件もあわせて削除しました');
+                savedSnapshot = '[]';   // 消えたものに未保存もない
+                rows = [];
+                current = null;
+                load();
+              })
+              .withFailureHandler(function (e) { setMsg(e.message, 'err'); })
+              .deleteWork(w.id);
+          }
+        });
       })
       .withFailureHandler(function (e) { setMsg(e.message, 'err'); })
       .getWorkDeleteInfo(w.id);
@@ -1395,12 +1495,19 @@
    * 起点の日の呼び方も、必要になってから業務設定で変えられる。
    */
   function addWork() {
-    if (!confirmDiscard('いま編集している工程を残したまま業務を足す')) return;
-    var name = prompt(
-      '業務名を入力してください。\n\n'
-      + '例）指定難病 医療費助成（月次審査会）', '');
-    if (!name || !name.trim()) return;
+    confirmDiscard('いま編集している工程を残したまま業務を足す', function () {
+      ask({
+        title: '業務を追加',
+        body: '業務名を入力してください。\n例）指定難病 医療費助成（月次審査会）',
+        input: true,
+        placeholder: '業務名',
+        okLabel: '追加する',
+        onOk: createWork
+      });
+    });
+  }
 
+  function createWork(name) {
     // 前の業務の入力が残って見えないように、先に画面を空にする
     previewSeq++;
     rows = [];
@@ -1418,7 +1525,7 @@
         load();
       })
       .withFailureHandler(function (e) { pendingWorkId = null; setMsg(e.message, 'err'); load(); })
-      .saveWork({ name: name.trim(), enabled: true, anchorName: '起点',
+      .saveWork({ name: name, enabled: true, anchorName: '起点',
                   rule: '手動', adjust: '前営業日', color: '青' });
   }
 

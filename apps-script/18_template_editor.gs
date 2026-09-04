@@ -459,7 +459,9 @@ function exportTemplatesJson() {
   var templates = readTable_(SHEET.TEMPLATE).rows.filter(function (r) { return String(r['業務ID']).trim(); });
   var payload = {
     format: 'gyomu-schedule-template',
-    version: 1,
+    // 版2で日付指定の工程（日付種別・開始日・終了日）を含めるようにした。
+    // 版1の JSON もそのまま読める
+    version: 2,
     exportedAt: todayKey_(),
     works: works.map(function (w) {
       return {
@@ -470,8 +472,14 @@ function exportTemplatesJson() {
     }),
     templates: templates.map(function (r) {
       return {
-        workId: String(r['業務ID']).trim(), seq: r['工程No'], name: r['工程名'], base: r['基準'],
-        direction: r['方向'], days: r['日数'], unit: r['単位'], adjust: r['休日補正'],
+        workId: String(r['業務ID']).trim(), seq: r['工程No'], name: r['工程名'],
+        // 日付指定の工程は mode と開始日／終了日が無いと再現できない。
+        // 版1では書き出していなかったため、読み込み側は欠けていても動くようにしてある
+        mode: normalizeMode(r['日付種別']) === 'fixed' ? '日付指定' : '起点から',
+        base: r['基準'], direction: r['方向'], days: r['日数'],
+        endDirection: r['終了方向'], endDays: r['終了日数'],
+        startDate: toDateKey(r['開始日']), endDate: toDateKey(r['終了日']),
+        unit: r['単位'], adjust: r['休日補正'],
         owner: r['担当'], remindDays: r['リマインド営業日前'], note: r['備考']
       };
     })
@@ -521,9 +529,19 @@ function importTemplatesJson(json, mode) {
     });
   });
   payload.templates.forEach(function (r) {
+    // 版1の JSON には mode / 開始日 / 終了日 が無い。
+    // その場合は開始日の有無から推測し、無ければ従来どおり「起点から」とみなす
+    var fixed = r.mode === undefined ? !!r.startDate : normalizeMode(r.mode) === 'fixed';
     tplRows.push({
-      '業務ID': String(r.workId).trim(), '工程No': r.seq, '工程名': r.name, '基準': r.base || '',
-      '方向': r.direction || '前', '日数': r.days || 0, '単位': r.unit || '営業日',
+      '業務ID': String(r.workId).trim(), '工程No': r.seq, '工程名': r.name,
+      '日付種別': fixed ? '日付指定' : '起点から',
+      '基準': r.base || '',
+      '方向': r.direction || '前', '日数': r.days || 0,
+      '終了方向': String(r.endDirection || ''),
+      '終了日数': (r.endDays === '' || r.endDays === null || r.endDays === undefined) ? '' : Number(r.endDays),
+      '開始日': r.startDate ? keyToSheetDate_(r.startDate) : '',
+      '終了日': r.endDate ? keyToSheetDate_(r.endDate) : '',
+      '単位': r.unit || '営業日',
       '休日補正': r.adjust || '前営業日', '担当': r.owner || '',
       'リマインド営業日前': r.remindDays === undefined ? '' : r.remindDays, '備考': r.note || ''
     });
