@@ -54,6 +54,21 @@ function normalizeWebAppUrl_(url) {
   return /^https:\/\/script\.google\.com\/[^\s]*\/(exec|dev)$/.test(s) ? s : '';
 }
 
+/**
+ * 画面のHTMLを1枚返す。
+ *
+ * 外から取り込む任意の部品が入っていればそれに任せ、
+ * 使えなければプロジェクト内のファイルを使う。
+ * 部品ごと外した配布用ビルドでは、常にプロジェクト内のファイルになる。
+ */
+function loadHtml_(name, settings) {
+  if (typeof extraHtmlTemplate_ === 'function') {
+    var tpl = extraHtmlTemplate_(name, settings);
+    if (tpl) return tpl;
+  }
+  return HtmlService.createTemplateFromFile(name);
+}
+
 function include_(name) {
   return HtmlService.createHtmlOutputFromFile(name).getContent();
 }

@@ -6,7 +6,9 @@
 
 function setupWorkbook() {
   var created = [];
-  SHEET_DEFS.forEach(function (def) {
+  // 任意の部品が入っているときは、そのシートもあわせて作る
+  var defs = SHEET_DEFS.concat(typeof EXTRA_SHEET_DEFS !== 'undefined' ? EXTRA_SHEET_DEFS : []);
+  defs.forEach(function (def) {
     var sh = ss_().getSheetByName(def.name);
     if (!sh) {
       sh = ss_().insertSheet(def.name);
@@ -31,7 +33,9 @@ function setupWorkbook() {
 
   seedSettings_();
   var seeded = false;
-  if (readTable_(SHEET.WORK).rows.length === 0) {
+  // 配る用に空にしたシートでは、コピーした人が実行してもサンプルを入れ直さない
+  if (readTable_(SHEET.WORK).rows.length === 0
+      && settingBool_(getSettings_(), 'サンプルを入れる', true)) {
     seedSamples_();
     seeded = true;
   }
@@ -50,7 +54,8 @@ function seedSettings_() {
   var t = readTable_(SHEET.SETTINGS);
   var existing = {};
   t.rows.forEach(function (r) { existing[String(r['設定キー']).trim()] = true; });
-  var add = DEFAULT_SETTINGS.filter(function (row) { return !existing[row[0]]; })
+  var defaults = DEFAULT_SETTINGS.concat(typeof EXTRA_SETTINGS !== 'undefined' ? EXTRA_SETTINGS : []);
+  var add = defaults.filter(function (row) { return !existing[row[0]]; })
     .map(function (row) { return { '設定キー': row[0], '値': row[1], '説明': row[2] }; });
   appendRows_(SHEET.SETTINGS, add);
 }

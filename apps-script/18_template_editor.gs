@@ -664,7 +664,7 @@ function pickHeaders_(row, sheetName) {
 /**
  * 受け渡しの画面を開く。
  *
- * loadHtml_ を通すので、［画面をGitHubから読み込む］が ON なら json.html も
+ * loadHtml_ を通すので、画面を外から取り込む設定が ON なら json.html も
  * 自動で最新になる。画面の隅に版を出しているので、コード.gs と食い違って
  * いないかをその場で確かめられる。
  */

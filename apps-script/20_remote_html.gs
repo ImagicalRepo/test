@@ -23,20 +23,19 @@ var REMOTE_FILES = ['gantt', 'editor', 'json'];
 var REMOTE_CACHE_SEC = 3600;
 
 /**
- * HTML を1枚返す。
- * GitHub から読む設定なら取りに行き、だめならプロジェクト内のファイルを使う。
- * @param {string} name 'gantt' または 'editor'
+ * この部品を入れたときだけ増える設定と、シート。
+ * 配布用ビルドではこのファイルごと外すので、設定にもシートにも現れない。
  */
-function loadHtml_(name, settings) {
-  settings = settings || getSettings_();
-  if (!settingBool_(settings, '画面をGitHubから読み込む', false)) {
-    return HtmlService.createTemplateFromFile(name);
-  }
+var EXTRA_SETTINGS = [
+  ['画面をGitHubから読み込む', 'OFF', 'ON にすると、画面のHTML（gantt・editor・json）を下のURLから読み込む。コードを貼り直す手間が減る。取得できないときはプロジェクト内のファイルを使う'],
+  ['画面の取得元URL', 'https://raw.githubusercontent.com/ImagicalRepo/test/claude/rare-disease-subsidy-schedule-21xoll/dist/', 'HTMLの取得元。raw.githubusercontent.com のみ。末尾は / で終わらせる']
+];
 
-  var text = fetchRemoteHtml_(name, settings);
-  if (!text) return HtmlService.createTemplateFromFile(name);
-  return HtmlService.createTemplate(text);
-}
+var EXTRA_SHEET_DEFS = [{
+  name: SHEET.UPDATE,
+  headers: ['日時', '対象', '版', '取得元', '結果', '内容'],
+  widths: [160, 120, 90, 420, 80, 380]
+}];
 
 /** 取得元のURL。末尾に / が無くても付ける */
 function remoteBase_(settings) {
@@ -166,4 +165,168 @@ function checkForUpdate() {
   } catch (e) {
     return { ok: false, message: e.message };
   }
+}
+
+/**
+ * GitHub から画面を取り直す。
+ * キャッシュを捨てるだけで、次に画面を開いたときに新しいものが読まれる。
+ */
+function menuRefreshHtml() {
+  var ui = SpreadsheetApp.getUi();
+  var settings = getSettings_();
+  if (!settingBool_(settings, '画面をGitHubから読み込む', false)) {
+    ui.alert('GitHubからの読み込みはOFFです',
+      '［設定］シートの「画面をGitHubから読み込む」を ON にすると、\n'
+      + 'スケジュール画面と編集画面のHTMLを貼り直さなくてよくなります。\n\n'
+      + '取得できないときは、これまでどおりプロジェクト内のファイルを使います。',
+      ui.ButtonSet.OK);
+    return;
+  }
+  clearRemoteHtmlCache_();
+
+  // その場で取りに行き、結果をここで見せる（次に開くまで分からないと不安なので）
+  var got = [];
+  var failed = [];
+  REMOTE_FILES.forEach(function (n) {
+    var text = fetchRemoteHtml_(n, settings);
+    if (text) got.push(n + '.html（' + text.length + '文字）');
+    else failed.push(n + '.html');
+  });
+
+  ui.alert(failed.length ? '一部を取得できませんでした' : '取り込みました',
+    (got.length ? '取得できたもの:\n　' + got.join('\n　') + '\n\n' : '')
+    + (failed.length
+      ? '取得できなかったもの:\n　' + failed.join('\n　')
+      + '\n\nこれらはプロジェクト内のファイルを使います。\n'
+      + '詳しい理由は［更新履歴］シートを見てください。'
+      : '次に画面を開くと反映されます。\n記録は［更新履歴］シートに残ります。'),
+    ui.ButtonSet.OK);
+}
+
+/** GitHub 側の版と比べて、更新があるか知らせる */
+function menuCheckUpdate() {
+  var ui = SpreadsheetApp.getUi();
+  var r = checkForUpdate();
+  if (!r.ok) {
+    ui.alert('確認できませんでした', r.message, ui.ButtonSet.OK);
+    return;
+  }
+  if (r.newer) {
+    ui.alert('新しい版があります',
+      'いまの版：' + r.current + '\n最新の版：' + r.latest + '\n\n'
+      + 'GitHub の dist から コード.gs を貼り直してください。\n'
+      + '（画面のHTMLは「画面をGitHubから読み込む」が ON なら自動で更新されます）',
+      ui.ButtonSet.OK);
+  } else {
+    ui.alert('最新です', 'いまの版：' + r.current, ui.ButtonSet.OK);
+  }
+}
+
+function menuSetup() {
+  var ui = SpreadsheetApp.getUi();
+  var res = ui.alert('初期セットアップ',
+    'シートの作成・書式設定・休日の取り込み・トリガー登録を行います。\n'
+    + '既存のデータは消しません。実行しますか？',
+    ui.ButtonSet.OK_CANCEL);
+  if (res !== ui.Button.OK) return;
+  try {
+    var r = setupWorkbook();
+    var msg = 'セットアップが完了しました。\n\n'
+      + (r.seeded ? '・サンプルの業務と工程テンプレートを入れました\n' : '')
+      + '・工程表 ' + r.generate.rows + ' 行を生成しました\n'
+      + '・毎日の通知トリガーを登録しました\n\n'
+      + '次は［設定］シートの ChatWebhookURL を埋めてください。';
+    if (r.generate.errors.length) msg += '\n\n【要確認】\n' + r.generate.errors.join('\n');
+    ui.alert('完了', msg, ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('エラー', e.message, ui.ButtonSet.OK);
+  }
+}
+
+function menuReset() {
+  var ui = SpreadsheetApp.getUi();
+  var res = ui.alert('サンプルを削除して最初から作る',
+    '次の4つのシートの中身をすべて削除します。\n\n'
+    + '　・業務マスタ\n'
+    + '　・工程テンプレート\n'
+    + '　・基準日\n'
+    + '　・工程表\n\n'
+    + '設定・休日マスタ・実行ログはそのまま残ります。\n'
+    + '（手入力した閉庁日も残ります）\n\n'
+    + 'この操作は元に戻せません。実行しますか？',
+    ui.ButtonSet.OK_CANCEL);
+  if (res !== ui.Button.OK) return;
+
+  try {
+    resetBusinessData();
+  } catch (e) {
+    ui.alert('エラー', e.message, ui.ButtonSet.OK);
+    return;
+  }
+  ui.alert('削除しました',
+    '続けて［工程テンプレートを編集］を開きます。\n'
+    + '［＋ 業務を追加］から、実際の業務を登録してください。',
+    ui.ButtonSet.OK);
+  showTemplateEditor();
+}
+
+function menuGenerate() {
+  try {
+    var r = generateSchedules();
+    var msg = '基準日を ' + r.anchorsAdded + ' 件追加し、工程表を ' + r.rows + ' 行にしました。';
+    // 工程表を作り直したらカレンダーもずれるので、ONならその場で合わせる
+    try {
+      var c = syncCalendarIfEnabled();
+      if (!c.skipped) {
+        msg += '\nカレンダーも同期しました（作成 ' + c.created
+          + ' / 更新 ' + c.updated + ' / 削除 ' + c.removed + '）。';
+      }
+    } catch (ce) {
+      msg += '\n\nカレンダーの同期は失敗しました:\n' + ce.message;
+    }
+    if (r.errors.length) msg += '\n\n【要確認】\n' + r.errors.join('\n');
+    SpreadsheetApp.getUi().alert('工程表の再生成', msg, SpreadsheetApp.getUi().ButtonSet.OK);
+  } catch (e) {
+    SpreadsheetApp.getUi().alert('エラー', e.message, SpreadsheetApp.getUi().ButtonSet.OK);
+  }
+}
+
+function menuSyncHolidays() {
+  var r = syncHolidays();
+  var msg = '休日マスタを ' + r.count + ' 件にしました。';
+  if (r.error) msg += '\n\n祝日CSVの取得に失敗しました（既存の祝日は維持）:\n' + r.error;
+  SpreadsheetApp.getUi().alert('休日の取り込み', msg, SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
+// ---- 呼び出し側から見た入口 ----
+// 本体（16_menu.gs / 17_webapp.gs / 19_diagnostics.gs）は typeof で見て分岐する。
+// このファイルごと外した配布用ビルドでは、どれも呼ばれない。
+
+/** 画面のHTMLを外から取り込む。使わない設定・取れなかったときは null */
+function extraHtmlTemplate_(name, settings) {
+  settings = settings || getSettings_();
+  if (!settingBool_(settings, '画面をGitHubから読み込む', false)) return null;
+  var text = fetchRemoteHtml_(name, settings);
+  return text ? HtmlService.createTemplate(text) : null;
+}
+
+/** メニューに、取り込み関係の項目を足す */
+function addExtraMenu_(menu) {
+  menu.addSeparator()
+    .addItem('画面を最新にする', 'menuRefreshHtml')
+    .addItem('更新を確認', 'menuCheckUpdate');
+}
+
+/** 動作診断の「画面の取得元」の行 */
+function extraDiagnostics_() {
+  var settings = getSettings_();
+  if (!settingBool_(settings, '画面をGitHubから読み込む', false)) {
+    return 'プロジェクト内のファイル（版 ' + VERSION + '）';
+  }
+  var base = remoteBase_(settings);
+  if (!base) return 'ON だが取得元URLが不正（' + REMOTE_HOST + ' のみ）';
+  var got = REMOTE_FILES.filter(function (n) {
+    return !!fetchRemoteHtml_(n, settings);
+  });
+  return got.length + '/' + REMOTE_FILES.length + ' 取得可（版 ' + VERSION + '）　' + base;
 }

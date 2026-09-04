@@ -75,18 +75,8 @@ function runDiagnostics() {
       + '　※開けない場合は再デプロイするか［WebアプリのURLを登録］で /dev のURLを登録';
   });
 
-  step('画面の取得元', function () {
-    var settings = getSettings_();
-    if (!settingBool_(settings, '画面をGitHubから読み込む', false)) {
-      return 'プロジェクト内のファイル（版 ' + VERSION + '）';
-    }
-    var base = remoteBase_(settings);
-    if (!base) return 'ON だが取得元URLが不正（raw.githubusercontent.com のみ）';
-    var got = REMOTE_FILES.filter(function (n) {
-      return !!fetchRemoteHtml_(n, settings);
-    });
-    return 'GitHub ' + got.length + '/' + REMOTE_FILES.length + ' 取得可（版 ' + VERSION + '）　' + base;
-  });
+  // 画面を外から取り込む部品を入れているときだけ見る。配布用ビルドには無い
+  if (typeof extraDiagnostics_ === 'function') step('画面の取得元', extraDiagnostics_);
 
   step('カレンダー同期', function () {
     var settings = getSettings_();

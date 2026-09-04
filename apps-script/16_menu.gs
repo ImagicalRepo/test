@@ -3,7 +3,7 @@
  */
 
 function onOpen() {
-  SpreadsheetApp.getUi()
+  var menu = SpreadsheetApp.getUi()
     .createMenu('📅 業務スケジュール')
     .addItem('スケジュール画面を開く', 'showGantt')
     .addItem('別ウィンドウで開く（URLを表示）', 'showAppUrl')
@@ -13,9 +13,6 @@ function onOpen() {
     .addItem('工程表を再生成', 'menuGenerate')
     .addItem('休日を取り込む', 'menuSyncHolidays')
     .addItem('カレンダーに同期', 'menuSyncCalendar')
-    .addSeparator()
-    .addItem('画面を最新にする', 'menuRefreshHtml')
-    .addItem('更新を確認', 'menuCheckUpdate')
     .addSeparator()
     .addItem('Chatにテスト通知', 'menuTestNotify')
     .addItem('動作診断', 'menuDiagnostics')
@@ -27,7 +24,11 @@ function onOpen() {
     .addSeparator()
     .addItem('初期セットアップ', 'menuSetup')
     .addItem('サンプルを削除して最初から作る', 'menuReset')
-    .addToUi();
+    .addItem('配布用に整える', 'menuPrepareTemplate');
+
+  // 画面を外から取り込む部品を入れているときだけ足す。配布用ビルドには無い
+  if (typeof addExtraMenu_ === 'function') addExtraMenu_(menu);
+  menu.addToUi();
 }
 
 /**
@@ -167,137 +168,6 @@ function menuSetAppUrl() {
 }
 
 /**
- * GitHub から画面を取り直す。
- * キャッシュを捨てるだけで、次に画面を開いたときに新しいものが読まれる。
- */
-function menuRefreshHtml() {
-  var ui = SpreadsheetApp.getUi();
-  var settings = getSettings_();
-  if (!settingBool_(settings, '画面をGitHubから読み込む', false)) {
-    ui.alert('GitHubからの読み込みはOFFです',
-      '［設定］シートの「画面をGitHubから読み込む」を ON にすると、\n'
-      + 'スケジュール画面と編集画面のHTMLを貼り直さなくてよくなります。\n\n'
-      + '取得できないときは、これまでどおりプロジェクト内のファイルを使います。',
-      ui.ButtonSet.OK);
-    return;
-  }
-  clearRemoteHtmlCache_();
-
-  // その場で取りに行き、結果をここで見せる（次に開くまで分からないと不安なので）
-  var got = [];
-  var failed = [];
-  REMOTE_FILES.forEach(function (n) {
-    var text = fetchRemoteHtml_(n, settings);
-    if (text) got.push(n + '.html（' + text.length + '文字）');
-    else failed.push(n + '.html');
-  });
-
-  ui.alert(failed.length ? '一部を取得できませんでした' : '取り込みました',
-    (got.length ? '取得できたもの:\n　' + got.join('\n　') + '\n\n' : '')
-    + (failed.length
-      ? '取得できなかったもの:\n　' + failed.join('\n　')
-      + '\n\nこれらはプロジェクト内のファイルを使います。\n'
-      + '詳しい理由は［更新履歴］シートを見てください。'
-      : '次に画面を開くと反映されます。\n記録は［更新履歴］シートに残ります。'),
-    ui.ButtonSet.OK);
-}
-
-/** GitHub 側の版と比べて、更新があるか知らせる */
-function menuCheckUpdate() {
-  var ui = SpreadsheetApp.getUi();
-  var r = checkForUpdate();
-  if (!r.ok) {
-    ui.alert('確認できませんでした', r.message, ui.ButtonSet.OK);
-    return;
-  }
-  if (r.newer) {
-    ui.alert('新しい版があります',
-      'いまの版：' + r.current + '\n最新の版：' + r.latest + '\n\n'
-      + 'GitHub の dist から コード.gs を貼り直してください。\n'
-      + '（画面のHTMLは「画面をGitHubから読み込む」が ON なら自動で更新されます）',
-      ui.ButtonSet.OK);
-  } else {
-    ui.alert('最新です', 'いまの版：' + r.current, ui.ButtonSet.OK);
-  }
-}
-
-function menuSetup() {
-  var ui = SpreadsheetApp.getUi();
-  var res = ui.alert('初期セットアップ',
-    'シートの作成・書式設定・休日の取り込み・トリガー登録を行います。\n'
-    + '既存のデータは消しません。実行しますか？',
-    ui.ButtonSet.OK_CANCEL);
-  if (res !== ui.Button.OK) return;
-  try {
-    var r = setupWorkbook();
-    var msg = 'セットアップが完了しました。\n\n'
-      + (r.seeded ? '・サンプルの業務と工程テンプレートを入れました\n' : '')
-      + '・工程表 ' + r.generate.rows + ' 行を生成しました\n'
-      + '・毎日の通知トリガーを登録しました\n\n'
-      + '次は［設定］シートの ChatWebhookURL を埋めてください。';
-    if (r.generate.errors.length) msg += '\n\n【要確認】\n' + r.generate.errors.join('\n');
-    ui.alert('完了', msg, ui.ButtonSet.OK);
-  } catch (e) {
-    ui.alert('エラー', e.message, ui.ButtonSet.OK);
-  }
-}
-
-function menuReset() {
-  var ui = SpreadsheetApp.getUi();
-  var res = ui.alert('サンプルを削除して最初から作る',
-    '次の4つのシートの中身をすべて削除します。\n\n'
-    + '　・業務マスタ\n'
-    + '　・工程テンプレート\n'
-    + '　・基準日\n'
-    + '　・工程表\n\n'
-    + '設定・休日マスタ・実行ログはそのまま残ります。\n'
-    + '（手入力した閉庁日も残ります）\n\n'
-    + 'この操作は元に戻せません。実行しますか？',
-    ui.ButtonSet.OK_CANCEL);
-  if (res !== ui.Button.OK) return;
-
-  try {
-    resetBusinessData();
-  } catch (e) {
-    ui.alert('エラー', e.message, ui.ButtonSet.OK);
-    return;
-  }
-  ui.alert('削除しました',
-    '続けて［工程テンプレートを編集］を開きます。\n'
-    + '［＋ 業務を追加］から、実際の業務を登録してください。',
-    ui.ButtonSet.OK);
-  showTemplateEditor();
-}
-
-function menuGenerate() {
-  try {
-    var r = generateSchedules();
-    var msg = '基準日を ' + r.anchorsAdded + ' 件追加し、工程表を ' + r.rows + ' 行にしました。';
-    // 工程表を作り直したらカレンダーもずれるので、ONならその場で合わせる
-    try {
-      var c = syncCalendarIfEnabled();
-      if (!c.skipped) {
-        msg += '\nカレンダーも同期しました（作成 ' + c.created
-          + ' / 更新 ' + c.updated + ' / 削除 ' + c.removed + '）。';
-      }
-    } catch (ce) {
-      msg += '\n\nカレンダーの同期は失敗しました:\n' + ce.message;
-    }
-    if (r.errors.length) msg += '\n\n【要確認】\n' + r.errors.join('\n');
-    SpreadsheetApp.getUi().alert('工程表の再生成', msg, SpreadsheetApp.getUi().ButtonSet.OK);
-  } catch (e) {
-    SpreadsheetApp.getUi().alert('エラー', e.message, SpreadsheetApp.getUi().ButtonSet.OK);
-  }
-}
-
-function menuSyncHolidays() {
-  var r = syncHolidays();
-  var msg = '休日マスタを ' + r.count + ' 件にしました。';
-  if (r.error) msg += '\n\n祝日CSVの取得に失敗しました（既存の祝日は維持）:\n' + r.error;
-  SpreadsheetApp.getUi().alert('休日の取り込み', msg, SpreadsheetApp.getUi().ButtonSet.OK);
-}
-
-/**
  * カレンダーへ今すぐ同期する。
  * 自動では毎日1時（nightlyRefresh）にしか走らないため、
  * 日中に直した内容をすぐ反映したいときはここから実行する。
@@ -377,4 +247,65 @@ function onEdit(e) {
   } catch (err) {
     console.warn('onEdit: ' + err.message);
   }
+}
+
+/**
+ * 配る用のシートに整える。
+ *
+ * このシートをコピーして使ってもらう配り方をするとき、配布者の環境に固有の値が
+ * そのままコピー先へ引き継がれてしまう。特に次の2つは実害がある。
+ *
+ *   ChatWebhookURL … コピーした全員が配布者のChatスペースへ通知を投げる
+ *   WebアプリURL   … /exec は配布者の権限で動くため、開くと配布者のシートが見える
+ *
+ * あわせて業務データと履歴を空にし、コピー先で［初期セットアップ］を実行しても
+ * サンプルが入り直さないようにする。休日マスタとその他の設定は残す。
+ */
+function menuPrepareTemplate() {
+  var ui = SpreadsheetApp.getUi();
+  var counts = {
+    work: readTable_(SHEET.WORK).rows.length,
+    tpl: readTable_(SHEET.TEMPLATE).rows.length,
+    anchor: readTable_(SHEET.ANCHOR).rows.length,
+    sched: readTable_(SHEET.SCHEDULE).rows.length
+  };
+  var settings = getSettings_();
+  var hasChat = !!settingText_(settings, 'ChatWebhookURL', '');
+  var hasApp = !!settingText_(settings, 'WebアプリURL', '');
+
+  var ok = ui.alert('配布用に整えます',
+    'このシートを「コピーして使ってもらう元」にします。次を消します。\n\n'
+    + '　・業務マスタ ' + counts.work + '件 / 工程テンプレート ' + counts.tpl + '件\n'
+    + '　・基準日 ' + counts.anchor + '件 / 工程表 ' + counts.sched + '行\n'
+    + '　・実行ログ と 更新履歴\n'
+    + (hasChat ? '　・ChatWebhookURL（コピーした人が、あなたのスペースへ通知しないように）\n' : '')
+    + (hasApp ? '　・WebアプリURL（コピーした人に、あなたのシートが見えないように）\n' : '')
+    + '\n休日マスタとその他の設定は残します。\n'
+    + 'この操作は元に戻せません。よろしいですか？',
+    ui.ButtonSet.OK_CANCEL);
+  if (ok !== ui.Button.OK) return;
+
+  resetBusinessData();
+  replaceTable_(SHEET.LOG, []);
+  // 更新履歴シートは任意の部品を入れたときだけ存在する（第2引数は「無くてもよい」）
+  if (getSheet_(SHEET.UPDATE, true)) replaceTable_(SHEET.UPDATE, []);
+  setSetting_('ChatWebhookURL', '');
+  setSetting_('WebアプリURL', '');
+  setSetting_('サンプルを入れる', 'OFF');
+  log_('配布用に整える', true,
+    '業務 ' + counts.work + '件 / 工程 ' + counts.tpl + '件 / 工程表 ' + counts.sched + '行 を消去');
+
+  ui.alert('配布用に整えました',
+    'このあとの配り方です。\n\n'
+    + '1. ［共有］→「リンクを知っている全員」→ 権限は「閲覧者」\n'
+    + '2. URL の末尾 /edit を /copy に変えて配る\n'
+    + '     https://docs.google.com/spreadsheets/d/<ID>/copy\n\n'
+    + '受け取った人の手順\n'
+    + '　［コピーを作成］→ 再読み込み →［初期セットアップ］→ 承認\n\n'
+    + 'コピーには引き継がれないもの（各自で必要）\n'
+    + '　・通知トリガー（初期セットアップで登録されます）\n'
+    + '　・ウェブアプリのデプロイ\n'
+    + '　・Chat の Webhook URL\n'
+    + '　・Google アカウントの承認',
+    ui.ButtonSet.OK);
 }
