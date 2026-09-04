@@ -221,6 +221,98 @@ async function main() {
   check('1日の幅も戻る', after.dayW > range.dayW, String(after.dayW));
   check('ラベル列の幅も戻る', after.labelW === '260px' || after.labelW === '', after.labelW);
   check('紙用の見出しが消える', after.head === 0, String(after.head));
+  check('紙用の幅指定も外れる',
+    await page.evaluate(() => document.body.style.width === ''),
+    await page.evaluate(() => document.body.style.width));
+
+  // ---- 8. ページを跨いでも日付軸が付くか ----
+  console.log('\n複数ページ');
+  const page2 = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+  page2.on('pageerror', e => errors.push('pageerror: ' + e.message));
+  await page2.goto('file://' + path.join(OUT, 'index.html'));
+  await page2.waitForSelector('.lane');
+  await page2.waitForTimeout(700);
+  // 1ページに収まらない状況を作る（レーンを3倍にする）
+  await page2.evaluate(() => {
+    const base = DATA.lanes.slice();
+    for (let n = 1; n <= 2; n++) {
+      base.forEach(l => {
+        const c = JSON.parse(JSON.stringify(l));
+        c.laneKey = l.laneKey + '#' + n;
+        c.period = (l.period || '日付指定') + '複製' + n;
+        DATA.lanes.push(c);
+      });
+    }
+    renderAll();
+  });
+  await page2.waitForTimeout(400);
+  await page2.evaluate(() => { window.print = function () {}; startPrint(); });
+  await page2.emulateMedia({ media: 'print' });
+  await page2.waitForTimeout(400);
+
+  const paged = await page2.evaluate(() => {
+    const pages = [...document.querySelectorAll('#grid .gpage')];
+    return {
+      pages: pages.length,
+      lanes: document.querySelectorAll('#grid .lane').length,
+      each: pages.map(g => ({
+        heads: g.querySelectorAll('.head').length,
+        ticks: g.querySelectorAll('.tick').length,
+        months: g.querySelectorAll('.month-cell').length,
+        bgs: g.querySelectorAll('.bg-layer').length,
+        lanes: g.querySelectorAll('.lane').length,
+        h: Math.round(g.getBoundingClientRect().height)
+      })),
+      printH: PRINT_H
+    };
+  });
+  console.log('    ' + paged.pages + 'ページ / 全 ' + paged.lanes + ' レーン　'
+    + paged.each.map(e => e.lanes + '行=' + e.h + 'px').join(' / '));
+  check('2ページ以上に分かれる', paged.pages >= 2, paged.pages + 'ページ');
+  check('どのページにも日付軸が付く', paged.each.every(e => e.heads === 1),
+    JSON.stringify(paged.each.map(e => e.heads)));
+  check('どのページにも目盛りが出る', paged.each.every(e => e.ticks > 0),
+    JSON.stringify(paged.each.map(e => e.ticks)));
+  check('どのページにも月名が出る', paged.each.every(e => e.months > 0),
+    JSON.stringify(paged.each.map(e => e.months)));
+  check('どのページにも休みの網掛けが出る', paged.each.every(e => e.bgs === 1),
+    JSON.stringify(paged.each.map(e => e.bgs)));
+  check('工程が1行も欠けない',
+    paged.each.reduce((n, e) => n + e.lanes, 0) === paged.lanes,
+    paged.each.reduce((n, e) => n + e.lanes, 0) + ' / ' + paged.lanes);
+  check('1ページの高さが用紙に収まる',
+    paged.each.every(e => e.h <= paged.printH),
+    JSON.stringify(paged.each.map(e => e.h)) + ' / ' + paged.printH);
+  await page2.screenshot({ path: path.join(OUT, 'print-pages.png'), fullPage: true });
+  await page2.close();
+
+  // ---- 9. カレンダーが1ページに収まるか ----
+  console.log('\nカレンダー');
+  const page3 = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+  page3.on('pageerror', e => errors.push('pageerror: ' + e.message));
+  await page3.goto('file://' + path.join(OUT, 'index.html'));
+  await page3.waitForSelector('.lane');
+  await page3.waitForTimeout(700);
+  await page3.evaluate(() => document.querySelector('#tabs button[data-view="month"]').click());
+  await page3.waitForTimeout(500);
+  await page3.evaluate(() => { window.print = function () {}; startPrint(); });
+  await page3.emulateMedia({ media: 'print' });
+  await page3.waitForTimeout(400);
+  const cal = await page3.evaluate(() => ({
+    total: Math.round(document.querySelector('.view').getBoundingClientRect().height),
+    printH: PRINT_H,
+    wrap: document.querySelector('.cal-wrap').style.height,
+    cells: document.querySelectorAll('.cal-grid .cell').length,
+    bar: getComputedStyle(document.querySelector('.cal-bar')).display,
+    scrollable: [...document.querySelectorAll('.cal-grid .cell')]
+      .filter(c => c.scrollHeight > c.clientHeight + 1).length
+  }));
+  console.log('    高さ ' + cal.total + 'px / 刷り高 ' + cal.printH + 'px　枠 ' + cal.wrap);
+  check('1ページに収まる', cal.total <= cal.printH, cal.total + ' / ' + cal.printH);
+  check('1か月ぶんのマスが出る', cal.cells >= 35, cal.cells + ' マス');
+  check('月の切り替えボタンは刷らない', cal.bar === 'none', cal.bar);
+  await page3.screenshot({ path: path.join(OUT, 'print-calendar.png'), fullPage: true });
+  await page3.close();
 
   await browser.close();
 

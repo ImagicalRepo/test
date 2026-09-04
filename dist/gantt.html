@@ -1,4 +1,4 @@
-<!-- version: 1.8.0 -->
+<!-- version: 1.9.0 -->
 <!-- スケジュール画面：ガント（業務横断）／業務別／月間カレンダー の3ビュー -->
 <style>
   /* ============ テーマ変数（既定はライト。JS で上書きする） ============ */
@@ -493,55 +493,74 @@
     color: var(--muted);
   }
   .pleader { position: absolute; width: 1px; background: var(--border); pointer-events: none; z-index: 1; }
+  /* 紙の寸法は、印刷を始めた時点で測れないと1ページに何行入るか決められない。
+     @media print だけに書くと window.print() の後にしか効かないため、
+     .printing を付けた時点で同じ大きさになるようにしておく */
+  body.printing .plabel { font-size: 8.5px; }
+  /* ガントは紙のページごとに切り分け、各ページの先頭に日付軸を付ける */
+  .gpage { position: relative; }
 
   @page { size: A4 landscape; margin: 8mm; }
+
+  /* ============ 印刷 ============
+     紙のレイアウトは .printing を付けた時点で当てる。
+     @media print だけに書くと window.print() のあとにしか効かず、
+     「1ページに何行入るか」「凡例が何段になるか」を JS が測れない。
+     （幅も startPrint が紙の幅に合わせる） */
+  body.printing { background: #fff; height: auto; }
+  body.printing #app { height: auto; display: block; }
+  body.printing .main { display: block; }
+  body.printing .content { overflow: visible; }
+
+  /* 操作部と「今日やること」は紙には要らない */
+  body.printing header.top, body.printing aside, body.printing #detail,
+  body.printing .theme-pop, body.printing .insert, body.printing .kase-bulk,
+  body.printing .dlg-back { display: none !important; }
+  /* 月の切り替えは紙では意味がない。月は見出しに出ている */
+  body.printing .cal-bar { display: none !important; }
+
+  body.printing .view { animation: none; display: block; }
+  body.printing .scroll, body.printing .work-scroll { overflow: visible !important; height: auto !important; }
+  /* カレンダーの高さは、1ページに収まるよう JS が紙に合わせて入れる */
+  body.printing .cal-wrap { overflow: hidden !important; }
+  body.printing .cell { overflow: hidden !important; }
+  /* .grid の幅は印刷用に計算した値（ラベル列＋日数×1日の幅）。
+     auto にすると track だけが伸びて、絶対配置の網掛けとずれる */
+  body.printing .track { flex: 0 0 auto !important; }
+  /* sticky は解くが、土日の網掛けより上に描くため位置指定は残す
+     （static にすると背景レイヤーが上に来て、月名が読めなくなる） */
+  body.printing .head, body.printing .head-label,
+  body.printing .lane-label { position: relative !important; }
+
+  /* 休みの網掛けは、罫線が読める程度まで薄くする。
+     テーマによっては色が強く、刷ると網掛けだけが目立ってしまう */
+  body.printing .bg-cell, body.printing .day.we { background: #f2f3f5 !important; }
+  body.printing .day.today { background: #fde8e8 !important; }
+  body.printing .month-cell { border-left: none; }
+
+  body.printing .print-head {
+    display: block; margin: 0 0 8px; padding: 0 2px 6px;
+    border-bottom: 1.5px solid var(--text);
+  }
+  body.printing .print-head .t { font-size: 14px; font-weight: 700; }
+  body.printing .print-head .m { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+  body.printing .mark, body.printing .range, body.printing .span,
+  body.printing .card, body.printing .kase,
+  body.printing .row-item, body.printing .step { animation: none !important; }
 
   @media print {
     /* 背景色を紙にも出す（工程の色分けが意味を持つため） */
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-
-    /* 紙は幅が決まっているので、画面側の表示サイズは持ち込まない */
     /* JS がインラインで指定するので、紙側は !important で押し戻す */
     :root { --sc: 1 !important; --lane-h: 46px !important; }
-    .plabel { font-size: 8.5px; }
-
-    /* 休みの網掛けは、罫線が読める程度まで薄くする。
-       テーマによっては色が強く、刷ると網掛けだけが目立ってしまう */
-    .bg-cell, .day.we { background: #f2f3f5 !important; }
-    .day.today { background: #fde8e8 !important; }
-    .month-cell { border-left: none; }
-
-    html, body { height: auto; background: #fff; }
-    #app { height: auto; display: block; }
-    .main { display: block; }
-    .content { overflow: visible; }
-
-    /* 操作部と「今日やること」は紙には要らない */
-    header.top, aside, #detail, .theme-pop, .insert, .kase-bulk, .dlg-back { display: none !important; }
     .legend .chip { pointer-events: none; }
 
-    .view { animation: none; display: block; }
-    .scroll, .work-scroll, .cal-wrap { overflow: visible !important; height: auto !important; }
-    /* .grid の幅は印刷用に計算した値（ラベル列＋日数×1日の幅）。
-       auto にすると track だけが伸びて、絶対配置の網掛けとずれる */
-    .track { flex: 0 0 auto !important; }
-    /* sticky は解くが、土日の網掛けより上に描くため位置指定は残す
-       （static にすると背景レイヤーが上に来て、月名が読めなくなる） */
-    .head, .head-label, .lane-label { position: relative !important; }
-
-    .print-head {
-      display: block; margin: 0 0 8px; padding: 0 2px 6px;
-      border-bottom: 1.5px solid var(--text);
-    }
-    .print-head .t { font-size: 14px; font-weight: 700; }
-    .print-head .m { font-size: 10px; color: var(--muted); margin-top: 2px; }
-
-    /* ガント：吹き出しを出すぶん行を高くし、ページ内で割れないようにする */
+    /* ページ割りは JS が .gpage に分けている。ここで実際に改ページする */
+    .gpage.brk { break-after: page; page-break-after: always; }
     .lane { break-inside: avoid; page-break-inside: avoid; }
     .kase { break-inside: avoid; page-break-inside: avoid; box-shadow: none; }
     .cell { break-inside: avoid; }
-    .mark, .range, .span { animation: none !important; }
-    .card, .kase, .row-item, .step { animation: none !important; }
   }
 
   /* ============ アニメーション ============ */
@@ -783,6 +802,8 @@ var DATA = null;
 var view = 'gantt';
 /** A4横（297mm）から余白8mm×2 を引いた刷り幅。96dpi 換算の px */
 var PRINT_W = Math.floor((297 - 16) / 25.4 * 96);   // ≒1062px
+/** 同じく刷り高（210mm − 余白8mm×2） */
+var PRINT_H = Math.floor((210 - 16) / 25.4 * 96);   // ≒733px
 var LABEL_W = 260;                                   // ラベル列（--label-w と合わせる）
 var dayW = 30;            // 1日あたりの幅。［小］［中］［大］で変わる
 var laneH = 72;           // ガント1行の高さの下限。同上
@@ -1958,6 +1979,7 @@ function changeAnchor(lane) {
 var printing = false;
 var savedDayW = null;
 var savedRange = null;   // 印刷のために横軸を切るので、戻せるように控える
+var savedSc = null;      // 同じく表示サイズ
 
 /** 紙のラベル列。画面より狭くして、そのぶん日付に幅を回す */
 var PRINT_LABEL_W = 200;
@@ -2062,9 +2084,72 @@ function layoutLabels() {
   });
 }
 
+/**
+ * 紙のページごとに切り分け、各ページの先頭に日付軸を付ける。
+ *
+ * 1つの塊のまま流すと、2ページ目から日付が無く読めない。
+ * 高さは .printing を付けたあとに測る（紙と同じ寸法になっている）。
+ */
+function paginateForPrint(chromeH) {
+  var grid = document.getElementById('grid');
+  var head = grid.querySelector('.head');
+  var bg = grid.querySelector('.bg-layer');
+  var lanes = Array.prototype.slice.call(grid.querySelectorAll('.lane'));
+  if (!head || !lanes.length) return 1;
+
+  var headH = head.offsetHeight;
+  var pages = [], cur = [], used = 0, first = true;
+  lanes.forEach(function (lane) {
+    var h = lane.offsetHeight;
+    var cap = (first ? PRINT_H - chromeH : PRINT_H) - headH - 4;
+    if (cur.length && used + h > cap) {
+      pages.push(cur);
+      cur = []; used = 0; first = false;
+    }
+    cur.push(lane);
+    used += h;
+  });
+  if (cur.length) pages.push(cur);
+
+  grid.innerHTML = '';
+  pages.forEach(function (list, i) {
+    var pg = el('div', 'gpage' + (i < pages.length - 1 ? ' brk' : ''));
+    if (bg) pg.appendChild(bg.cloneNode(true));
+    pg.appendChild(i === 0 ? head : head.cloneNode(true));
+    list.forEach(function (lane) { pg.appendChild(lane); });
+    grid.appendChild(pg);
+  });
+  return pages.length;
+}
+
+/** 見出しと凡例が占める高さ。1ページ目に何行入るかの計算に使う */
+function printChromeH() {
+  var h = 0;
+  ['.print-head', '.legend'].forEach(function (sel) {
+    var e = document.querySelector(sel);
+    if (e) h += e.offsetHeight + 6;
+  });
+  return h;
+}
+
+/** カレンダーを1ページに収める。行が高さを分け合うので、枠の高さだけ決めればよい */
+function fitCalendarToPage(chromeH) {
+  var wrap = document.querySelector('.cal-wrap');
+  if (!wrap) return;
+  // 端数で1行あふれると2ページ目に1行だけ出て台無しになるので、少し余らせる
+  wrap.style.height = Math.max(240, PRINT_H - chromeH - 10) + 'px';
+}
+
 function startPrint() {
   printing = true;
   document.body.classList.add('printing');
+  // 紙は幅が決まっているので、画面の表示サイズは持ち込まない。
+  // 先に当てておかないと、1ページに何行入るかを測れない
+  savedSc = document.documentElement.style.getPropertyValue('--sc');
+  document.documentElement.style.setProperty('--sc', '1');
+  // 幅も紙に合わせる。画面幅のままだと凡例の段数や業務名の折り返しが変わり、
+  // 1ページに入る行数の見積もりがずれる
+  document.body.style.width = PRINT_W + 'px';
 
   // 見出しに刷る期間を書くので、横軸を切り直してから作る
   if (view === 'gantt') {
@@ -2083,6 +2168,12 @@ function startPrint() {
   if (view0 && !view0.querySelector('.print-head')) {
     view0.insertBefore(printHeader(), view0.firstChild);
   }
+
+  // 見出しと凡例の高さが決まってから、ページ割りと高さ合わせをする
+  var chrome = printChromeH();
+  if (view === 'gantt') paginateForPrint(chrome);
+  if (view === 'month') fitCalendarToPage(chrome);
+
   window.print();
 }
 
@@ -2093,6 +2184,10 @@ function endPrint() {
   if (savedDayW !== null) { dayW = savedDayW; savedDayW = null; }
   if (savedRange) { buildDays(savedRange.from, savedRange.to); savedRange = null; }
   document.documentElement.style.removeProperty('--label-w');
+  if (savedSc) document.documentElement.style.setProperty('--sc', savedSc);
+  else document.documentElement.style.removeProperty('--sc');
+  savedSc = null;
+  document.body.style.removeProperty('width');
   renderView();
 }
 
