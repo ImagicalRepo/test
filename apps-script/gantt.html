@@ -174,6 +174,10 @@
   .grid { position: relative; }
   .bg-layer { position: absolute; top: 0; bottom: 0; pointer-events: none; }
   .bg-cell { position: absolute; top: 0; bottom: 0; background: var(--surface-3); }
+  /* 紙用の罫線。日 → 週 → 月 の順に濃くして、区切りが分かるようにする */
+  .vline { position: absolute; top: 0; bottom: 0; width: 1px; background: #d9dce1; opacity: .5; }
+  .vline.week { opacity: .9; }
+  .vline.month { background: #9aa0a6; opacity: 1; }
   .today-line { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--danger); opacity: .7; }
   .today-line::before {
     content: ''; position: absolute; top: 0; left: -3px; width: 8px; height: 8px;
@@ -499,6 +503,12 @@
     /* JS がインラインで指定するので、紙側は !important で押し戻す */
     :root { --sc: 1 !important; --lane-h: 46px !important; }
     .plabel { font-size: 8.5px; }
+
+    /* 休みの網掛けは、罫線が読める程度まで薄くする。
+       テーマによっては色が強く、刷ると網掛けだけが目立ってしまう */
+    .bg-cell, .day.we { background: #f2f3f5 !important; }
+    .day.today { background: #fde8e8 !important; }
+    .month-cell { border-left: none; }
 
     html, body { height: auto; background: #fff; }
     #app { height: auto; display: block; }
@@ -903,6 +913,21 @@ function shiftMonth(ym, n) {
 }
 function isWeekend(k) { return !!weekendSet[toDate(k).getUTCDay()]; }
 function isOff(k) { return isWeekend(k) || holidayName[k] !== undefined; }
+/** k を含む週の月曜／日曜 */
+function weekStart(k) { var d = toDate(k).getUTCDay(); return addDays(k, d === 0 ? -6 : 1 - d); }
+function weekEnd(k) { var d = toDate(k).getUTCDay(); return addDays(k, d === 0 ? 0 : 7 - d); }
+function diffDays(a, b) { return Math.round((toDate(b) - toDate(a)) / 86400000); }
+
+/** ガントの横軸を from〜to で組み直す */
+function buildDays(fromKey, toKey) {
+  days = []; indexOf = {};
+  var cur = fromKey;
+  while (cur <= toKey && days.length < 900) {
+    indexOf[cur] = days.length;
+    days.push(cur);
+    cur = addDays(cur, 1);
+  }
+}
 function delay(i, step, max) {
   return Math.min(i * (step || 12), max || 420) + 'ms';
 }
@@ -1024,16 +1049,11 @@ function onData() {
     link.hidden = true;
   }
 
-  days = []; indexOf = {}; holidayName = {}; weekendSet = {};
+  holidayName = {}; weekendSet = {};
   (DATA.weekendDays || [0, 6]).forEach(function (w) { weekendSet[w] = true; });
   (DATA.holidays || []).forEach(function (h) { holidayName[h.key] = h.name; });
+  buildDays(DATA.from, DATA.to);
 
-  var cur = DATA.from;
-  while (cur <= DATA.to && days.length < 900) {
-    indexOf[cur] = days.length;
-    days.push(cur);
-    cur = addDays(cur, 1);
-  }
   if (!calMonth) calMonth = monthOf(DATA.today);
   if (!selectedWork) {
     var first = DATA.works.filter(function (w) { return w.enabled; })[0];
@@ -1157,7 +1177,8 @@ function renderGantt(root) {
 
 function drawGantt(grid) {
   grid.innerHTML = '';
-  var labelW = LABEL_W;
+  // 紙ではラベル列を狭くするので、網掛けと目盛りの原点もそれに合わせる
+  var labelW = printing ? PRINT_LABEL_W : LABEL_W;
   var trackW = days.length * dayW;
   grid.style.width = (labelW + trackW) + 'px';
 
@@ -1171,6 +1192,22 @@ function drawGantt(grid) {
     c.style.width = dayW + 'px';
     bg.appendChild(c);
   });
+
+  // 紙は網掛けだけだと区切りが読めないので、日・週・月の罫線を引く。
+  // 画面はマスの色分けで足りているため引かない。
+  if (printing) {
+    days.forEach(function (k, i) {
+      if (!i) return;
+      var cls = 'vline';
+      if (monthOf(k) !== monthOf(days[i - 1])) cls += ' month';
+      else if (toDate(k).getUTCDay() === 1) cls += ' week';
+      else if (dayW < 9) return;      // 細かすぎるときは日の線を省く
+      var v = el('div', cls);
+      v.style.left = (i * dayW) + 'px';
+      bg.appendChild(v);
+    });
+  }
+
   if (indexOf[DATA.today] !== undefined) {
     var line = el('div', 'today-line');
     line.style.left = (indexOf[DATA.today] * dayW + dayW / 2) + 'px';
@@ -1181,12 +1218,16 @@ function drawGantt(grid) {
   var head = el('div', 'head');
   var monthRow = el('div', 'head-row');
   monthRow.appendChild(el('div', 'head-label'));
-  var m = 0;
+  var m = 0, prevYear = '';
   while (m < days.length) {
     var ym = monthOf(days[m]);
     var n = 0;
     while (m + n < days.length && monthOf(days[m + n]) === ym) n++;
-    var cell = el('div', 'month-cell', (+ym.slice(5, 7)) + '月　' + ym.slice(0, 4));
+    // 年は変わったときだけ添える。毎月付けると同じ数字が並んで読みにくい
+    var year = ym.slice(0, 4);
+    var label = (+ym.slice(5, 7)) + '月' + (year === prevYear ? '' : '　' + year);
+    prevYear = year;
+    var cell = el('div', 'month-cell', label);
     cell.style.flex = '0 0 ' + (n * dayW) + 'px';
     monthRow.appendChild(cell);
     m += n;
@@ -1211,9 +1252,11 @@ function drawGantt(grid) {
   var ticks = el('div', 'tick-layer');
   ticks.style.left = labelW + 'px';
   ticks.style.width = trackW + 'px';
+  // 数字が入る幅があれば毎日、狭ければ月曜だけに間引く。
+  // 紙は文字が小さいぶん、画面より狭くても毎日入る
+  var tickEvery = printing ? 13 : 20;
   days.forEach(function (k, i) {
-    // 幅に余裕があれば毎日、狭ければ月曜だけに間引く
-    if (dayW < 20 && toDate(k).getUTCDay() !== 1) return;
+    if (dayW < tickEvery && toDate(k).getUTCDay() !== 1) return;
     var t = el('span', 'tick' + (k === DATA.today ? ' today' : ''), String(+k.slice(8, 10)));
     t.style.left = (i * dayW + dayW / 2) + 'px';
     ticks.appendChild(t);
@@ -1913,11 +1956,41 @@ function changeAnchor(lane) {
 // =====================================================================
 var printing = false;
 var savedDayW = null;
+var savedRange = null;   // 印刷のために横軸を切るので、戻せるように控える
 
-/** A4横に収まる1日あたりの幅を求める */
+/** 紙のラベル列。画面より狭くして、そのぶん日付に幅を回す */
+var PRINT_LABEL_W = 200;
+
+/**
+ * 紙に出す期間。
+ *
+ * 画面は［設定］の前月数・後月数ぶん出すが、そのまま刷ると工程の無い月まで
+ * 場所を取り、1日あたりが潰れて目盛りも網掛けも読めなくなる。
+ * 実際に工程がある範囲だけに切り、週の頭と週末で揃える。
+ */
+function printRange() {
+  var min = null, max = null;
+  visibleLanes().forEach(function (lane) {
+    laneItems(lane).forEach(function (it) {
+      var end = it.endKey || it.dueKey;
+      if (min === null || it.dueKey < min) min = it.dueKey;
+      if (max === null || end > max) max = end;
+    });
+  });
+  if (min === null) return { from: DATA.from, to: DATA.to };
+
+  // 今日の線が意味を持つよう、近ければ範囲に入れる。離れていれば伸ばさない
+  var t = DATA.today;
+  if (t < min && diffDays(t, min) <= 31) min = t;
+  if (t > max && diffDays(max, t) <= 31) max = t;
+
+  return { from: weekStart(addDays(min, -2)), to: weekEnd(addDays(max, 2)) };
+}
+
+/** A4横に収まる1日あたりの幅。狭い期間なら広げて紙を使い切る */
 function printDayW() {
-  var fit = Math.floor((PRINT_W - LABEL_W) / Math.max(days.length, 1));
-  return Math.max(3, Math.min(dayW, fit));
+  var fit = Math.floor((PRINT_W - PRINT_LABEL_W) / Math.max(days.length, 1));
+  return Math.max(3, Math.min(fit, 46));
 }
 
 /** 紙の先頭に付ける見出し */
@@ -1929,7 +2002,9 @@ function printHeader() {
   head.appendChild(el('div', 't', title));
   var meta = view === 'month'
     ? (+calMonth.slice(5, 7)) + '月　' + calMonth.slice(0, 4)
-    : fmtLong(DATA.from) + ' 〜 ' + fmtLong(DATA.to);
+    : view === 'gantt' && days.length
+      ? fmtLong(days[0]) + ' 〜 ' + fmtLong(days[days.length - 1])
+      : fmtLong(DATA.from) + ' 〜 ' + fmtLong(DATA.to);
   head.appendChild(el('div', 'm', meta + '　／　出力日 ' + fmtLong(DATA.today)));
   return head;
 }
@@ -1990,17 +2065,22 @@ function startPrint() {
   printing = true;
   document.body.classList.add('printing');
 
+  // 見出しに刷る期間を書くので、横軸を切り直してから作る
+  if (view === 'gantt') {
+    savedDayW = dayW;
+    savedRange = { from: days[0], to: days[days.length - 1] };
+    var r = printRange();
+    buildDays(r.from, r.to);
+    dayW = printDayW();
+    document.documentElement.style.setProperty('--label-w', PRINT_LABEL_W + 'px');
+    // 印刷時はマーカーを行の下に寄せ、上に吹き出しを積む（drawGantt の中で配置する）
+    drawGantt(document.getElementById('grid'));
+  }
+
   var content = document.getElementById('content');
   var view0 = content.querySelector('.view');
   if (view0 && !view0.querySelector('.print-head')) {
     view0.insertBefore(printHeader(), view0.firstChild);
-  }
-
-  if (view === 'gantt') {
-    savedDayW = dayW;
-    dayW = printDayW();
-    // 印刷時はマーカーを行の下に寄せ、上に吹き出しを積む（drawGantt の中で配置する）
-    drawGantt(document.getElementById('grid'));
   }
   window.print();
 }
@@ -2010,6 +2090,8 @@ function endPrint() {
   printing = false;
   document.body.classList.remove('printing');
   if (savedDayW !== null) { dayW = savedDayW; savedDayW = null; }
+  if (savedRange) { buildDays(savedRange.from, savedRange.to); savedRange = null; }
+  document.documentElement.style.removeProperty('--label-w');
   renderView();
 }
 

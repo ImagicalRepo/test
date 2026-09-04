@@ -144,7 +144,84 @@ async function main() {
   console.log('    grid幅 ' + width.grid + 'px / body ' + width.body + 'px（A4横の刷り幅 ≒1062px）');
   check('用紙の幅に収まっている', width.grid <= 1062, width.grid + 'px');
 
+  // ---- 5. 期間をデータに合わせて切っているか ----
+  console.log('\n刷る期間');
+  const range = await page.evaluate(() => {
+    let min = null, max = null;
+    visibleLanes().forEach(l => laneItems(l).forEach(i => {
+      const end = i.endKey || i.dueKey;
+      if (min === null || i.dueKey < min) min = i.dueKey;
+      if (max === null || end > max) max = end;
+    }));
+    return {
+      screenFrom: DATA.from, screenTo: DATA.to,
+      from: days[0], to: days[days.length - 1],
+      dataFrom: min, dataTo: max, dayW: dayW, count: days.length,
+      head: document.querySelector('.print-head .m').textContent
+    };
+  });
+  console.log('    画面 ' + range.screenFrom + '〜' + range.screenTo
+    + ' / 紙 ' + range.from + '〜' + range.to + '（' + range.count + '日 × ' + range.dayW + 'px）');
+  check('工程のある範囲を覆っている',
+    range.from <= range.dataFrom && range.to >= range.dataTo,
+    range.from + '〜' + range.to + ' に対して データ ' + range.dataFrom + '〜' + range.dataTo);
+  // 画面は［設定］の前月数・後月数ぶん出すが、紙は工程のある範囲だけにする。
+  // 週の頭・週末で切るぶんだけ、データより少しはみ出す
+  const span = (a, b) => Math.round((new Date(b + 'T00:00:00Z') - new Date(a + 'T00:00:00Z')) / 86400000);
+  check('工程の無い期間まで広げない',
+    span(range.from, range.to) < span(range.screenFrom, range.screenTo),
+    '紙 ' + span(range.from, range.to) + '日 / 画面 ' + span(range.screenFrom, range.screenTo) + '日');
+  check('前後の余りは1週間以内',
+    span(range.from, range.dataFrom) <= 8 && span(range.dataTo, range.to) <= 8,
+    '前 ' + span(range.from, range.dataFrom) + '日 / 後 ' + span(range.dataTo, range.to) + '日');
+  check('週の頭（月）から週末（日）で切る',
+    new Date(range.from + 'T00:00:00Z').getUTCDay() === 1
+    && new Date(range.to + 'T00:00:00Z').getUTCDay() === 0,
+    range.from + '〜' + range.to);
+  check('見出しの期間が刷る範囲と一致',
+    range.head.indexOf(String(+range.from.slice(5, 7)) + '月' + String(+range.from.slice(8, 10)) + '日') >= 0,
+    range.head);
+
+  // ---- 6. 区切りが読めるか ----
+  console.log('\n目盛りと罫線');
+  const grid2 = await page.evaluate(() => {
+    const g = document.getElementById('grid');
+    const months = new Set();
+    days.forEach(k => months.add(k.slice(0, 7)));
+    return {
+      ticks: g.querySelectorAll('.tick').length,
+      vlines: g.querySelectorAll('.vline').length,
+      monthLines: g.querySelectorAll('.vline.month').length,
+      weekLines: g.querySelectorAll('.vline.week').length,
+      months: months.size, days: days.length, dayW: dayW
+    };
+  });
+  console.log('    目盛り ' + grid2.ticks + '/' + grid2.days + '日 / 罫線 ' + grid2.vlines
+    + '（月 ' + grid2.monthLines + ' / 週 ' + grid2.weekLines + '）');
+  check('幅があるときは毎日に目盛りを出す',
+    grid2.dayW < 13 || grid2.ticks === grid2.days, grid2.ticks + ' / ' + grid2.days);
+  check('月の変わり目に罫線を引く', grid2.monthLines === grid2.months - 1,
+    grid2.monthLines + ' 本 / ' + grid2.months + ' ヶ月');
+  check('週の頭にも罫線を引く', grid2.weekLines > 0, String(grid2.weekLines));
+
   await page.screenshot({ path: path.join(OUT, 'print-check.png'), fullPage: true });
+
+  // ---- 7. 印刷が終わったら画面の期間に戻るか ----
+  console.log('\n印刷のあと');
+  await page.emulateMedia({ media: 'screen' });
+  await page.evaluate(() => endPrint());
+  await page.waitForTimeout(400);
+  const after = await page.evaluate(() => ({
+    from: days[0], to: days[days.length - 1], dayW: dayW,
+    labelW: getComputedStyle(document.documentElement).getPropertyValue('--label-w').trim(),
+    head: document.querySelectorAll('.print-head').length
+  }));
+  check('画面の期間に戻る', after.from === range.screenFrom && after.to === range.screenTo,
+    after.from + '〜' + after.to);
+  check('1日の幅も戻る', after.dayW > range.dayW, String(after.dayW));
+  check('ラベル列の幅も戻る', after.labelW === '260px' || after.labelW === '', after.labelW);
+  check('紙用の見出しが消える', after.head === 0, String(after.head));
+
   await browser.close();
 
   console.log('\n' + '─'.repeat(48));
