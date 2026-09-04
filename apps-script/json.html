@@ -59,13 +59,32 @@
 </div>
 
 <script>
-  var isExport = <?= mode === 'export' ? 'true' : 'false' ?>;
-
   function setMsg(t, kind) {
     var m = document.getElementById('msg');
+    if (!m) return;
     m.textContent = t;
     m.className = kind === true ? 'err' : (kind || '');
   }
+
+  /**
+   * このダイアログでは開発者ツールを開けないことが多く、JS が落ちても
+   * 「押しても何も起きない」としか分からない。画面と実行ログの両方に出す。
+   */
+  function reportError(where, e) {
+    var text = where + '：' + ((e && e.message) || e);
+    setMsg(text, true);
+    try {
+      google.script.run.logClientError('テンプレート受け渡し', text);
+    } catch (ignore) { /* 送れなくても画面には出ている */ }
+  }
+  window.onerror = function (msg, src, line, col) {
+    reportError('画面のエラー（' + line + ':' + col + '）', msg);
+  };
+
+  // どちらの画面かは、置かれているボタンで判断する。
+  // スクリプトレットをこの中に書くと、書き出され方によっては JS ごと壊れ、
+  // 「押しても何も起きない」になるため、テンプレートの出力は混ぜない。
+  var isExport = !!document.getElementById('btnCopy');
 
   if (isExport) {
     document.getElementById('btnCopy').onclick = function () {
@@ -89,14 +108,28 @@
       armed = false;
       btn.textContent = '読み込む';
       btn.className = 'primary';
-      cancel.hidden = true;
+      if (cancel) cancel.hidden = true;
       setMsg('');
     }
-    cancel.onclick = disarm;
-    document.querySelectorAll('input[name=mode]').forEach(function (r) { r.onchange = disarm; });
 
-    btn.onclick = function () {
-      var mode = document.querySelector('input[name=mode]:checked').value;
+    // ボタンの割り当てを最初に済ませる。ここより前で何か落ちると
+    // 「押しても何も起きない」になり、原因が分からなくなる
+    btn.addEventListener('click', function () {
+      try {
+        onImportClick();
+      } catch (e) {
+        btn.disabled = false;
+        reportError('読み込みの開始', e);
+      }
+    });
+
+    if (cancel) cancel.onclick = disarm;
+    Array.prototype.forEach.call(document.querySelectorAll('input[name=mode]'),
+      function (r) { r.onchange = disarm; });
+
+    function onImportClick() {
+      var picked = document.querySelector('input[name=mode]:checked');
+      var mode = picked ? picked.value : 'merge';
 
       // window.confirm はこのダイアログ（サンドボックス化された iframe）では
       // 無視されて押しても何も起きないため、ボタン自体を2段階にしている
@@ -104,7 +137,7 @@
         armed = true;
         btn.textContent = '本当に入れ替える';
         btn.className = 'danger';
-        cancel.hidden = false;
+        if (cancel) cancel.hidden = false;
         setMsg('既存の業務マスタと工程テンプレートをすべて削除します', 'warn');
         return;
       }
@@ -112,9 +145,11 @@
       var text = document.getElementById('box').value.trim();
       if (!text) { setMsg('JSON を貼り付けてください。', true); return; }
 
+      // 工程が多いと1分以上かかる。押せたことがはっきり分かるようにする
       btn.disabled = true;
-      cancel.hidden = true;
-      setMsg('読み込み中…');
+      btn.textContent = '読み込み中…';
+      if (cancel) cancel.hidden = true;
+      setMsg('工程表を作り直しています。しばらくお待ちください。');
       // 応答が返らないまま黙って止まると原因が分からないので、待ちに上限を置く
       var watchdog = setTimeout(function () {
         btn.disabled = false;
@@ -137,6 +172,6 @@
           setMsg(e.message, true);
         })
         .importTemplatesJson(text, mode);
-    };
+    }
   }
 </script>

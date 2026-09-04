@@ -26,6 +26,9 @@ Object.defineProperty(window.google.script, 'run', {
     var api = {
       withSuccessHandler: function (f) { handlers.ok = f; return api; },
       withFailureHandler: function (f) { handlers.ng = f; return api; },
+      logClientError: function (where, message) {
+        window.MOCK_CALLS.push({ fn: 'logClientError', where: where, message: message });
+      },
       importTemplatesJson: function (json, mode) {
         window.MOCK_CALLS.push({ fn: 'importTemplatesJson', mode: mode, length: (json || '').length });
         setTimeout(function () {

@@ -38,7 +38,7 @@ var SHEET = {
  * このコードの版。GitHub 側の版と比べて更新の有無を知らせる。
  * dist を作り直すときに手で上げる。
  */
-var VERSION = '1.5.0';
+var VERSION = '1.6.0';
 
 /** 各シートのヘッダー定義（列は名前で参照するため、並び替えても壊れない） */
 var SHEET_DEFS = [
@@ -3476,6 +3476,16 @@ function runDiagnostics() {
   console.log(text);
   log_('動作診断', lines.filter(function (l) { return l.indexOf('NG') === 0; }).length === 0, text.replace(/\n/g, ' / '));
   return text;
+}
+
+/**
+ * 画面側で起きた JS エラーを実行ログに残す。
+ *
+ * スプレッドシートのダイアログは開発者ツールを開きにくく、落ちても
+ * 「押しても何も起きない」としか分からないため、画面から送ってもらう。
+ */
+function logClientError(where, message) {
+  log_('画面のエラー', false, String(where || '') + '　' + String(message || '').slice(0, 500));
 }
 
 function pad_(s, n) {

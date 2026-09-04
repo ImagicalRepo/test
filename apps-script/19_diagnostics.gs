@@ -115,6 +115,16 @@ function runDiagnostics() {
   return text;
 }
 
+/**
+ * 画面側で起きた JS エラーを実行ログに残す。
+ *
+ * スプレッドシートのダイアログは開発者ツールを開きにくく、落ちても
+ * 「押しても何も起きない」としか分からないため、画面から送ってもらう。
+ */
+function logClientError(where, message) {
+  log_('画面のエラー', false, String(where || '') + '　' + String(message || '').slice(0, 500));
+}
+
 function pad_(s, n) {
   s = String(s);
   while (s.length < n) s += ' ';

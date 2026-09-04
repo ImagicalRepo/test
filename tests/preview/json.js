@@ -104,6 +104,38 @@ async function main() {
   });
   check('コード.gs の版が画面に出る', !!ver && ver.indexOf('版') >= 0, String(ver));
 
+  // ---- <script> の中にテンプレートの出力を混ぜていないこと ----
+  // 書き出され方によっては JS ごと壊れ、「押しても何も起きない」になる。
+  console.log('\nスクリプトの安全性');
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'apps-script', 'json.html'), 'utf8');
+  const inScript = src.slice(src.indexOf('<script>'), src.lastIndexOf('</' + 'script>'));
+  const scriptlets = inScript.match(/<\?[\s\S]*?\?>/g);
+  check('<script> の中にスクリプトレットがない', !scriptlets, JSON.stringify(scriptlets));
+
+  // gantt / editor もテンプレートとして評価されるので、`<?` が混ざると画面ごと壊れる
+  ['gantt.html', 'editor.html'].forEach(f => {
+    const t = fs.readFileSync(path.join(__dirname, '..', '..', 'apps-script', f), 'utf8');
+    const found = t.match(/<\?[\s\S]{0,60}?\?>/g);
+    check(f + ' にスクリプトレットが混ざっていない', !found, JSON.stringify(found));
+  });
+
+  // ---- 画面で落ちたら、黙らずに知らせること ----
+  console.log('\nエラーの見える化');
+  await page.goto(PAGE);
+  await page.waitForSelector('#btnImport');
+  await page.evaluate(() => {
+    // 読み込みの途中で落ちる状況を作る
+    document.getElementById('box').remove();
+  });
+  await page.click('#btnImport');
+  await page.waitForTimeout(300);
+  const broke = await state();
+  check('画面にエラーが出る', broke.msg.indexOf('読み込みの開始') >= 0, broke.msg);
+  check('実行ログにも送る',
+    broke.calls.some(c => c.fn === 'logClientError'), JSON.stringify(broke.calls));
+  check('ボタンは押せるままにする',
+    await page.evaluate(() => !document.getElementById('btnImport').disabled));
+
   // ---- 貼り忘れ ----
   console.log('\n貼り忘れ');
   await page.goto(PAGE);

@@ -33,8 +33,6 @@ function renderJson(mode, payload) {
   let s = fs.readFileSync(path.join(ROOT, 'apps-script', 'json.html'), 'utf8');
   s = s.replace(/<\? if \(mode === 'export'\) \{ \?>([\s\S]*?)<\? \} else \{ \?>([\s\S]*?)<\? \} \?>/g,
     (m, a, b) => (mode === 'export' ? a : b));
-  s = s.replace(/<\?= mode === 'export' \? 'true' : 'false' \?>/g,
-    mode === 'export' ? 'true' : 'false');
   s = s.replace(/<\?= payload \?>/g, payload || '');
   s = s.replace(/<\?= version \?>/g, 'テスト');
   const left = s.match(/<\?[\s\S]*?\?>/g);
