@@ -249,6 +249,20 @@ class RuleSet:
         rows = [self.doc_types[d] for d in ids if d in self.doc_types]
         return sorted(rows, key=lambda r: _as_int(r.get("表示順"), 999))
 
+    def relevant_docs(self, item_id: str) -> set[str]:
+        """その設問の判定に関係する書類.
+
+        設問ごとに見る書類は違う。医療保険資料の設問に、管理票の有無は関係しない。
+        関係しない書類まで判定に渡すと「登録のない書類」と見なされ、
+        すべてが相談に倒れてしまう。
+        """
+        docs = {doc for (item, doc) in self.single if item == item_id}
+        for row in self.combo:
+            if row["設問ID"] == item_id:
+                docs.update(_split(row.get("必要書類")))
+                docs.update(_split(row.get("除外書類")))
+        return docs
+
     def is_provisional(self, doc_id: str) -> bool:
         """仮登録の書類か。仮登録は判定に使わず、必ず相談に倒す."""
         row = self.doc_types.get(doc_id)

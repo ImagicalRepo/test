@@ -1,5 +1,5 @@
 @echo off
-rem ツールA（資料作成支援ツール）を exe にする
+rem 審査データ見直しツール（2名1組で使う本体）を exe にする
 rem --onedir を使う理由:
 rem   1) 起動が速い（--onefile は毎回展開するため数秒かかる）
 rem   2) セキュリティソフトの誤検知が少ない
@@ -9,14 +9,13 @@ pyinstaller ^
   --noconfirm ^
   --onedir ^
   --windowed ^
-  --name "資料作成支援ツール" ^
+  --name "審査データ見直しツール" ^
   --distpath "build\dist" ^
   --workpath "build\work" ^
   --specpath "build" ^
   --paths "src" ^
-  tool_a.py
+  tool_review.py
 
 echo.
-echo 出力先: build\dist\資料作成支援ツール\
-echo data フォルダをこのフォルダの中にコピーしてください。
+echo 出力先: build\dist\審査データ見直しツール\
 pause

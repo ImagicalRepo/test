@@ -11,14 +11,57 @@
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
 from PIL import Image
 
-from . import detect, extract, pdfio
+from . import detect, pdfio
 from .store import Store
+
+# チェックリスト上の切り出し範囲（ページ全体に対する比率）。
+# 実物 R8年度版のレイアウトから算出。スキャンの傾き・ずれを吸収するため余白を広めに取る。
+# 現地で必ず数ページ見て調整すること。
+REGIONS: dict[str, tuple[float, float, float, float]] = {
+    "左側一括": (0.02, 0.10, 0.56, 1.00),   # 書類確認欄とメモ欄をまとめて
+    "書類確認欄": (0.02, 0.12, 0.56, 0.68),
+    "メモ欄": (0.02, 0.88, 0.56, 1.00),
+}
+
+CONFIG_NAME = "抽出設定.json"
+
+
+def load_region(config_dir: Path, name: str = "メモ欄") -> tuple[float, float, float, float]:
+    """切り出し範囲を返す。設定ファイルがあればそちらを優先する.
+
+    現地調整の結果を、コードに手を入れずに残せるようにしている。
+    """
+    config = config_dir / CONFIG_NAME
+    if config.exists():
+        box = json.loads(config.read_text(encoding="utf-8")).get("切り出し範囲", {}).get(name)
+        if box:
+            return tuple(box)  # type: ignore[return-value]
+    return REGIONS[name]
+
+
+def save_region(config_dir: Path, name: str, box: tuple[float, float, float, float]) -> None:
+    config = config_dir / CONFIG_NAME
+    data = json.loads(config.read_text(encoding="utf-8")) if config.exists() else {}
+    data.setdefault("切り出し範囲", {})[name] = list(box)
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def make_template(pdf_path: Path, page_index: int) -> list[float]:
+    """見本にするチェックリストのページから署名を作る."""
+    return detect.signature(pdfio.render_page(pdf_path, page_index, dpi=pdfio.DPI_THUMBNAIL))
+
+
+def rank_pdf_pages(pdf_path: Path, template: list[float]) -> list[detect.PageHit]:
+    """1 つの PDF の全ページを類似度順に並べる（しきい値の調整用）."""
+    return detect.rank_pages(pdfio.render_all(pdf_path, dpi=pdfio.DPI_THUMBNAIL), template)
 
 # メモ欄に書き込みがあるとみなす黒画素率。
 # 空欄でも枠線があるため 0 にはならない。実データで必ず調整すること。
@@ -86,7 +129,7 @@ def run(
     progress は (現在, 全体, 受給者番号) を受け取り、False を返すと中断する。
     中断しても、そこまでの結果は DB に反映済み。
     """
-    memo_region = memo_region if memo_region is not None else extract.REGIONS["メモ欄"]
+    memo_region = memo_region if memo_region is not None else REGIONS["メモ欄"]
     cases = store.list_cases()
     results: list[ScanResult] = []
 

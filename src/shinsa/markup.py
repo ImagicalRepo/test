@@ -13,10 +13,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
-from .contactsheet import _font
-from .masking import MaskRect, apply_masks
+from .masking import BLACKOUT, MaskRect, apply_masks
 
 SIDE_LEFT = "左"
 SIDE_RIGHT = "右"
@@ -30,6 +29,26 @@ LINE_COLOR = (200, 30, 30)
 LABEL_BG = (255, 244, 244)
 TEXT_COLOR = (20, 20, 20)
 BOX_WIDTH = 4
+
+# 日本語が出せるフォントの候補。無ければ既定（英数字のみ）に落とす。
+_FONT_CANDIDATES = (
+    "C:/Windows/Fonts/meiryo.ttc",
+    "C:/Windows/Fonts/YuGothM.ttc",
+    "C:/Windows/Fonts/msgothic.ttc",
+    "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+)
+
+
+def _font(size: int = 16) -> ImageFont.ImageFont:
+    for path in _FONT_CANDIDATES:
+        if Path(path).exists():
+            try:
+                return ImageFont.truetype(path, size)
+            except OSError:
+                continue
+    return ImageFont.load_default()
+
 
 
 @dataclass(frozen=True)
@@ -46,6 +65,19 @@ class MarkupRegion:
     label: str = ""      # 書類名（「何が届いているか」で選んだもの）
 
 
+@dataclass(frozen=True)
+class MaskRegion:
+    """隠す 1 箇所.
+
+    利用者は左右のページを見ながら囲むので、指定はページ側の比率で受け取る。
+    書き出し時に合成画像の座標へ変換して焼き込む。
+    """
+
+    side: str
+    box: tuple[float, float, float, float]
+    style: str = BLACKOUT
+
+
 @dataclass
 class ComparisonSet:
     """1 つの NG・迷いの記録."""
@@ -54,7 +86,7 @@ class ComparisonSet:
     comparison: str = ""    # この比較は何か（記号番号・枝番 など。任意）
     defect_code: str = ""   # 不備理由コード
     note: str = ""          # 迷った理由など
-    masks: list[MaskRect] = field(default_factory=list)  # 合成画像に対するマスク
+    masks: list[MaskRegion] = field(default_factory=list)
 
     @property
     def is_complete(self) -> bool:
@@ -66,14 +98,15 @@ class ComparisonSet:
         return SIDE_LEFT in sides and SIDE_RIGHT in sides
 
 
-def build_comparison(
+def _layout(
     left_image: Image.Image | None,
     right_image: Image.Image | None,
-    comparison: ComparisonSet,
-    left_title: str = "申請書",
-    right_title: str = "提出書類",
-) -> Image.Image:
-    """左右を並べ、囲みと結線を描いた 1 枚の画像を作る."""
+) -> tuple[Image.Image, dict[str, tuple[int, int, int, int]], Image.Image | None, Image.Image | None]:
+    """左右を並べた台紙と、各側の配置（原点と寸法）を作る.
+
+    合成と書き出しで同じ配置を使うため、ここに切り出してある。
+    ここがずれると、画面で囲んだ場所と書き出した画像の場所が食い違う。
+    """
     if left_image is None and right_image is None:
         raise ValueError("画像が 1 枚もありません。")
 
@@ -92,20 +125,51 @@ def build_comparison(
         (MARGIN * 2 + left_w + GAP + right_w, MARGIN * 2 + HEADER + height),
         BACKGROUND,
     )
-    draw = ImageDraw.Draw(canvas)
-    font = _font(16)
-
     origins: dict[str, tuple[int, int, int, int]] = {}
     top = MARGIN + HEADER
     if left:
         canvas.paste(left, (MARGIN, top))
         origins[SIDE_LEFT] = (MARGIN, top, left.width, left.height)
-        draw.text((MARGIN, MARGIN + 8), left_title, fill=TEXT_COLOR, font=font)
     if right:
         x = MARGIN + left_w + GAP
         canvas.paste(right, (x, top))
         origins[SIDE_RIGHT] = (x, top, right.width, right.height)
-        draw.text((x, MARGIN + 8), right_title, fill=TEXT_COLOR, font=font)
+    return canvas, origins, left, right
+
+
+def to_composite_masks(
+    comparison: ComparisonSet,
+    origins: dict[str, tuple[int, int, int, int]],
+    canvas_size: tuple[int, int],
+) -> list[MaskRect]:
+    """ページ側の比率で指定されたマスクを、合成画像の比率に直す."""
+    width, height = canvas_size
+    converted: list[MaskRect] = []
+    for mask in comparison.masks:
+        if mask.side not in origins:
+            continue
+        x0, y0, x1, y1 = _to_canvas_box(mask.box, origins[mask.side])
+        converted.append(
+            MaskRect(x0 / width, y0 / height, x1 / width, y1 / height, mask.style)
+        )
+    return converted
+
+
+def build_comparison(
+    left_image: Image.Image | None,
+    right_image: Image.Image | None,
+    comparison: ComparisonSet,
+    left_title: str = "申請書",
+    right_title: str = "提出書類",
+) -> Image.Image:
+    """左右を並べ、囲みと結線を描いた 1 枚の画像を作る."""
+    canvas, origins, _left, _right = _layout(left_image, right_image)
+    draw = ImageDraw.Draw(canvas)
+    font = _font(16)
+
+    for side, title in ((SIDE_LEFT, left_title), (SIDE_RIGHT, right_title)):
+        if side in origins:
+            draw.text((origins[side][0], MARGIN + 8), title, fill=TEXT_COLOR, font=font)
 
     # 囲みを描き、各側の代表点を覚えておく
     anchors: dict[str, tuple[int, int]] = {}
@@ -146,8 +210,10 @@ def export_comparison(
     from .masking import export_masked  # 循環参照を避けるため関数内で読み込む
 
     canvas = build_comparison(left_image, right_image, comparison, left_title, right_title)
+    _blank, origins, _l, _r = _layout(left_image, right_image)
+    masks = to_composite_masks(comparison, origins, canvas.size)
     note = "　".join(filter(None, [comparison.comparison, comparison.defect_code, comparison.note]))
-    return export_masked(canvas, comparison.masks, out_dir, prefix=prefix, note=note)
+    return export_masked(canvas, masks, out_dir, prefix=prefix, note=note)
 
 
 def preview_with_masks(
@@ -157,7 +223,10 @@ def preview_with_masks(
 ) -> Image.Image:
     """書き出す前に、マスクを掛けた状態を確認するための画像."""
     canvas = build_comparison(left_image, right_image, comparison)
-    return apply_masks(canvas, comparison.masks) if comparison.masks else canvas
+    if not comparison.masks:
+        return canvas
+    _blank, origins, _l, _r = _layout(left_image, right_image)
+    return apply_masks(canvas, to_composite_masks(comparison, origins, canvas.size))
 
 
 # ---------- 補助 ----------

@@ -18,7 +18,7 @@ try:
 except ImportError:  # pragma: no cover
     import fitz
 
-from shinsa import extract, prescan  # noqa: E402
+from shinsa import prescan  # noqa: E402
 from shinsa.caselist import build_cases, scan_folder  # noqa: E402
 from shinsa.prefetch import PageCache, Prefetcher  # noqa: E402
 from shinsa.store import Store  # noqa: E402
@@ -119,7 +119,7 @@ def main() -> int:
         db = root / "作業.db"
         with Store(db, worker="ペアA") as store:
             store.sync_cases(cases)
-            template = extract.make_template(cases[0].primary.path, positions[1])
+            template = prescan.make_template(cases[0].primary.path, positions[1])
             scanned = prescan.run(store, template, ink_threshold=prescan.DEFAULT_INK_THRESHOLD)
 
             found = [r for r in scanned if r.found]

@@ -15,9 +15,9 @@ from PIL import Image  # noqa: E402
 
 from shinsa.markup import (  # noqa: E402
     BOX_COLOR, GAP, HEADER, MARGIN, SIDE_LEFT, SIDE_RIGHT,
-    ComparisonSet, MarkupRegion, build_comparison, export_comparison,
+    ComparisonSet, MarkupRegion, MaskRegion, build_comparison, export_comparison,
 )
-from shinsa.masking import MaskRect, audit_output_dir  # noqa: E402
+from shinsa.masking import audit_output_dir  # noqa: E402
 
 
 def check(label, actual, expected):
@@ -102,14 +102,20 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "出力"
         shutil.rmtree(out, ignore_errors=True)
-        both.masks = [MaskRect(0.30, 0.05, 0.70, 0.12)]
+        # 左ページの上部を隠す。指定はページ側の比率で行う
+        both.masks = [MaskRegion(SIDE_LEFT, (0.10, 0.05, 0.90, 0.15))]
         path = export_comparison(left, right, both, out, prefix="cmp")
         results.append(check("連番で書き出される", path.name, "cmp_0001.png"))
 
         saved = Image.open(path)
-        mx = int(saved.width * 0.5)
-        my = int(saved.height * 0.08)
-        results.append(check("マスク部分が黒い", saved.getpixel((mx, my)), (0, 0, 0)))
+        # 左ページ上部の中央。原点は (MARGIN, MARGIN+HEADER)
+        mx = MARGIN + int(W * 0.5)
+        my = MARGIN + HEADER + int(H * 0.10)
+        results.append(check("指定した場所が黒い", saved.getpixel((mx, my)), (0, 0, 0)))
+        results.append(
+            check("同じ高さの右ページは黒くない",
+                  saved.getpixel((MARGIN + W + GAP + int(W * 0.5), my)) != (0, 0, 0), True)
+        )
         results.append(
             check("マスク外は黒くない", saved.getpixel((mx, saved.height - 10)) != (0, 0, 0), True)
         )
