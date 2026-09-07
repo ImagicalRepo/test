@@ -1,0 +1,7 @@
+# 実行に必要なライブラリ
+# tkinter は Python 本体に付属するため、ここには書かない
+pymupdf>=1.24
+pillow>=10.0
+
+# exe 化に必要（開発機のみ）
+pyinstaller>=6.0

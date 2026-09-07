@@ -1,0 +1,17 @@
+# ビルド生成物
+build/dist/
+build/work/
+build/配布物/
+*.spec
+
+# 書き出し（個人情報を含みうるため絶対にコミットしない）
+出力/
+*.png
+!docs/**/*.png
+
+# 見本の署名（環境ごとに作る）
+data/チェックリスト見本.json
+data/抽出設定.json
+
+__pycache__/
+*.pyc
