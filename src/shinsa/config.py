@@ -31,6 +31,30 @@ MATCH_SAME = "一致"
 MATCH_DIFF = "不一致"
 MATCH_NA = "確認不可"
 
+# チェックリストの入力状態。判定エンジンの「判定結果」とは別物なので分けて持つ。
+CHECK_OK = "OK"
+CHECK_NG = "NG"
+CHECK_NA = "判定不能"   # 前提の設問が NG で、論理的に判定できない（空欄の正体）
+CHECK_ASK = "要相談"
+CHECK_BLANK = ""        # 未入力
+
+CHECK_STATES = (CHECK_OK, CHECK_NG, CHECK_NA, CHECK_ASK, CHECK_BLANK)
+
+# マスキングの状態。既定は「不要」（端末内に置くだけなら加工は要らない）。
+MASK_NOT_NEEDED = "不要"
+MASK_TODO = "未"
+MASK_DONE = "済"
+
+MASK_STATES = (MASK_NOT_NEEDED, MASK_TODO, MASK_DONE)
+
+# 案件の作業状態
+CASE_PENDING = "未着手"
+CASE_WORKING = "作業中"
+CASE_CONSULT = "相談中"
+CASE_DONE = "完了"
+
+CASE_STATES = (CASE_PENDING, CASE_WORKING, CASE_CONSULT, CASE_DONE)
+
 
 def app_dir() -> Path:
     """exe 実行時は exe の隣、開発時はリポジトリルートを返す."""

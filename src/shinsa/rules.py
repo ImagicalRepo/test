@@ -40,6 +40,7 @@ FILE_SINGLE = "判定_単独.csv"
 FILE_COMBO = "判定_組合せ.csv"
 FILE_MATCH = "判定_突合.csv"
 FILE_ITEMS = "チェックリスト設問.csv"
+FILE_DEFECTS = "不備理由.csv"
 
 
 @dataclass(frozen=True)
@@ -49,7 +50,8 @@ class Judgement:
     result: str
     reason: str
     entry_method: str
-    source: str  # どの行が効いたか（追跡用）
+    source: str            # どの行が効いたか（追跡用）
+    defect_code: str = ""  # NG のときの不備理由コード
 
     @property
     def is_ask(self) -> bool:
@@ -63,6 +65,7 @@ class RuleSet:
     single: dict[tuple[str, str], dict] = field(default_factory=dict)
     combo: list[dict] = field(default_factory=list)
     match: dict[tuple[str, str, str], dict] = field(default_factory=dict)
+    defect_codes: dict[str, dict] = field(default_factory=dict)
 
     # ---------- 読み込み ----------
 
@@ -73,6 +76,8 @@ class RuleSet:
             rs.doc_types[row["書類ID"]] = row
         for row in _read_csv(data_dir / FILE_ITEMS):
             rs.checklist_items[row["設問ID"]] = row
+        for row in _read_csv(data_dir / FILE_DEFECTS):
+            rs.defect_codes[row["不備理由コード"]] = row
         for row in _read_csv(data_dir / FILE_SINGLE):
             rs.single[(row["設問ID"], row["書類ID"])] = row
         rs.combo = sorted(
@@ -102,6 +107,16 @@ class RuleSet:
                 problems.append(f"{FILE_SINGLE}: 未登録の設問ID '{item}' が使われています")
             if not row.get("理由", "").strip():
                 problems.append(f"{FILE_SINGLE}: 設問 {item} / 書類 {doc} の理由が空です")
+            code = row.get("不備理由", "").strip()
+            if code and code not in self.defect_codes:
+                problems.append(f"{FILE_SINGLE}: 未登録の不備理由コード '{code}'（設問 {item} / 書類 {doc}）")
+
+        for item_id, row in self.checklist_items.items():
+            prerequisite = row.get("前提設問ID", "").strip()
+            if prerequisite and prerequisite not in self.checklist_items:
+                problems.append(f"{FILE_ITEMS}: 設問 {item_id} の前提設問ID '{prerequisite}' が存在しません")
+            if prerequisite == item_id:
+                problems.append(f"{FILE_ITEMS}: 設問 {item_id} が自分自身を前提にしています")
 
         for row in self.combo:
             if row["判定"] not in VALID_RESULTS:
@@ -142,6 +157,16 @@ class RuleSet:
                 "提出書類が 1 つも選択されていません。",
                 "",
                 "（入力なし）",
+            )
+
+        provisional = sorted(d for d in selected if self.is_provisional(d))
+        if provisional:
+            return Judgement(
+                RESULT_ASK,
+                f"仮登録の書類が含まれています: {', '.join(self._label(d) for d in provisional)}。"
+                "管理者が正式に登録するまで判定できません。",
+                "",
+                f"{FILE_DOC_TYPES}（仮登録）",
             )
 
         unknown = sorted(d for d in selected if (item_id, d) not in self.single)
@@ -211,6 +236,7 @@ class RuleSet:
             reason=row.get("理由", "").strip(),
             entry_method=row.get("記入方法", "").strip(),
             source=f"{source_file} / {row.get('規則ID') or row.get('書類ID') or ''}",
+            defect_code=row.get("不備理由", "").strip() if result == RESULT_NG else "",
         )
 
     def _label(self, doc_id: str) -> str:
@@ -222,6 +248,47 @@ class RuleSet:
         ids = [doc for (item, doc) in self.single if item == item_id]
         rows = [self.doc_types[d] for d in ids if d in self.doc_types]
         return sorted(rows, key=lambda r: _as_int(r.get("表示順"), 999))
+
+    def is_provisional(self, doc_id: str) -> bool:
+        """仮登録の書類か。仮登録は判定に使わず、必ず相談に倒す."""
+        row = self.doc_types.get(doc_id)
+        return bool(row and row.get("仮登録", "").strip())
+
+    def tool_items(self) -> list[dict]:
+        """ツールで入力する設問（表示順）.
+
+        臨個票の欄など「ツール対象=×」は除く。
+        """
+        rows = [r for r in self.checklist_items.values() if r.get("ツール対象", "○") != "×"]
+        return sorted(rows, key=lambda r: _as_int(r.get("表示順"), 999))
+
+    def dependents(self, item_id: str) -> list[str]:
+        """この設問が NG のとき、判定不能になる設問の一覧.
+
+        例：書3-1（医療保険資料が提出されている）が NG なら、
+        比べる相手が無いので 書3-2 / 書3-3 は判定できない。
+        """
+        return [
+            other for other, row in self.checklist_items.items()
+            if row.get("前提設問ID", "").strip() == item_id
+        ]
+
+    def unanswerable(self, ng_items: set[str]) -> set[str]:
+        """NG の設問の集合から、判定不能になる設問をすべて求める.
+
+        前提が連鎖している場合に備えて、変化が無くなるまで辿る。
+        """
+        blocked: set[str] = set()
+        frontier = set(ng_items)
+        while frontier:
+            nxt: set[str] = set()
+            for item_id in frontier:
+                for dependent in self.dependents(item_id):
+                    if dependent not in blocked and dependent not in ng_items:
+                        blocked.add(dependent)
+                        nxt.add(dependent)
+            frontier = nxt
+        return blocked
 
     def match_fields(self, item_id: str) -> list[str]:
         """ある設問で突合する比較項目の一覧."""

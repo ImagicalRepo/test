@@ -88,11 +88,9 @@ def main() -> int:
 
     passed, total = sum(results), len(results)
     print(f"\n結果: {passed}/{total} 件 合格")
-    return 0 if passed == total and not problems else 1
+    base_ok = passed == total and not problems
+    return 0 if base_ok and test_extensions() == 0 else 1
 
-
-if __name__ == "__main__":
-    raise SystemExit(main())
 
 
 def simulate_matrix(rules, item_id, cells: dict[tuple[str, str], str]):
@@ -111,3 +109,64 @@ def simulate_matrix(rules, item_id, cells: dict[tuple[str, str], str]):
         rules.judge_match(item_id, f, sorted(mismatched.get(f, []))) for f in sorted(touched)
     ]
     return combine(judgements) if judgements else None
+
+
+def test_extensions() -> int:
+    """依存関係・不備理由・仮登録の検証（後から追加した機能）."""
+    from shinsa.config import RESULT_NG
+
+    print("\n=== ツール対象の設問 ===")
+    results = []
+    items = [r["設問ID"] for r in RULES.tool_items()]
+    results.append(check("入力対象は14問", len(items), 14))
+    results.append(check("臨個票の欄は除外", [i for i in items if i.startswith("書2")], []))
+    results.append(check("表示順の先頭", items[0], "書1-1"))
+
+    print("\n=== 設問の依存関係 ===")
+    results.append(check("書3-1 の従属", sorted(RULES.dependents("書3-1")), ["書3-2", "書3-3"]))
+    results.append(
+        check("書4-1 の従属", sorted(RULES.dependents("書4-1")), ["書4-2", "書4-3", "書4d-2", "書4d-3"])
+    )
+    results.append(check("従属の無い設問", RULES.dependents("書1-1"), []))
+    results.append(
+        check("書3-1 が NG → 判定不能", sorted(RULES.unanswerable({"書3-1"})), ["書3-2", "書3-3"])
+    )
+    results.append(
+        check(
+            "複数 NG をまとめて解決",
+            sorted(RULES.unanswerable({"書3-1", "書4-1"})),
+            ["書3-2", "書3-3", "書4-2", "書4-3", "書4d-2", "書4d-3"],
+        )
+    )
+    results.append(check("NG が無ければ空", RULES.unanswerable(set()), set()))
+
+    print("\n=== 不備理由コード ===")
+    for docs, expected_code, label in [
+        (["未提出"], "未提出", "未提出"),
+        (["高齢受給者証"], "無効書類", "無効書類（保険証などを出してきた場合）"),
+        (["旧被保険者証"], "無効書類", "旧被保険者証"),
+    ]:
+        j = RULES.judge_single("書3-1", docs)
+        results.append(check(label, (j.result, j.defect_code), (RESULT_NG, expected_code)))
+    j_ok = RULES.judge_single("書3-1", ["資格確認書"])
+    results.append(check("OK には不備理由が付かない", j_ok.defect_code, ""))
+
+    print("\n=== 仮登録の書類は必ず相談 ===")
+    RULES.doc_types["見たことない通知書"] = {
+        "書類ID": "見たことない通知書", "表示名": "見たことない通知書", "仮登録": "○",
+    }
+    RULES.single[("書3-1", "見たことない通知書")] = {
+        "設問ID": "書3-1", "書類ID": "見たことない通知書", "区分": "有効",
+        "理由": "（仮）", "記入方法": "", "不備理由": "",
+    }
+    j = RULES.judge_single("書3-1", ["見たことない通知書"])
+    results.append(check("有効と書いてあっても相談", j.result, RESULT_ASK))
+    j = RULES.judge_single("書3-1", ["資格確認書", "見たことない通知書"])
+    results.append(check("正規の書類と混在でも相談", j.result, RESULT_ASK))
+
+    passed, total = sum(results), len(results)
+    print(f"\n追加分の結果: {passed}/{total} 件 合格")
+    return 0 if passed == total else 1
+
+if __name__ == "__main__":
+    raise SystemExit(main())
