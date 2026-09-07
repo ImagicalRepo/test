@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,6 +19,11 @@ from PIL import Image
 DPI_THUMBNAIL = 50
 DPI_PREVIEW = 110
 DPI_EXPORT = 200
+
+# PyMuPDF は公式に「スレッドセーフではない」とされている。
+# このアプリは画面の描画と先読みスレッドから同時に PDF を開くため、念のため直列化する。
+# 待たされても最大で 1 ページぶんの描画時間なので、先読みの利点は損なわれない。
+_PDF_LOCK = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -33,13 +39,13 @@ class PageRef:
 
 
 def page_count(pdf_path: Path) -> int:
-    with fitz.open(pdf_path) as doc:
+    with _PDF_LOCK, fitz.open(pdf_path) as doc:
         return doc.page_count
 
 
 def render_page(pdf_path: Path, page_index: int, dpi: int = DPI_PREVIEW) -> Image.Image:
     """1 ページを PIL Image（RGB）で返す."""
-    with fitz.open(pdf_path) as doc:
+    with _PDF_LOCK, fitz.open(pdf_path) as doc:
         if not 0 <= page_index < doc.page_count:
             raise IndexError(f"ページ番号が範囲外です: {page_index} / {doc.page_count}")
         pix = doc.load_page(page_index).get_pixmap(dpi=dpi, alpha=False)
@@ -48,7 +54,7 @@ def render_page(pdf_path: Path, page_index: int, dpi: int = DPI_PREVIEW) -> Imag
 
 def render_all(pdf_path: Path, dpi: int = DPI_THUMBNAIL):
     """全ページを順に描画する generator。1 万件を扱うのでページ単位で解放する."""
-    with fitz.open(pdf_path) as doc:
+    with _PDF_LOCK, fitz.open(pdf_path) as doc:
         for i in range(doc.page_count):
             pix = doc.load_page(i).get_pixmap(dpi=dpi, alpha=False)
             yield i, Image.frombytes("RGB", (pix.width, pix.height), pix.samples)

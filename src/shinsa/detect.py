@@ -22,6 +22,13 @@ from PIL import Image, ImageOps
 SIG_WIDTH = 32
 SIG_HEIGHT = 44
 
+# 署名を取る範囲（ページ全体に対する比率）。
+#
+# ページ全体から取ると、メモ欄の手書きが署名を支配してしまい、
+# **書き込みの多いページほど検出できなくなる**。一番拾いたい対象を落とすので致命的。
+# 帳票を identify しているのは罫線の構造なので、記入内容の多い下部を外す。
+FORM_REGION = (0.0, 0.03, 1.0, 0.82)
+
 # 既定の閾値。1.0 が完全一致。
 # スキャンの劣化が激しいと同一様式でも 0.6 台まで落ちるため低めに設定している。
 # 実データで必ず調整すること。閾値に頼らず rank_pages() で人が切る運用を推奨。
@@ -34,11 +41,23 @@ class PageHit:
     score: float
 
 
-def signature(img: Image.Image) -> list[float]:
+def signature(
+    img: Image.Image,
+    region: tuple[float, float, float, float] | None = FORM_REGION,
+) -> list[float]:
     """ページ画像から、レイアウトを表す正規化済みの特徴ベクトルを作る.
 
     平均を引いて L2 正規化するため、スキャンの濃淡差の影響を受けにくい。
+
+    region で署名を取る範囲を絞れる。既定は FORM_REGION で、
+    記入内容に左右されにくい罫線の構造だけを見る。
     """
+    if region is not None:
+        left, top, right, bottom = region
+        width, height = img.size
+        img = img.crop(
+            (int(width * left), int(height * top), int(width * right), int(height * bottom))
+        )
     small = ImageOps.autocontrast(img.convert("L")).resize(
         (SIG_WIDTH, SIG_HEIGHT), Image.Resampling.LANCZOS
     )
