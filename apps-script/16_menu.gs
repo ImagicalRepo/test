@@ -42,6 +42,8 @@ function showGantt() {
   var settings = getSettings_();
   var html = loadHtml_('gantt', settings)
     .evaluate()
+    // スマホのスプレッドシートアプリから開いたとき、980px幅で描かれて全体が縮むのを防ぐ
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setWidth(clampSize_(settingNumber_(settings, '画面の幅', 1400), 800, 2000))
     .setHeight(clampSize_(settingNumber_(settings, '画面の高さ', 800), 480, 1400));
   SpreadsheetApp.getUi().showModalDialog(html, scheduleTitle_(settings));
@@ -51,6 +53,7 @@ function showTemplateEditor() {
   var settings = getSettings_();
   var html = loadHtml_('editor', settings)
     .evaluate()
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setWidth(clampSize_(settingNumber_(settings, '画面の幅', 1400) - 250, 800, 1700))
     .setHeight(clampSize_(settingNumber_(settings, '画面の高さ', 800), 480, 1400));
   SpreadsheetApp.getUi().showModalDialog(html, '工程テンプレートの編集');

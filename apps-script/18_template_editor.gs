@@ -675,7 +675,9 @@ function showTemplateDialog_(mode) {
   tpl.payload = mode === 'export' ? exportTemplatesJson() : '';
   tpl.version = VERSION;
   SpreadsheetApp.getUi().showModalDialog(
-    tpl.evaluate().setWidth(720).setHeight(620),
+    tpl.evaluate()
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+      .setWidth(720).setHeight(620),
     mode === 'export' ? 'テンプレートの書き出し' : 'テンプレートの読み込み');
 }
 

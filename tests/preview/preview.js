@@ -21,8 +21,11 @@ const CORE_FILES = ['00_config.gs', '01_core_date.gs', '02_core_recurrence.gs', 
 function wrap(pageFile, scripts) {
   const page = fs.readFileSync(path.join(ROOT, 'apps-script', pageFile), 'utf8');
   const head = scripts.map(src => '<script>' + src + '</' + 'script>').join('\n');
-  return '<!doctype html><html><head><meta charset="utf-8">' + head + '</head><body>'
-    + page + '</body></html>';
+  // 本番は .gs 側が addMetaTag で viewport を足す（17_webapp.gs / 16_menu.gs）。
+  // スマホ幅の確認をするため、プレビューでも同じものを入れる
+  return '<!doctype html><html><head><meta charset="utf-8">'
+    + '<meta name="viewport" content="width=device-width, initial-scale=1">'
+    + head + '</head><body>' + page + '</body></html>';
 }
 
 /**

@@ -52,7 +52,8 @@
                 border-color .4s var(--ease), box-shadow .25s var(--ease);
   }
 
-  #app { display: flex; flex-direction: column; height: 100vh; }
+  /* dvh はスマホのURLバーの伸び縮みを除いた高さ。使えないブラウザは 100vh のまま */
+  #app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 
   /* ============ ヘッダー ============ */
   header.top {
@@ -60,6 +61,8 @@
     padding: 9px 16px; border-bottom: 1px solid var(--border);
     background: var(--surface); flex: 0 0 auto; position: relative; z-index: 20;
   }
+  /* 操作のまとまり。広い画面では素通しで、いままでどおり横一列に並ぶ */
+  .tools { display: contents; }
   header.top h1 { font-size: 15.5px; margin: 0; font-weight: 700; letter-spacing: .02em; white-space: nowrap; }
   .today-badge {
     font-size: 12.5px; color: var(--muted); white-space: nowrap;
@@ -69,10 +72,12 @@
   .spacer { flex: 1; }
 
   button {
-    font-family: inherit; font-size: 13px; cursor: pointer;
+    font-family: inherit; font-size: 13px; cursor: pointer; white-space: nowrap;
     border: 1px solid var(--border); background: var(--surface); color: var(--text);
     padding: 6px 12px; border-radius: 7px;
   }
+  /* スマホ幅のときだけ出す要素（［予定］タブと［⋯］） */
+  .only-narrow { display: none; }
   button:hover { background: var(--surface-2); transform: translateY(-1px); }
   button:active { transform: translateY(0); }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -156,6 +161,8 @@
   .card.today { border-left: 3px solid var(--warn); }
   .card.soon { border-left: 3px solid var(--accent); }
   .empty { color: var(--muted); font-size: var(--fs-md); padding: 10px 2px; line-height: 1.6; }
+  /* スマホの［予定］タブ。左パネルと同じ中身を本体いっぱいに出す */
+  .side-view { overflow-y: auto; padding: 12px; background: var(--surface-2); }
 
   /* ============ 凡例 ============ */
   .legend { display: flex; flex-wrap: wrap; gap: 6px; padding: 9px 13px; border-bottom: 1px solid var(--border); background: var(--surface); }
@@ -355,6 +362,84 @@
   .cell::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
   .cell-head { position: sticky; top: -5px; background: inherit; padding-top: 1px; }
 
+  /* ============ 月間（スマホ）＝日ごとのリスト ============
+     7列を390pxに詰めると1列55px前後になって工程名が読めないため、
+     スマホ幅では予定のある日だけを縦に並べる（renderDayList） */
+  .day-list { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 12px 14px; }
+  .day-row {
+    display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border);
+    animation: slideIn .3s var(--ease) backwards;
+  }
+  .day-row:last-child { border-bottom: none; }
+  .day-when {
+    flex: 0 0 66px; font-size: var(--fs-sm); font-weight: 700; line-height: 1.5;
+    font-variant-numeric: tabular-nums;
+  }
+  .day-row.we .day-when { color: var(--muted); }
+  .day-row.today .day-when { color: var(--danger); }
+  .day-row.today { background: var(--danger-soft); border-radius: 8px; padding-left: 8px; padding-right: 8px; }
+  .day-hol { display: block; font-weight: 400; font-size: var(--fs-xs); color: var(--muted); }
+  .day-evs { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .day-evs .ev { min-height: 30px; padding: 6px 9px; font-size: var(--fs-sm); }
+
+  /* ============ 画面が狭いとき ============
+     幅で2段階に分ける。1000px以下は「小さめのPCの窓・タブレット」、
+     720px以下は「スマホ」。スマホでは左パネルを［予定］タブに移し、
+     ヘッダーの操作を［⋯］に畳み、月間は日ごとのリストにする（下の isNarrow）。 */
+  @media (max-width: 1000px) {
+    :root { --label-w: 180px; }
+    /* 入りきらなくなったら潰さずに折り返す（広い画面では1段のまま） */
+    header.top { flex-wrap: wrap; row-gap: 8px; }
+    aside { width: 232px; flex-basis: 232px; }
+    .finder input { width: 120px; }
+  }
+
+  @media (max-width: 720px) {
+    :root { --label-w: 132px; }
+    /* 1段目に［タイトル・日付・⋯］を収める */
+    header.top h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .today-badge { font-size: 11.5px; padding: 3px 8px; }
+    /* 業務名は2行までにして、行が縦に伸びるのを止める */
+    .lane-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+    .lane-sub { flex-wrap: wrap; gap: 2px 7px; }
+    /* 左パネルの中身は［予定］タブへ移る */
+    aside { display: none; }
+    .only-narrow { display: inline-flex; }
+    /* ［⋯］は1段目の右端に置き、タブは2段目に丸ごと落とす */
+    #btnMore { margin-left: auto; }
+
+    /* タブは1行いっぱいに広げる。.tab-pill は offsetLeft/offsetWidth 基準なのでそのまま動く */
+    .tabs { display: flex; width: 100%; }
+    .tabs button { flex: 1; padding: 7px 4px; }
+    .spacer { display: none; }
+
+    /* ヘッダーの操作は［⋯］で開くまで畳んでおく */
+    .tools { display: none; width: 100%; flex-wrap: wrap; gap: 8px; }
+    .tools.open { display: flex; }
+    .finder { flex: 1; }
+    .finder input { width: 100%; }
+    #ownerSel { max-width: none; flex: 1; }
+
+    header.top { padding: 8px 10px; gap: 8px; }
+    header.top h1 { font-size: 15px; }
+
+    /* ポップとカードは画面幅いっぱいに置き直す */
+    .theme-pop { position: fixed; left: 8px; right: 8px; top: auto; width: auto; }
+    #detail.sheet {
+      left: 8px; right: 8px; bottom: 8px; top: auto; width: auto;
+      max-height: 62vh; overflow-y: auto;
+    }
+
+    /* 指で押せる大きさにする */
+    .mark { width: 17px; height: 17px; margin-top: -8.5px; }
+    .mark.anchor { width: 19px; height: 19px; margin-top: -9.5px; }
+    .range { height: 14px; }
+
+    /* 凡例は折り返さずに横スクロールで逃がす */
+    .legend { flex-wrap: nowrap; overflow-x: auto; }
+    .legend .chip { flex: 0 0 auto; }
+  }
+
   /* 画面が低いときは余白と文字を詰めて、1か月ぶんを収める */
   @media (max-height: 780px) {
     .cal-wrap { padding: 6px 10px 8px; }
@@ -526,6 +611,13 @@
   /* .grid の幅は印刷用に計算した値（ラベル列＋日数×1日の幅）。
      auto にすると track だけが伸びて、絶対配置の網掛けとずれる */
   body.printing .track { flex: 0 0 auto !important; }
+  /* スマホ幅の窓から刷ることもある。紙は 1062px 幅で組むので、
+     狭い画面向けに詰めた指定（下の @media max-width）はここで戻す */
+  body.printing .legend { flex-wrap: wrap; overflow-x: visible; }
+  body.printing .lane-title { display: flex; -webkit-line-clamp: none; }
+  body.printing .mark { width: 13px; height: 13px; margin-top: -6.5px; }
+  body.printing .mark.anchor { width: 15px; height: 15px; margin-top: -7.5px; }
+  body.printing .range { height: 11px; }
   /* sticky は解くが、土日の網掛けより上に描くため位置指定は残す
      （static にすると背景レイヤーが上に来て、月名が読めなくなる） */
   body.printing .head, body.printing .head-label,
@@ -589,44 +681,50 @@
     <h1 id="appTitle">業務スケジュール</h1>
     <span class="today-badge" id="todayBadge">読み込み中…</span>
 
+    <button id="btnMore" class="only-narrow" aria-expanded="false"
+            aria-controls="tools" aria-label="表示の設定を開く">⋯</button>
+
     <span class="tabs" id="tabs">
       <span class="tab-pill" id="tabPill"></span>
       <button data-view="gantt" class="on">ガント</button>
       <button data-view="work">業務別</button>
       <button data-view="month">月間</button>
+      <button data-view="side" class="only-narrow">予定</button>
     </span>
 
     <span class="spacer"></span>
 
-    <span class="finder">
-      <svg class="icon find-i" viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path>
-      </svg>
-      <input id="q" type="search" placeholder="工程名で探す" aria-label="工程名・業務名・メモで探す">
-      <button id="qClear" class="q-x" type="button" title="検索を消す" aria-label="検索を消す" hidden>×</button>
-    </span>
-    <select id="ownerSel" aria-label="担当で絞り込む"><option value="">担当：すべて</option></select>
+    <span class="tools" id="tools">
+      <span class="finder">
+        <svg class="icon find-i" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path>
+        </svg>
+        <input id="q" type="search" placeholder="工程名で探す" aria-label="工程名・業務名・メモで探す">
+        <button id="qClear" class="q-x" type="button" title="検索を消す" aria-label="検索を消す" hidden>×</button>
+      </span>
+      <select id="ownerSel" aria-label="担当で絞り込む"><option value="">担当：すべて</option></select>
 
-    <span class="zoom" id="zoom">
-      <button data-w="18" data-sc="1" data-h="56">小</button>
-      <button data-w="30" data-sc="1.14" data-h="72" class="on">中</button>
-      <button data-w="44" data-sc="1.3" data-h="92">大</button>
-    </span>
-    <button id="btnLabels" title="ガントの丸に工程名を添えて表示する（印刷には必ず出ます）"
-            aria-pressed="false">工程名</button>
-    <button id="btnToday">今日へ</button>
+      <span class="zoom" id="zoom">
+        <button data-w="18" data-sc="1" data-h="56">小</button>
+        <button data-w="30" data-sc="1.14" data-h="72" class="on">中</button>
+        <button data-w="44" data-sc="1.3" data-h="92">大</button>
+      </span>
+      <button id="btnLabels" title="ガントの丸に工程名を添えて表示する（印刷には必ず出ます）"
+              aria-pressed="false">工程名</button>
+      <button id="btnToday">今日へ</button>
 
-    <span class="theme-wrap">
-      <button id="btnTheme">🎨 テーマ</button>
-      <div class="theme-pop" id="themePop">
-        <div class="t-title">カラーテーマ</div>
-        <div class="theme-grid" id="themeGrid"></div>
-      </div>
-    </span>
+      <span class="theme-wrap">
+        <button id="btnTheme">🎨 テーマ</button>
+        <div class="theme-pop" id="themePop">
+          <div class="t-title">カラーテーマ</div>
+          <div class="theme-grid" id="themeGrid"></div>
+        </div>
+      </span>
 
-    <a id="linkEditor" class="applink" target="_blank" rel="noopener" hidden>工程を編集</a>
-    <button id="btnPrint">印刷</button>
-    <button id="btnReload" class="primary">再読み込み</button>
+      <a id="linkEditor" class="applink" target="_blank" rel="noopener" hidden>工程を編集</a>
+      <button id="btnPrint">印刷</button>
+      <button id="btnReload" class="primary">再読み込み</button>
+    </span>
   </header>
 
   <div class="main">
@@ -803,7 +901,8 @@ var view = 'gantt';
 var PRINT_W = Math.floor((297 - 16) / 25.4 * 96);   // ≒1062px
 /** 同じく刷り高（210mm − 余白8mm×2） */
 var PRINT_H = Math.floor((210 - 16) / 25.4 * 96);   // ≒733px
-var LABEL_W = 260;                                   // ラベル列（--label-w と合わせる）
+var NARROW_PX = 720;      // これ以下の幅を「スマホ」として扱う（CSS の @media と同じ値）
+var wasNarrow = false;    // 直前がスマホ幅だったか。跨いだときだけ組み直す
 var dayW = 30;            // 1日あたりの幅。［小］［中］［大］で変わる
 var laneH = 72;           // ガント1行の高さの下限。同上
 var labelsOn = false;     // ガントに工程名を出すか（［工程名］ボタン。既定は出さない）
@@ -819,6 +918,22 @@ var ownerFilter = '';     // 担当での絞り込み
  * 凡例チップ（hidden）とは別に、3ビューと左パネルすべてに効かせる。
  */
 function filterOn() { return !!(query || ownerFilter); }
+
+/**
+ * スマホ幅かどうか。
+ * 印刷中は必ず false。紙は body の幅を PRINT_W（1062px）に固定して組み立てるので、
+ * ここでスマホ用の見た目に切り替わるとページ割りが壊れる。
+ */
+function isNarrow() {
+  if (document.body.classList.contains('printing')) return false;
+  return window.matchMedia('(max-width: ' + NARROW_PX + 'px)').matches;
+}
+
+/** ラベル列の幅。画面幅で変わるので CSS の --label-w を正とする */
+function labelW() {
+  var v = getComputedStyle(document.documentElement).getPropertyValue('--label-w');
+  return parseFloat(v) || 260;
+}
 
 function matchItem(item, lane) {
   if (ownerFilter && String(item.owner || '') !== ownerFilter) return false;
@@ -1093,8 +1208,12 @@ function onData() {
 // =====================================================================
 // 左パネル（今日やること）
 // =====================================================================
-function renderSide() {
-  var side = document.getElementById('side');
+/**
+ * 「今日やること」の一覧。
+ * 広い画面では左パネル（#side）に、スマホでは［予定］タブの本体に描く。
+ */
+function renderSide(root) {
+  var side = root || document.getElementById('side');
   side.innerHTML = '';
   var d = DATA.digest;
   var over = filterDigest(d.overdue), tod = filterDigest(d.today), soon = filterDigest(d.soon);
@@ -1154,6 +1273,12 @@ function renderView() {
   document.getElementById('btnToday').style.display = view === 'gantt' ? '' : 'none';
   if (view === 'gantt') renderGantt(c);
   else if (view === 'work') renderWorkView(c);
+  else if (view === 'side') {
+    // スマホの［予定］タブ。左パネルと同じ中身を本体に描く
+    var wrap = el('div', 'view side-view');
+    renderSide(wrap);
+    c.appendChild(wrap);
+  }
   else renderMonth(c);
 }
 
@@ -1205,12 +1330,12 @@ function renderGantt(root) {
 function drawGantt(grid) {
   grid.innerHTML = '';
   // 紙ではラベル列を狭くするので、網掛けと目盛りの原点もそれに合わせる
-  var labelW = printing ? PRINT_LABEL_W : LABEL_W;
+  var lw = printing ? PRINT_LABEL_W : labelW();
   var trackW = days.length * dayW;
-  grid.style.width = (labelW + trackW) + 'px';
+  grid.style.width = (lw + trackW) + 'px';
 
   var bg = el('div', 'bg-layer');
-  bg.style.left = labelW + 'px';
+  bg.style.left = lw + 'px';
   bg.style.width = trackW + 'px';
   days.forEach(function (k, i) {
     if (!isOff(k)) return;
@@ -1277,7 +1402,7 @@ function drawGantt(grid) {
   head.appendChild(dayRow);
 
   var ticks = el('div', 'tick-layer');
-  ticks.style.left = labelW + 'px';
+  ticks.style.left = lw + 'px';
   ticks.style.width = trackW + 'px';
   // 数字が入る幅があれば毎日、狭ければ月曜だけに間引く。
   // 紙は文字が小さいぶん、画面より狭くても毎日入る
@@ -1620,6 +1745,17 @@ function renderMonth(root) {
     });
   });
 
+  // スマホ幅では7列に詰めると工程名が読めないため、日ごとのリストにする
+  if (isNarrow()) {
+    var listWrap = renderDayList(byDate);
+    wrap.appendChild(listWrap);
+    root.appendChild(wrap);
+    listWrap.addEventListener('click', function (ev) {
+      if (!ev.target.closest('.ev')) closeDetail();
+    });
+    return;
+  }
+
   var calWrap = el('div', 'cal-wrap');
   var head = el('div', 'cal-head');
   WD.forEach(function (w, i) {
@@ -1646,12 +1782,79 @@ function renderMonth(root) {
   });
 }
 
+/**
+ * スマホ幅の月間ビュー。
+ * その月のうち予定のある日だけを縦に並べる。件数の折り畳みはしない。
+ */
+function renderDayList(byDate) {
+  var wrap = el('div', 'day-list');
+  var lastDay = new Date(Date.UTC(+calMonth.slice(0, 4), +calMonth.slice(5, 7), 0)).getUTCDate();
+  var shown = 0;
+
+  for (var d = 1; d <= lastDay; d++) {
+    var key = calMonth + '-' + (d < 10 ? '0' : '') + d;
+    var list = byDate[key] || [];
+    if (!list.length) continue;
+
+    var cls = 'day-row';
+    if (isOff(key)) cls += ' we';
+    if (key === DATA.today) cls += ' today';
+    var row = el('div', cls);
+    row.style.animationDelay = delay(shown, 14, 380);
+
+    var when = el('div', 'day-when');
+    when.appendChild(document.createTextNode(
+      d + '(' + WD[toDate(key).getUTCDay()] + ')'));
+    if (holidayName[key]) when.appendChild(el('span', 'day-hol', holidayName[key]));
+    row.appendChild(when);
+
+    var evs = el('div', 'day-evs');
+    list.forEach(function (ctx, n) { evs.appendChild(makeEventChip(ctx, shown * 2 + n)); });
+    row.appendChild(evs);
+
+    wrap.appendChild(row);
+    shown++;
+  }
+
+  if (!shown) {
+    wrap.appendChild(el('div', 'empty', filterOn()
+      ? '絞り込みに当てはまる予定はこの月にありません。'
+      : 'この月に予定はありません。'));
+  }
+  return wrap;
+}
+
 /** セルの高さに応じて、畳んだ状態で見せる件数を決める */
 function cellChipLimit() {
   var h = window.innerHeight || 800;
   if (h < 620) return 1;
   if (h < 780) return 2;
   return 3;
+}
+
+/**
+ * 1件の工程を表すチップ。
+ * 月間カレンダーのセルと、スマホの日ごとリストの両方で使う。
+ */
+function makeEventChip(ctx, order) {
+  var color = hues(ctx.lane.color);
+  var done = ctx.item.status === '完了';
+  var ev = el('div', 'ev' + (done ? ' done' : '') + (ctx.item.overdue ? ' overdue' : ''));
+  ev.style.background = color.soft;
+  ev.style.color = 'var(--text)';
+  ev.style.animationDelay = delay(order, 10, 430);
+  var dot = el('i');
+  dot.style.background = color.bar;
+  ev.appendChild(dot);
+  var label = ctx.item.name;
+  if (ctx.edge === 'start') label = label + ' 〜';
+  else if (ctx.edge === 'end') label = '〜 ' + label;
+  ev.appendChild(el('span', '', label));
+  ev.title = ctx.lane.workName + ' ' + periodLabel(ctx.lane.period) + '\n' + ctx.item.name
+    + (ctx.item.endKey ? '\n' + fmtShort(ctx.item.dueKey) + '〜' + fmtShort(ctx.item.endKey) : '')
+    + '\n' + ctx.item.status;
+  ev.onclick = function (e) { e.stopPropagation(); openDetail(e, ctx); };
+  return ev;
 }
 
 function renderCell(key, byDate, i) {
@@ -1671,24 +1874,7 @@ function renderCell(key, byDate, i) {
   var list = byDate[key] || [];
   var limit = expandedCells[key] ? list.length : cellChipLimit();
   list.slice(0, limit).forEach(function (ctx, n) {
-    var color = hues(ctx.lane.color);
-    var done = ctx.item.status === '完了';
-    var ev = el('div', 'ev' + (done ? ' done' : '') + (ctx.item.overdue ? ' overdue' : ''));
-    ev.style.background = color.soft;
-    ev.style.color = 'var(--text)';
-    ev.style.animationDelay = delay(i * 2 + n, 10, 430);
-    var dot = el('i');
-    dot.style.background = color.bar;
-    ev.appendChild(dot);
-    var label = ctx.item.name;
-    if (ctx.edge === 'start') label = label + ' 〜';
-    else if (ctx.edge === 'end') label = '〜 ' + label;
-    ev.appendChild(el('span', '', label));
-    ev.title = ctx.lane.workName + ' ' + periodLabel(ctx.lane.period) + '\n' + ctx.item.name
-      + (ctx.item.endKey ? '\n' + fmtShort(ctx.item.dueKey) + '〜' + fmtShort(ctx.item.endKey) : '')
-      + '\n' + ctx.item.status;
-    ev.onclick = function (e) { e.stopPropagation(); openDetail(e, ctx); };
-    cell.appendChild(ev);
+    cell.appendChild(makeEventChip(ctx, i * 2 + n));
   });
   if (list.length > limit) {
     var more = el('div', 'ev-more', '＋' + (list.length - limit) + '件');
@@ -1705,12 +1891,19 @@ function openDetail(ev, ctx) {
   if (!ctx) return;
   var box = document.getElementById('detail');
   box.innerHTML = '';
-  box.className = 'open';
 
-  var x = Math.min(ev.clientX + 12, window.innerWidth - 338);
-  var y = Math.min(ev.clientY + 12, window.innerHeight - 260);
-  box.style.left = Math.max(8, x) + 'px';
-  box.style.top = Math.max(8, y) + 'px';
+  if (isNarrow()) {
+    // スマホでは指の位置に出すと画面からはみ出すので、下からのシートにする
+    box.className = 'open sheet';
+    box.style.left = '';
+    box.style.top = '';
+  } else {
+    box.className = 'open';
+    var x = Math.min(ev.clientX + 12, window.innerWidth - 338);
+    var y = Math.min(ev.clientY + 12, window.innerHeight - 260);
+    box.style.left = Math.max(8, x) + 'px';
+    box.style.top = Math.max(8, y) + 'px';
+  }
 
   var close = el('button', 'close-x', '×');
   close.onclick = closeDetail;
@@ -2157,6 +2350,10 @@ function startPrint() {
   // 1ページに入る行数の見積もりがずれる
   document.body.style.width = PRINT_W + 'px';
 
+  // スマホ幅で日ごとのリストを出していたら、紙用に7列のカレンダーへ組み直す。
+  // printing を付けたあとなので isNarrow() は false を返す
+  if (view === 'month' && document.querySelector('.day-list')) renderView();
+
   // 見出しに刷る期間を書くので、横軸を切り直してから作る
   if (view === 'gantt') {
     savedDayW = dayW;
@@ -2206,11 +2403,8 @@ document.getElementById('tabs').onclick = function (ev) {
   var b = ev.target.closest('button');
   if (!b || !b.dataset.view) return;
   view = b.dataset.view;
-  Array.prototype.forEach.call(this.querySelectorAll('button'), function (x) { x.classList.remove('on'); });
-  b.classList.add('on');
-  movePill();
+  syncTabs();
   closeDetail();
-  syncLabelBtn();
   if (DATA) renderView();
 };
 
@@ -2228,7 +2422,10 @@ function applySize(b, rerender) {
   if (!b) return;
   dayW = Number(b.getAttribute('data-w')) || 30;
   laneH = Number(b.getAttribute('data-h')) || 62;
-  document.documentElement.style.setProperty('--sc', b.getAttribute('data-sc') || '1');
+  // スマホでは［小］の倍率のままだと文字が読めないので、下限を設ける
+  var sc = Number(b.getAttribute('data-sc')) || 1;
+  if (isNarrow()) sc = Math.max(sc, 1.14);
+  document.documentElement.style.setProperty('--sc', String(sc));
   var zoom = document.getElementById('zoom');
   Array.prototype.forEach.call(zoom.querySelectorAll('button'), function (x) { x.classList.remove('on'); });
   b.classList.add('on');
@@ -2236,7 +2433,7 @@ function applySize(b, rerender) {
   if (rerender && DATA) { renderView(); setTimeout(scrollToToday, 40); }
 }
 
-/** 前回選んだ表示サイズを復元する（未保存なら［中］のまま） */
+/** 前回選んだ表示サイズを復元する（未保存ならPCは［中］、スマホは［小］） */
 function loadSize() {
   var saved = null;
   try { saved = localStorage.getItem(SIZE_KEY); } catch (e) { /* 読めなくてもよい */ }
@@ -2245,6 +2442,8 @@ function loadSize() {
   Array.prototype.forEach.call(zoom.querySelectorAll('button'), function (x) {
     if (saved && x.textContent === saved) btn = x;
   });
+  // スマホは1日44pxだと数日ぶんしか入らないので、選ばれていなければ［小］にする
+  if (!btn && isNarrow()) btn = zoom.querySelector('[data-w="18"]');
   applySize(btn || zoom.querySelector('.on'), false);
 
   var lab = null;
@@ -2309,15 +2508,52 @@ document.addEventListener('keydown', function (ev) {
 var resizeTimer = null;
 window.addEventListener('resize', function () {
   movePill();
+
+  // スマホ幅とPC幅を跨いだら、文字の倍率と表示サイズを当て直して組み直す
+  if (isNarrow() !== wasNarrow) {
+    wasNarrow = isNarrow();
+    // PCに戻ったとき［予定］タブは消えるので、迷子にならないようガントへ落とす
+    if (!wasNarrow && view === 'side') { view = 'gantt'; syncTabs(); }
+    document.getElementById('tools').classList.remove('open');
+    setMoreState(false);
+    applySize(document.getElementById('zoom').querySelector('.on'), false);
+    if (DATA) { clearTimeout(resizeTimer); resizeTimer = setTimeout(renderView, 120); }
+    return;
+  }
+
   // 高さが変わると1セルに入る件数が変わるため、月間ビューは組み直す
   if (view !== 'month' || !DATA) return;
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(renderView, 200);
 });
 
+/** タブの見た目をいまの view に合わせる */
+function syncTabs() {
+  var tabs = document.getElementById('tabs');
+  Array.prototype.forEach.call(tabs.querySelectorAll('button'), function (x) {
+    x.classList.toggle('on', x.dataset.view === view);
+  });
+  movePill();
+  syncLabelBtn();
+}
+
+/** ［⋯］の開閉状態を反映する */
+function setMoreState(open) {
+  document.getElementById('btnMore').setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+document.getElementById('btnMore').onclick = function () {
+  var open = document.getElementById('tools').classList.toggle('open');
+  setMoreState(open);
+  movePill();
+};
+
 loadTheme();
 applyTheme(themeId, false);
+// スマホでは、まず「今日やること」が見えたほうが役に立つ
+if (isNarrow()) view = 'side';
+wasNarrow = isNarrow();
 loadSize();
-movePill();
+syncTabs();
 load();
 </script>

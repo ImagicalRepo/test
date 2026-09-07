@@ -38,7 +38,7 @@ var SHEET = {
  * このコードの版。配布元の版と比べて更新の有無を知らせる。
  * dist を作り直すときに手で上げる。
  */
-var VERSION = '2.2.0';
+var VERSION = '2.3.0';
 
 /** 各シートのヘッダー定義（列は名前で参照するため、並び替えても壊れない） */
 var SHEET_DEFS = [
@@ -2147,6 +2147,8 @@ function showGantt() {
   var settings = getSettings_();
   var html = loadHtml_('gantt', settings)
     .evaluate()
+    // スマホのスプレッドシートアプリから開いたとき、980px幅で描かれて全体が縮むのを防ぐ
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setWidth(clampSize_(settingNumber_(settings, '画面の幅', 1400), 800, 2000))
     .setHeight(clampSize_(settingNumber_(settings, '画面の高さ', 800), 480, 1400));
   SpreadsheetApp.getUi().showModalDialog(html, scheduleTitle_(settings));
@@ -2156,6 +2158,7 @@ function showTemplateEditor() {
   var settings = getSettings_();
   var html = loadHtml_('editor', settings)
     .evaluate()
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setWidth(clampSize_(settingNumber_(settings, '画面の幅', 1400) - 250, 800, 1700))
     .setHeight(clampSize_(settingNumber_(settings, '画面の高さ', 800), 480, 1400));
   SpreadsheetApp.getUi().showModalDialog(html, '工程テンプレートの編集');
@@ -3521,7 +3524,9 @@ function showTemplateDialog_(mode) {
   tpl.payload = mode === 'export' ? exportTemplatesJson() : '';
   tpl.version = VERSION;
   SpreadsheetApp.getUi().showModalDialog(
-    tpl.evaluate().setWidth(720).setHeight(620),
+    tpl.evaluate()
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+      .setWidth(720).setHeight(620),
     mode === 'export' ? 'テンプレートの書き出し' : 'テンプレートの読み込み');
 }
 

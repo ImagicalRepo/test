@@ -314,6 +314,36 @@ async function main() {
   await page3.screenshot({ path: path.join(OUT, 'print-calendar.png'), fullPage: true });
   await page3.close();
 
+  // ---- 10. スマホ幅で印刷しても紙の組み方が変わらないか ----
+  // 紙は body の幅を PRINT_W に固定して組むため、印刷中に
+  // スマホ用の日ごとリストへ切り替わるとページ割りが壊れる（isNarrow の分岐）
+  console.log('\nスマホ幅からの印刷');
+  const page4 = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  page4.on('pageerror', e => errors.push('pageerror: ' + e.message));
+  await page4.goto('file://' + path.join(OUT, 'index.html'));
+  await page4.waitForTimeout(800);
+  const narrowPrint = await page4.evaluate(() => {
+    const beforeNarrow = isNarrow();
+    document.querySelector('#tabs button[data-view="month"]').click();
+    window.print = function () {};
+    startPrint();
+    return {
+      beforeNarrow: beforeNarrow,
+      narrowWhilePrinting: isNarrow(),
+      bodyW: document.body.style.width,
+      grid: document.querySelectorAll('.cal-grid').length,
+      list: document.querySelectorAll('.day-list').length,
+      cells: document.querySelectorAll('.cal-grid .cell').length
+    };
+  });
+  check('画面ではスマホ扱い', narrowPrint.beforeNarrow === true);
+  check('印刷中はスマホ扱いにしない', narrowPrint.narrowWhilePrinting === false);
+  check('紙の幅は 1062px に固定される', narrowPrint.bodyW === '1062px', narrowPrint.bodyW);
+  check('紙は7列のカレンダーで組む',
+    narrowPrint.grid === 1 && narrowPrint.list === 0 && narrowPrint.cells >= 35,
+    narrowPrint.cells + ' マス / リスト ' + narrowPrint.list);
+  await page4.close();
+
   await browser.close();
 
   console.log('\n' + '─'.repeat(48));
