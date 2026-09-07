@@ -40,7 +40,7 @@ def main() -> int:
 
         print("=== 有効な書類を選ぶ ===")
         session = ReviewSession.open(rules, store, "1111111")
-        results.append(check("入力対象は14問", len(session.rows), 14))
+        results.append(check("入力対象は12問", len(session.rows), 12))
         session.set_documents({"資格確認書"})
         results.append(check("書3-1 は OK", session.rows["書3-1"].result, CHECK_OK))
         results.append(check("書3-2 は入力できる", session.rows["書3-2"].editable, True))

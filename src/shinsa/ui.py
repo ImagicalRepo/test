@@ -25,7 +25,11 @@ LINE = "#bdbdbd"
 
 def pick_font_family() -> str:
     """日本語が読みやすいフォントを選ぶ。無ければ既定に任せる."""
-    preferred = ["Meiryo UI", "Meiryo", "Yu Gothic UI", "MS UI Gothic"]
+    # 前半が Windows（配布先）、後半は開発機で確認するとき用
+    preferred = [
+        "Meiryo UI", "Meiryo", "Yu Gothic UI", "MS UI Gothic",
+        "Noto Sans CJK JP", "IPAGothic",
+    ]
     available = set(tkfont.families())
     for name in preferred:
         if name in available:

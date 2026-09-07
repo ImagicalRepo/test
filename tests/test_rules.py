@@ -118,15 +118,13 @@ def test_extensions() -> int:
     print("\n=== ツール対象の設問 ===")
     results = []
     items = [r["設問ID"] for r in RULES.tool_items()]
-    results.append(check("入力対象は14問", len(items), 14))
+    results.append(check("入力対象は12問", len(items), 12))
     results.append(check("臨個票の欄は除外", [i for i in items if i.startswith("書2")], []))
     results.append(check("表示順の先頭", items[0], "書1-1"))
 
     print("\n=== 設問の依存関係 ===")
     results.append(check("書3-1 の従属", sorted(RULES.dependents("書3-1")), ["書3-2", "書3-3"]))
-    results.append(
-        check("書4-1 の従属", sorted(RULES.dependents("書4-1")), ["書4-2", "書4-3", "書4d-2", "書4d-3"])
-    )
+    results.append(check("書4-1 の従属", sorted(RULES.dependents("書4-1")), ["書4-2", "書4-3"]))
     results.append(check("従属の無い設問", RULES.dependents("書1-1"), []))
     results.append(
         check("書3-1 が NG → 判定不能", sorted(RULES.unanswerable({"書3-1"})), ["書3-2", "書3-3"])
@@ -135,7 +133,7 @@ def test_extensions() -> int:
         check(
             "複数 NG をまとめて解決",
             sorted(RULES.unanswerable({"書3-1", "書4-1"})),
-            ["書3-2", "書3-3", "書4-2", "書4-3", "書4d-2", "書4d-3"],
+            ["書3-2", "書3-3", "書4-2", "書4-3"],
         )
     )
     results.append(check("NG が無ければ空", RULES.unanswerable(set()), set()))

@@ -31,6 +31,9 @@ from .ui import BG, FG, LINE, MUTED, Fonts, heading, separator
 
 WINDOW_TITLE = "審査データ見直しツール"
 
+# ラジオボタンの三状態表示を止めるための番兵。実際の入力状態と絶対に一致しない値にする。
+NEVER_SELECTED = "\u0001未選択\u0001"
+
 
 class App(tk.Tk):
     def __init__(self, rules: RuleSet, store: Store) -> None:
@@ -50,7 +53,7 @@ class App(tk.Tk):
         self.row_widgets: dict[str, dict] = {}
 
         self.title(WINDOW_TITLE)
-        self.geometry("1320x900")
+        self.geometry("1460x900")
         self.configure(bg=BG)
         self._build_menu()
         self._build()
@@ -279,15 +282,32 @@ class App(tk.Tk):
         defect_options = [""] + sorted(
             self.rules.defect_codes, key=lambda c: int(self.rules.defect_codes[c].get("表示順") or 99)
         )
-        for row_index, item in enumerate(self.rules.tool_items()):
+        # 設問文が同じ行がある（例：「高額かつ長期に該当するか」は通常提出分と
+        # 追加提出分の両方にある）。現物の様式どおり、確認書類ごとの見出しを付けて
+        # 区別できるようにする。
+        row_index = 0
+        previous_group = None
+        for item in self.rules.tool_items():
             item_id = item["設問ID"]
+            group = item.get("確認書類", "")
+            if group != previous_group:
+                header = tk.Frame(self.check_area, bg=BG)
+                header.grid(row=row_index, column=0, sticky="w", pady=(8, 1))
+                tk.Label(
+                    header, text=f"■ {item.get('大項目N', '')}　{group}".replace("\n", " "),
+                    font=self.fonts.heading, bg=BG, fg=FG, anchor="w",
+                ).pack(side="left")
+                previous_group = group
+                row_index += 1
+
             row = tk.Frame(self.check_area, bg=BG)
             row.grid(row=row_index, column=0, sticky="w", pady=1)
+            row_index += 1
 
             tk.Label(row, text=item_id, font=self.fonts.small, bg=BG, fg=MUTED,
                      width=7, anchor="w").pack(side="left")
             tk.Label(row, text=item["設問文"].replace("\n", " "), font=self.fonts.base,
-                     bg=BG, fg=FG, width=52, anchor="w", justify="left").pack(side="left")
+                     bg=BG, fg=FG, width=64, anchor="w", justify="left").pack(side="left")
 
             var = tk.StringVar()
             self.check_vars[item_id] = var
@@ -296,6 +316,10 @@ class App(tk.Tk):
                 button = tk.Radiobutton(
                     row, text=text, variable=var, value=value, font=self.fonts.base,
                     bg=BG, activebackground=BG, selectcolor="#ffffff",
+                    # 未入力（空文字）だと Tk が三状態表示になり、全部が選ばれて見える。
+                    # 実在しない値を指定して、未選択として描かせる。
+                    # NUL 文字は Tcl 側で空文字と同じ扱いになり効かないので、普通の文字列にする。
+                    tristatevalue=NEVER_SELECTED,
                     command=lambda i=item_id: self._on_check_changed(i),
                 )
                 button.pack(side="left")
@@ -309,7 +333,7 @@ class App(tk.Tk):
             combo.bind("<<ComboboxSelected>>", lambda _e, i=item_id: self._on_check_changed(i))
 
             hint = tk.Label(row, text="", font=self.fonts.small, bg=BG, fg=MUTED,
-                            width=30, anchor="w")
+                            width=26, anchor="w")
             hint.pack(side="left", padx=(8, 0))
 
             self.row_widgets[item_id] = {"buttons": buttons, "combo": combo, "hint": hint}
