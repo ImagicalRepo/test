@@ -46,6 +46,10 @@ class PaneState:
     viewport: Viewport | None = None
     bookmarks: list[int] = field(default_factory=list)
     photo: ImageTk.PhotoImage | None = None   # GC されないよう保持する
+    # 利用者が拡大・スクロールしたか。していなければ、窓の大きさが変わるたびに
+    # 全体が見えるように収め直す。これが無いと、窓の寸法が決まる前に計算した
+    # 倍率のまま固定され、ページが表示されないことがある。
+    user_adjusted: bool = False
 
 
 class CanvasWindow(tk.Toplevel):
@@ -196,6 +200,7 @@ class CanvasWindow(tk.Toplevel):
         pane.page_index = max(0, min(page_index, pane.page_count - 1))
         pane.doc_label = doc_label
         pane.bookmarks = bookmarks if bookmarks is not None else []
+        pane.user_adjusted = False
         self._load_page(side, fit=True)
 
     def _load_page(self, side: str, fit: bool = False) -> None:
@@ -203,9 +208,16 @@ class CanvasWindow(tk.Toplevel):
         if pane.pdf_path is None:
             return
         pane.image = self.prefetcher.load(pane.pdf_path, pane.page_index)
+        # 窓の寸法が確定してから倍率を決める。確定前だと幅が 1 のまま計算され、
+        # 極小の倍率で固定されてページが見えなくなる。
+        self.canvas.update_idletasks()
         rect = self._pane_rect(side)
         view = Viewport(pane.image.width, pane.image.height, *rect)
-        pane.viewport = view.fitted() if fit or pane.viewport is None else view.resized(*rect)
+        if fit or pane.viewport is None or not pane.user_adjusted:
+            pane.viewport = view.fitted()
+            pane.user_adjusted = False
+        else:
+            pane.viewport = view.resized(*rect)
         self._refresh_nav(side)
         self._redraw()
 
@@ -254,12 +266,14 @@ class CanvasWindow(tk.Toplevel):
         pane = self.panes[side]
         if pane.viewport:
             pane.viewport = pane.viewport.zoomed(factor)
+            pane.user_adjusted = True
             self._redraw()
 
     def _fit(self, side: str) -> None:
         pane = self.panes[side]
         if pane.viewport:
             pane.viewport = pane.viewport.fitted()
+            pane.user_adjusted = False
             self._redraw()
 
     def _on_wheel(self, event: tk.Event) -> None:
@@ -274,6 +288,7 @@ class CanvasWindow(tk.Toplevel):
             pane.viewport = pane.viewport.zoomed(1.1 if delta < 0 else 1 / 1.1, (event.x, event.y))
         else:
             pane.viewport = pane.viewport.scrolled(0, delta * 0.6)
+        pane.user_adjusted = True
         self._redraw()
 
     # ---------- 描画 ----------
@@ -288,9 +303,16 @@ class CanvasWindow(tk.Toplevel):
         return SIDE_LEFT if x < self.canvas.winfo_width() // 2 else SIDE_RIGHT
 
     def _relayout(self) -> None:
+        """窓の大きさが変わったとき.
+
+        利用者が拡大・スクロールしていなければ収め直す。
+        こうしないと、窓の寸法が決まる前に計算した倍率のまま固定されてしまう。
+        """
         for side, pane in self.panes.items():
-            if pane.viewport:
-                pane.viewport = pane.viewport.resized(*self._pane_rect(side))
+            if not pane.viewport:
+                continue
+            resized = pane.viewport.resized(*self._pane_rect(side))
+            pane.viewport = resized if pane.user_adjusted else resized.fitted()
         self._redraw()
 
     def _redraw(self) -> None:
