@@ -15,7 +15,8 @@ from tkinter import messagebox
 
 from .config import MATCH_DIFF, MATCH_NA, MATCH_SAME, RESULT_LABEL, data_dir
 from .rules import RuleSet, combine
-from .ui import BG, FG, LINE, MUTED, RESULT_COLORS, Fonts, heading, separator
+from .theme import RESULT_SYMBOLS, THEMES, load_theme_name
+from .ui import Fonts, heading, separator
 
 WINDOW_TITLE = "書類審査 判断支援ツール"
 
@@ -24,14 +25,15 @@ class App(tk.Tk):
     def __init__(self, rules: RuleSet) -> None:
         super().__init__()
         self.rules = rules
-        self.fonts = Fonts()
+        self.theme = THEMES[load_theme_name()]
+        self.fonts = Fonts(self.theme.font_scale)
         self.doc_vars: dict[str, tk.BooleanVar] = {}
         self.match_vars: dict[tuple[str, str], tk.StringVar] = {}
         self.current_item: str | None = None
 
         self.title(WINDOW_TITLE)
         self.geometry("1180x760")
-        self.configure(bg=BG)
+        self.configure(bg=self.theme.bg)
         self.minsize(980, 640)
 
         self._build()
@@ -47,15 +49,15 @@ class App(tk.Tk):
     # ---------- 画面構築 ----------
 
     def _build(self) -> None:
-        left = tk.Frame(self, bg=BG, padx=12, pady=12)
+        left = tk.Frame(self, bg=self.theme.bg, padx=12, pady=12)
         left.pack(side="left", fill="y")
-        heading(left, "① 確認する項目", self.fonts).pack(fill="x", pady=(0, 6))
+        heading(left, "① 確認する項目", self.fonts, self.theme).pack(fill="x", pady=(0, 6))
 
         self.item_ids = sorted(self.rules.checklist_items)
         self.item_list = tk.Listbox(
             left, width=34, height=26, font=self.fonts.base,
             exportselection=False, activestyle="none",
-            highlightthickness=1, highlightbackground=LINE,
+            highlightthickness=1, highlightbackground=self.theme.line,
         )
         for item_id in self.item_ids:
             row = self.rules.checklist_items[item_id]
@@ -65,26 +67,26 @@ class App(tk.Tk):
 
         tk.Label(
             left, text="Esc＝入力クリア　F5＝判定表の再読込",
-            font=self.fonts.small, bg=BG, fg=MUTED, anchor="w",
+            font=self.fonts.small, bg=self.theme.bg, fg=self.theme.muted, anchor="w",
         ).pack(fill="x", pady=(8, 0))
 
-        right = tk.Frame(self, bg=BG, padx=16, pady=12)
+        right = tk.Frame(self, bg=self.theme.bg, padx=16, pady=12)
         right.pack(side="left", fill="both", expand=True)
 
         self.item_text = tk.Label(
-            right, text="", font=self.fonts.label, bg=BG, fg=MUTED,
+            right, text="", font=self.fonts.label, bg=self.theme.bg, fg=self.theme.muted,
             anchor="w", justify="left", wraplength=780,
         )
         self.item_text.pack(fill="x", pady=(0, 10))
 
-        self.input_area = tk.Frame(right, bg=BG)
+        self.input_area = tk.Frame(right, bg=self.theme.bg)
         self.input_area.pack(fill="both", expand=True)
 
-        separator(right).pack(fill="x", pady=10)
+        separator(right, self.theme).pack(fill="x", pady=10)
         self._build_result_area(right)
 
     def _build_result_area(self, parent: tk.Misc) -> None:
-        heading(parent, "③ 判定結果", self.fonts).pack(fill="x")
+        heading(parent, "③ 判定結果", self.fonts, self.theme).pack(fill="x")
 
         self.result_label = tk.Label(
             parent, text="", font=self.fonts.result,
@@ -93,19 +95,19 @@ class App(tk.Tk):
         self.result_label.pack(fill="x", pady=(6, 8))
 
         self.reason_label = tk.Label(
-            parent, text="", font=self.fonts.reason, bg=BG, fg=FG,
+            parent, text="", font=self.fonts.reason, bg=self.theme.bg, fg=self.theme.fg,
             anchor="w", justify="left", wraplength=820,
         )
         self.reason_label.pack(fill="x")
 
         self.entry_label = tk.Label(
-            parent, text="", font=self.fonts.reason, bg="#f5f5f5", fg=FG,
+            parent, text="", font=self.fonts.reason, bg=self.theme.surface, fg=self.theme.fg,
             anchor="w", justify="left", wraplength=820, padx=10, pady=8,
         )
         self.entry_label.pack(fill="x", pady=(8, 0))
 
         self.source_label = tk.Label(
-            parent, text="", font=self.fonts.small, bg=BG, fg=MUTED, anchor="w",
+            parent, text="", font=self.fonts.small, bg=self.theme.bg, fg=self.theme.muted, anchor="w",
         )
         self.source_label.pack(fill="x", pady=(6, 0))
 
@@ -135,7 +137,7 @@ class App(tk.Tk):
             tk.Label(
                 self.input_area,
                 text="この設問は判定表に未登録です。管理者に相談してください。",
-                font=self.fonts.reason, bg=BG, fg=MUTED, anchor="w",
+                font=self.fonts.reason, bg=self.theme.bg, fg=self.theme.muted, anchor="w",
             ).pack(fill="x")
 
         self._judge()
@@ -144,15 +146,15 @@ class App(tk.Tk):
         heading(self.input_area, "② 提出された書類を選ぶ（複数可）", self.fonts).pack(
             fill="x", pady=(0, 6)
         )
-        grid = tk.Frame(self.input_area, bg=BG)
+        grid = tk.Frame(self.input_area, bg=self.theme.bg)
         grid.pack(fill="x")
         for index, doc in enumerate(docs):
             var = tk.BooleanVar(value=False)
             self.doc_vars[doc["書類ID"]] = var
             tk.Checkbutton(
                 grid, text=doc["表示名"], variable=var, command=self._judge,
-                font=self.fonts.base, bg=BG, fg=FG, anchor="w",
-                activebackground=BG, selectcolor="#ffffff", padx=4,
+                font=self.fonts.base, bg=self.theme.bg, fg=self.theme.fg, anchor="w",
+                activebackground=self.theme.bg, selectcolor=self.theme.surface, padx=4,
             ).grid(row=index // 2, column=index % 2, sticky="w", padx=(0, 24), pady=2)
 
     def _build_match_matrix(self, fields: list[str]) -> None:
@@ -166,7 +168,7 @@ class App(tk.Tk):
         label = f"② 突合の結果を選ぶ（基準：{self._doc_label(base)}）" if base else "② 突合の結果を選ぶ"
         heading(self.input_area, label, self.fonts).pack(fill="x", pady=(12, 6))
 
-        grid = tk.Frame(self.input_area, bg=BG)
+        grid = tk.Frame(self.input_area, bg=self.theme.bg)
         grid.pack(fill="x")
 
         if not docs:
@@ -176,37 +178,37 @@ class App(tk.Tk):
 
         for col, doc in enumerate(docs, start=1):
             tk.Label(
-                grid, text=self._doc_label(doc), font=self.fonts.base, bg=BG, fg=FG,
+                grid, text=self._doc_label(doc), font=self.fonts.base, bg=self.theme.bg, fg=self.theme.fg,
             ).grid(row=0, column=col, padx=(0, 18), pady=(0, 4))
 
         for row_index, field_name in enumerate(fields, start=1):
             tk.Label(
-                grid, text=field_name, font=self.fonts.base, bg=BG, fg=FG,
+                grid, text=field_name, font=self.fonts.base, bg=self.theme.bg, fg=self.theme.fg,
                 width=12, anchor="w",
             ).grid(row=row_index, column=0, sticky="w", pady=3)
 
             for col, doc in enumerate(docs, start=1):
                 var = tk.StringVar(value="")
                 self.match_vars[(field_name, doc)] = var
-                cell = tk.Frame(grid, bg=BG)
+                cell = tk.Frame(grid, bg=self.theme.bg)
                 cell.grid(row=row_index, column=col, sticky="w", padx=(0, 18))
-                for text, value in [("一致", MATCH_SAME), ("不一致", MATCH_DIFF), ("－", MATCH_NA)]:
+                for text, value in [("○一致", MATCH_SAME), ("×不一致", MATCH_DIFF), ("－", MATCH_NA)]:
                     tk.Radiobutton(
                         cell, text=text, variable=var, value=value, command=self._judge,
-                        font=self.fonts.base, bg=BG, fg=FG, activebackground=BG,
-                        selectcolor="#ffffff",
+                        font=self.fonts.base, bg=self.theme.bg, fg=self.theme.fg, activebackground=self.theme.bg,
+                        selectcolor=self.theme.surface,
                     ).pack(side="left")
 
         tk.Label(
             self.input_area,
             text="－ ＝ その書類では確認できない（未確認のまま判定に含めません）",
-            font=self.fonts.small, bg=BG, fg=MUTED, anchor="w",
+            font=self.fonts.small, bg=self.theme.bg, fg=self.theme.muted, anchor="w",
         ).pack(fill="x", pady=(6, 0))
 
     def _build_simple_match(self, grid: tk.Frame, fields: list[str]) -> None:
         for row_index, field_name in enumerate(fields):
             tk.Label(
-                grid, text=field_name, font=self.fonts.base, bg=BG, fg=FG,
+                grid, text=field_name, font=self.fonts.base, bg=self.theme.bg, fg=self.theme.fg,
                 width=12, anchor="w",
             ).grid(row=row_index, column=0, sticky="w", pady=3)
             var = tk.StringVar(value="")
@@ -216,8 +218,8 @@ class App(tk.Tk):
             ):
                 tk.Radiobutton(
                     grid, text=text, variable=var, value=value, command=self._judge,
-                    font=self.fonts.base, bg=BG, fg=FG, activebackground=BG,
-                    selectcolor="#ffffff",
+                    font=self.fonts.base, bg=self.theme.bg, fg=self.theme.fg, activebackground=self.theme.bg,
+                    selectcolor=self.theme.surface,
                 ).grid(row=row_index, column=col, sticky="w", padx=(0, 14))
 
     def _doc_label(self, doc_id: str) -> str:
@@ -260,14 +262,17 @@ class App(tk.Tk):
 
     def _render(self, judgement) -> None:
         if judgement is None:
-            self.result_label.config(text="（選択してください）", fg=MUTED, bg="#fafafa")
+            self.result_label.config(text="（選択してください）", fg=self.theme.muted, bg="#fafafa")
             self.reason_label.config(text="")
             self.entry_label.config(text="")
             self.source_label.config(text="")
             return
 
-        fg, bg = RESULT_COLORS[judgement.result]
-        self.result_label.config(text=RESULT_LABEL[judgement.result], fg=fg, bg=bg)
+        fg, bg = self.theme.result_colors()[judgement.result]
+        symbol = RESULT_SYMBOLS.get(judgement.result, "")
+        self.result_label.config(
+            text=f"{symbol} {RESULT_LABEL[judgement.result]}", fg=fg, bg=bg
+        )
         self.reason_label.config(text=f"理由：{judgement.reason}")
         self.entry_label.config(
             text=f"チェックリストへの記入：{judgement.entry_method}"

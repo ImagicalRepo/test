@@ -18,6 +18,19 @@ from .store import Store
 RESULT_TO_CHECK = {RESULT_OK: CHECK_OK, RESULT_NG: CHECK_NG, RESULT_ASK: CHECK_ASK}
 
 
+# 元に戻せる回数。作業は 1 件ずつ完結するので、これで足りる。
+UNDO_LIMIT = 50
+
+
+@dataclass(frozen=True)
+class Snapshot:
+    """元に戻すための、ある時点の入力内容."""
+
+    documents: frozenset[str]
+    rows: tuple[tuple[str, str, str], ...]   # (設問ID, 判定, 不備理由)
+    touched: frozenset[str]
+
+
 @dataclass
 class RowState:
     """チェックリスト 1 行の状態."""
@@ -39,6 +52,10 @@ class ReviewSession:
     documents: set[str] = field(default_factory=set)
     rows: dict[str, RowState] = field(default_factory=dict)
     touched: set[str] = field(default_factory=set)  # 人が手で変えた設問
+    undo_stack: list[Snapshot] = field(default_factory=list)
+    # 入力のたびに書き込む。数か月続く作業なので、停電や強制終了で
+    # 編集中の 1 件を失わないようにする。書き込むのは十数行なので負荷は無視できる。
+    autosave: bool = True
 
     @classmethod
     def open(cls, rules: RuleSet, store: Store, recipient_no: str) -> "ReviewSession":
@@ -60,20 +77,66 @@ class ReviewSession:
         session.refresh()
         return session
 
+    # ---------- 元に戻す ----------
+
+    def snapshot(self) -> Snapshot:
+        return Snapshot(
+            documents=frozenset(self.documents),
+            rows=tuple((i, r.result, r.defect_code) for i, r in sorted(self.rows.items())),
+            touched=frozenset(self.touched),
+        )
+
+    def _push_undo(self) -> None:
+        self.undo_stack.append(self.snapshot())
+        if len(self.undo_stack) > UNDO_LIMIT:
+            self.undo_stack.pop(0)
+
+    def undo(self) -> bool:
+        """直前の入力を取り消す。戻せるものが無ければ False."""
+        if not self.undo_stack:
+            return False
+        snapshot = self.undo_stack.pop()
+        self.documents = set(snapshot.documents)
+        self.touched = set(snapshot.touched)
+        for item_id, result, defect_code in snapshot.rows:
+            row = self.rows.get(item_id)
+            if row is not None:
+                row.result = result
+                row.defect_code = defect_code
+        # 判定表の候補と入力可否だけを引き直す（入力内容は戻した値のまま）
+        self._apply_judgements_hint_only()
+        self._apply_dependencies()
+        self._autosave()
+        return True
+
+    @property
+    def can_undo(self) -> bool:
+        return bool(self.undo_stack)
+
     # ---------- 入力 ----------
 
     def set_documents(self, doc_ids: set[str]) -> None:
+        self._push_undo()
         self.documents = set(doc_ids)
         self.refresh()
+        self._autosave()
+
+    def toggle_document(self, doc_id: str) -> None:
+        """書類を 1 つ切り替える（キーボード操作用）."""
+        documents = set(self.documents)
+        documents.symmetric_difference_update({doc_id})
+        self.set_documents(documents)
 
     def set_check(self, item_id: str, result: str, defect_code: str = "") -> None:
         row = self.rows.get(item_id)
         if row is None or not row.editable:
             return
+        self._push_undo()
         row.result = result
         row.defect_code = defect_code
         self.touched.add(item_id)
         self._apply_dependencies()
+        self._autosave()
 
     def all_ok(self) -> None:
         """判定表が答えを持たない設問を、まとめて OK にする.
@@ -83,6 +146,7 @@ class ReviewSession:
         **判定表が決める設問には手を出さない。** 書類から機械的に決まるものを
         人の一括操作で塗り潰すと、判定表と食い違ったまま完了できてしまう。
         """
+        self._push_undo()
         for item_id, row in self.rows.items():
             if self.judge(item_id) is not None:
                 continue
@@ -90,6 +154,7 @@ class ReviewSession:
             row.defect_code = ""
             self.touched.add(item_id)
         self._apply_dependencies()
+        self._autosave()
 
     # ---------- 判定 ----------
 
@@ -133,6 +198,15 @@ class ReviewSession:
             row.result = RESULT_TO_CHECK.get(judgement.result, CHECK_BLANK)
             row.defect_code = judgement.defect_code
 
+    def _apply_judgements_hint_only(self) -> None:
+        """候補の表示だけを引き直す。入力内容には手を触れない（元に戻す用）."""
+        for item_id, row in self.rows.items():
+            judgement = self.judge(item_id)
+            row.hint = "" if judgement is None else (
+                f"判定表: {judgement.result}"
+                + (f"（{judgement.defect_code}）" if judgement.defect_code else "")
+            )
+
     def _apply_dependencies(self) -> None:
         """前提が NG の設問を「判定不能」にして、入力を求めない.
 
@@ -166,6 +240,10 @@ class ReviewSession:
         return bool(self.ask_items)
 
     # ---------- 保存 ----------
+
+    def _autosave(self) -> None:
+        if self.autosave:
+            self.save()
 
     def save(self) -> None:
         self.store.set_documents(

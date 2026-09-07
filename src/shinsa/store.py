@@ -223,6 +223,20 @@ class Store:
         rows = self.list_cases(status=CASE_PENDING, limit=1)
         return rows[0] if rows else None
 
+    def resume_point(self) -> CaseRow | None:
+        """前回の続き.
+
+        作業中のまま閉じた案件があればそれを、無ければ次の未着手を返す。
+        数か月にわたる作業なので、開いたら前回の位置から始められるようにする。
+        """
+        rows = self.conn.execute(
+            "SELECT * FROM cases WHERE status = ? ORDER BY started_at DESC LIMIT 1",
+            (CASE_WORKING,),
+        ).fetchall()
+        if rows:
+            return _to_case_row(rows[0])
+        return self.next_pending()
+
     def set_primary(self, recipient_no: str, primary_path: str, additional: list[str]) -> None:
         """本体を入れ替える（最古が本体とは限らないため）."""
         with self._write() as conn:

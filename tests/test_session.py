@@ -32,7 +32,14 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        for name in ["01A1111111A001_20260601_1.pdf", "01A2222222A001_20260602_1.pdf"]:
+        # 検証ごとに独立した案件を使う（前の検証の入力を引きずらないため）
+        for name in [
+            "01A1111111A001_20260601_1.pdf",   # 基本の流れ
+            "01A2222222A001_20260602_1.pdf",   # 保存・相談
+            "01A3333333A001_20260603_1.pdf",   # 元に戻す
+            "01A4444444A001_20260604_1.pdf",   # トグル
+            "01A5555555A001_20260605_1.pdf",   # 停電対策
+        ]:
             (root / name).write_bytes(b"%PDF-1.4\n")
         parsed, _ = scan_folder(root)
         store = Store(root / "作業.db", worker="ペアA")
@@ -130,6 +137,67 @@ def main() -> int:
         reopened.complete()
         results.append(check("完了になる", store.get_case("1111111").status, CASE_DONE))
         results.append(check("次の未着手が出る", store.next_pending().recipient_no, "2222222"))
+
+        print("\n=== 入力のたびに保存される（停電対策）===")
+        # ReviewSession を捨てて（＝アプリが落ちた想定で）、DB を直接見る
+        crash = ReviewSession.open(rules, store, "5555555")
+        crash.set_documents({"高齢受給者証"})
+        crash.set_check("書1-1", CHECK_NG, "確認不可")
+        del crash   # save() を呼ばずに破棄
+
+        results.append(check("書類が残っている", store.get_documents("5555555"), ["高齢受給者証"]))
+        saved_checks = store.get_checks("5555555")
+        results.append(check("入力が残っている", saved_checks["書1-1"]["result"], CHECK_NG))
+        results.append(check("判定不能も残っている", saved_checks["書3-2"]["result"], CHECK_NA))
+
+        print("\n=== 前回の続きから再開する ===")
+        resume = store.resume_point()
+        results.append(check("作業中の案件が返る", resume.recipient_no, "5555555"))
+        reopened_after_crash = ReviewSession.open(rules, store, resume.recipient_no)
+        results.append(
+            check("続きから開ける", reopened_after_crash.rows["書1-1"].result, CHECK_NG)
+        )
+
+        print("\n=== 元に戻す（Ctrl+Z）===")
+        undo_session = ReviewSession.open(rules, store, "3333333")
+        results.append(check("最初は戻せない", undo_session.can_undo, False))
+
+        undo_session.set_documents({"資格確認書"})
+        results.append(check("書類を選ぶと OK になる", undo_session.rows["書3-1"].result, CHECK_OK))
+        results.append(check("戻せる状態になる", undo_session.can_undo, True))
+
+        undo_session.set_documents({"高齢受給者証"})
+        results.append(check("無効書類にすると NG", undo_session.rows["書3-1"].result, CHECK_NG))
+        results.append(check("従属は判定不能", undo_session.rows["書3-2"].result, CHECK_NA))
+
+        undo_session.undo()
+        results.append(check("書類の選択が戻る", undo_session.documents, {"資格確認書"}))
+        results.append(check("判定も戻る", undo_session.rows["書3-1"].result, CHECK_OK))
+        results.append(check("判定不能も解ける", undo_session.rows["書3-2"].editable, True))
+
+        undo_session.undo()
+        results.append(check("さらに戻すと未選択", undo_session.documents, set()))
+        results.append(check("戻しきると戻せない", undo_session.can_undo, False))
+        results.append(check("それ以上は False を返す", undo_session.undo(), False))
+
+        print("\n=== 手入力とすべてOKも戻せる ===")
+        undo_session.set_documents({"資格確認書", "管理票"})
+        undo_session.all_ok()
+        undo_session.set_check("書1-1", CHECK_NG, "確認不可")
+        results.append(check("手入力が入る", undo_session.rows["書1-1"].result, CHECK_NG))
+        undo_session.undo()
+        results.append(check("手入力を取り消せる", undo_session.rows["書1-1"].result, CHECK_OK))
+        undo_session.undo()
+        results.append(check("すべてOKも取り消せる", undo_session.rows["書1-2"].result, CHECK_BLANK))
+
+        print("\n=== 書類のトグル（キーボード操作）===")
+        toggle_session = ReviewSession.open(rules, store, "4444444")
+        toggle_session.toggle_document("資格確認書")
+        results.append(check("押すと入る", toggle_session.documents, {"資格確認書"}))
+        toggle_session.toggle_document("資格確認書")
+        results.append(check("もう一度押すと外れる", toggle_session.documents, set()))
+        toggle_session.undo()
+        results.append(check("トグルも戻せる", toggle_session.documents, {"資格確認書"}))
 
         print("\n=== 相談へ送る ===")
         other = ReviewSession.open(rules, store, "2222222")

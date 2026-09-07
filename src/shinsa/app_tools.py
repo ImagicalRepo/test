@@ -17,15 +17,17 @@ from tkinter import filedialog, messagebox, ttk
 from . import detect, masking, prescan
 from .config import MASK_DONE, MASK_NOT_NEEDED, MASK_TODO, app_dir
 from .store import Store
-from .ui import BG, FG, MUTED, Fonts
+from .theme import Theme
+from .ui import Fonts
 
 
 class PrescanDialog(tk.Toplevel):
     """事前バッチ：メモ欄の書き込みで優先順位を付ける."""
 
-    def __init__(self, parent: tk.Misc, fonts: Fonts, store: Store) -> None:
+    def __init__(self, parent: tk.Misc, fonts: Fonts, theme: Theme, store: Store) -> None:
         super().__init__(parent)
         self.fonts = fonts
+        self.theme = theme
         self.store = store
         self.queue: queue.Queue = queue.Queue()
         self.cancelled = False
@@ -38,13 +40,13 @@ class PrescanDialog(tk.Toplevel):
 
         self.title("事前バッチ　－　確認する順序を決める")
         self.geometry("820x620")
-        self.configure(bg=BG)
+        self.configure(bg=self.theme.bg)
         self._build()
         self._load_template()
 
     def _build(self) -> None:
         tk.Label(
-            self, bg=BG, fg=MUTED, font=self.fonts.small, anchor="w", justify="left", padx=10,
+            self, bg=self.theme.bg, fg=self.theme.muted, font=self.fonts.small, anchor="w", justify="left", padx=10,
             text="全 1 万件を見るとしても、順序は選べます。\n"
                  "チェックリストのメモ欄に書き込みがある案件を先に回すと、論点が早く見えます。\n"
                  "（文字を読むのではなく、黒い画素の割合を測っているだけです）",
@@ -53,20 +55,20 @@ class PrescanDialog(tk.Toplevel):
         step1 = self._section("手順1　チェックリストの見本を登録する")
         tk.Button(step1, text="見本の PDF を選ぶ", command=self._choose_sample,
                   font=self.fonts.base).grid(row=0, column=0, sticky="w")
-        tk.Label(step1, textvariable=self.sample_pdf, font=self.fonts.small, bg=BG,
-                 fg=MUTED).grid(row=0, column=1, sticky="w", padx=8)
+        tk.Label(step1, textvariable=self.sample_pdf, font=self.fonts.small, bg=self.theme.bg,
+                 fg=self.theme.muted).grid(row=0, column=1, sticky="w", padx=8)
         tk.Label(step1, text="チェックリストのページ番号", font=self.fonts.base,
-                 bg=BG, fg=FG).grid(row=1, column=0, sticky="w", pady=4)
+                 bg=self.theme.bg, fg=self.theme.fg).grid(row=1, column=0, sticky="w", pady=4)
         tk.Entry(step1, textvariable=self.sample_page, width=6,
                  font=self.fonts.base).grid(row=1, column=1, sticky="w", padx=8)
         tk.Button(step1, text="見本として登録", command=self._make_template,
                   font=self.fonts.base).grid(row=2, column=0, sticky="w", pady=4)
-        self.template_status = tk.Label(step1, text="", font=self.fonts.small, bg=BG, fg=MUTED)
+        self.template_status = tk.Label(step1, text="", font=self.fonts.small, bg=self.theme.bg, fg=self.theme.muted)
         self.template_status.grid(row=2, column=1, sticky="w", padx=8)
 
         step2 = self._section("手順2　実行する")
         tk.Label(step2, text="書き込みありとみなす黒画素率", font=self.fonts.base,
-                 bg=BG, fg=FG).grid(row=0, column=0, sticky="w")
+                 bg=self.theme.bg, fg=self.theme.fg).grid(row=0, column=0, sticky="w")
         tk.Entry(step2, textvariable=self.ink_threshold, width=8,
                  font=self.fonts.base).grid(row=0, column=1, sticky="w", padx=8)
         self.run_button = tk.Button(step2, text="実行", command=self._run, font=self.fonts.heading)
@@ -76,14 +78,14 @@ class PrescanDialog(tk.Toplevel):
 
         self.progress = ttk.Progressbar(self, mode="determinate")
         self.progress.pack(fill="x", padx=10, pady=(8, 4))
-        self.log = tk.Text(self, height=14, font=self.fonts.small, bg="#fafafa",
+        self.log = tk.Text(self, height=14, font=self.fonts.small, bg=self.theme.surface,
                            relief="solid", bd=1)
         self.log.pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
     def _section(self, title: str) -> tk.Frame:
-        tk.Label(self, text=title, font=self.fonts.heading, bg=BG, fg=FG,
+        tk.Label(self, text=title, font=self.fonts.heading, bg=self.theme.bg, fg=self.theme.fg,
                  anchor="w", padx=10).pack(fill="x", pady=(8, 2))
-        frame = tk.Frame(self, bg=BG, padx=22)
+        frame = tk.Frame(self, bg=self.theme.bg, padx=22)
         frame.pack(fill="x")
         return frame
 
@@ -197,29 +199,30 @@ class MaskQueueDialog(tk.Toplevel):
     「未」が残ったまま持ち出さないための歯止め。
     """
 
-    def __init__(self, parent: tk.Misc, fonts: Fonts, store: Store) -> None:
+    def __init__(self, parent: tk.Misc, fonts: Fonts, theme: Theme, store: Store) -> None:
         super().__init__(parent)
         self.fonts = fonts
+        self.theme = theme
         self.store = store
         self.rows: list = []
 
         self.title("マスキング待ち")
         self.geometry("980x560")
-        self.configure(bg=BG)
+        self.configure(bg=self.theme.bg)
         self._build()
         self._refresh()
 
     def _build(self) -> None:
-        bar = tk.Frame(self, bg=BG, padx=10, pady=8)
+        bar = tk.Frame(self, bg=self.theme.bg, padx=10, pady=8)
         bar.pack(fill="x")
-        self.summary = tk.Label(bar, text="", font=self.fonts.heading, bg=BG, fg=FG)
+        self.summary = tk.Label(bar, text="", font=self.fonts.heading, bg=self.theme.bg, fg=self.theme.fg)
         self.summary.pack(side="left")
         tk.Button(bar, text="更新", command=self._refresh, font=self.fonts.base).pack(side="right")
         tk.Button(bar, text="選んだものを「済」にする", command=self._mark_done,
                   font=self.fonts.base).pack(side="right", padx=8)
 
         tk.Label(
-            self, bg=BG, fg=MUTED, font=self.fonts.small, anchor="w", justify="left", padx=10,
+            self, bg=self.theme.bg, fg=self.theme.muted, font=self.fonts.small, anchor="w", justify="left", padx=10,
             text="マスキングが必要なのは、端末の外へ持ち出す画像だけです。"
                  "端末内に置くだけなら「不要」のままで構いません。\n"
                  "「未」を「済」にする前に、実際にマスキングを済ませてください"
@@ -247,7 +250,7 @@ class MaskQueueDialog(tk.Toplevel):
             )
         self.summary.config(
             text=f"マスキング未　{todo} 件" + ("　← 持ち出せません" if todo else ""),
-            fg="#b71c1c" if todo else FG,
+            fg=self.theme.ng_fg if todo else self.theme.fg,
         )
 
     def _mark_done(self) -> None:
@@ -269,21 +272,22 @@ class MaskQueueDialog(tk.Toplevel):
 class AuditDialog(tk.Toplevel):
     """持ち出す前の自主点検."""
 
-    def __init__(self, parent: tk.Misc, fonts: Fonts, store: Store) -> None:
+    def __init__(self, parent: tk.Misc, fonts: Fonts, theme: Theme, store: Store) -> None:
         super().__init__(parent)
         self.fonts = fonts
+        self.theme = theme
         self.store = store
         self.target = tk.StringVar(value=str(app_dir() / "出力" / "マークアップ"))
 
         self.title("出力点検　－　持ち出す前に")
         self.geometry("900x600")
-        self.configure(bg=BG)
+        self.configure(bg=self.theme.bg)
         self._build()
 
     def _build(self) -> None:
-        bar = tk.Frame(self, bg=BG, padx=10, pady=8)
+        bar = tk.Frame(self, bg=self.theme.bg, padx=10, pady=8)
         bar.pack(fill="x")
-        tk.Label(bar, text="点検するフォルダ", font=self.fonts.base, bg=BG, fg=FG).pack(side="left")
+        tk.Label(bar, text="点検するフォルダ", font=self.fonts.base, bg=self.theme.bg, fg=self.theme.fg).pack(side="left")
         tk.Entry(bar, textvariable=self.target, width=58, font=self.fonts.small).pack(
             side="left", padx=6)
         tk.Button(bar, text="…", command=self._choose).pack(side="left")
@@ -291,13 +295,13 @@ class AuditDialog(tk.Toplevel):
                   font=self.fonts.heading).pack(side="left", padx=12)
 
         tk.Label(
-            self, bg=BG, fg=MUTED, font=self.fonts.small, anchor="w", justify="left", padx=10,
+            self, bg=self.theme.bg, fg=self.theme.muted, font=self.fonts.small, anchor="w", justify="left", padx=10,
             text="この点検が見るのは「ファイル名に個人情報が入っていないか」"
                  "「マスクが指定されているか」だけです。\n"
                  "塗り残しは検出できません。持ち出す前に、必ず全ての画像を目視で確認してください。",
         ).pack(fill="x", pady=(0, 6))
 
-        self.result = tk.Text(self, height=24, font=self.fonts.base, bg="#fafafa",
+        self.result = tk.Text(self, height=24, font=self.fonts.base, bg=self.theme.surface,
                               relief="solid", bd=1)
         self.result.pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
