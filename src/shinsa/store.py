@@ -163,15 +163,19 @@ class Store:
 
     # ---------- 作業リスト ----------
 
-    def sync_cases(self, cases: list[Case]) -> tuple[int, int]:
+    def sync_cases(self, cases: list[Case], progress=None) -> tuple[int, int]:
         """作業リストを取り込む.
 
         既にある案件の作業状態は壊さない（再スキャンしても続きから作業できる）。
         戻り値は (新規, 更新)。
+        progress は (現在, 全体) を受け取る。1 万件だと数秒かかるので、
+        画面を固まったまま放置しないために使う。
         """
         added = updated = 0
         with self._write() as conn:
-            for case in cases:
+            for index, case in enumerate(cases, start=1):
+                if progress and index % 200 == 0:
+                    progress(index, len(cases))
                 row = conn.execute(
                     "SELECT recipient_no FROM cases WHERE recipient_no = ?",
                     (case.recipient_no,),

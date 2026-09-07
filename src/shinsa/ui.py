@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import font as tkfont
+from tkinter import font as tkfont, ttk
 
 from .theme import Theme
 
@@ -88,3 +88,43 @@ class KeyHintBar(tk.Frame):
                 bg=self.theme.surface, fg=self.theme.fg,
             ).pack(side="left")
             self._labels.append(holder)
+
+
+class ProgressWindow(tk.Toplevel):
+    """時間のかかる処理の間、画面を固まったままにしないための小窓.
+
+    「反応が無い」と、利用者は失敗したと思って強制終了してしまう。
+    """
+
+    def __init__(self, parent: tk.Misc, fonts: Fonts, theme: Theme, title: str) -> None:
+        super().__init__(parent)
+        self.title(title)
+        self.configure(bg=theme.bg)
+        self.geometry("420x110")
+        self.resizable(False, False)
+        self.transient(parent)
+        self.grab_set()
+
+        self.message = tk.Label(self, text="準備しています…", font=fonts.base,
+                                bg=theme.bg, fg=theme.fg, anchor="w", padx=14, pady=12)
+        self.message.pack(fill="x")
+        self.bar = ttk.Progressbar(self, mode="indeterminate")
+        self.bar.pack(fill="x", padx=14, pady=(0, 12))
+        self.bar.start(12)
+        self.update()
+
+    def report(self, text: str, current: int | None = None, total: int | None = None) -> None:
+        if current is not None and total:
+            if self.bar["mode"] != "determinate":
+                self.bar.stop()
+                self.bar.config(mode="determinate", maximum=total)
+            self.bar.config(value=current)
+            self.message.config(text=f"{text}　{current} / {total}")
+        else:
+            self.message.config(text=text)
+        self.update()
+
+    def close(self) -> None:
+        self.bar.stop()
+        self.grab_release()
+        self.destroy()

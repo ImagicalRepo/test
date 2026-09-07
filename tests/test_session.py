@@ -45,7 +45,17 @@ def main() -> int:
         store = Store(root / "作業.db", worker="ペアA")
         store.sync_cases(build_cases(parsed))
 
-        print("=== 有効な書類を選ぶ ===")
+        print("=== 開いた直後は判定しない（未入力と未提出は違う）===")
+        fresh = ReviewSession.open(rules, store, "1111111")
+        results.append(check("書3-1 は未入力のまま", fresh.rows["書3-1"].result, CHECK_BLANK))
+        results.append(check("候補も出さない", fresh.rows["書3-1"].hint, ""))
+        results.append(check("入力できる", fresh.rows["書3-1"].editable, True))
+        fresh.set_documents({"未提出"})
+        results.append(check("未提出を選べば NG", fresh.rows["書3-1"].result, CHECK_NG))
+        results.append(check("理由は未提出", fresh.rows["書3-1"].defect_code, "未提出"))
+        fresh.clear()
+
+        print("\n=== 有効な書類を選ぶ ===")
         session = ReviewSession.open(rules, store, "1111111")
         results.append(check("入力対象は12問", len(session.rows), 12))
         session.set_documents({"資格確認書"})
@@ -189,6 +199,25 @@ def main() -> int:
         results.append(check("手入力を取り消せる", undo_session.rows["書1-1"].result, CHECK_OK))
         undo_session.undo()
         results.append(check("すべてOKも取り消せる", undo_session.rows["書1-2"].result, CHECK_BLANK))
+
+        print("\n=== 入力を消す（Esc）は 1 回で戻せる ===")
+        clear_session = ReviewSession.open(rules, store, "3333333")
+        clear_session.set_documents({"資格確認書", "管理票"})
+        clear_session.all_ok()
+        clear_session.set_check("書1-1", CHECK_NG, "確認不可")
+        results.append(check("消す前は入力がある", clear_session.has_input, True))
+
+        clear_session.clear()
+        results.append(check("書類が消える", clear_session.documents, set()))
+        results.append(check("判定も消える", clear_session.rows["書1-1"].result, CHECK_BLANK))
+        results.append(check("消したあとは入力なし", clear_session.has_input, False))
+
+        clear_session.undo()
+        results.append(
+            check("Ctrl+Z 一度で全部戻る（書類）", clear_session.documents, {"資格確認書", "管理票"})
+        )
+        results.append(check("Ctrl+Z 一度で全部戻る（判定）", clear_session.rows["書1-1"].result, CHECK_NG))
+        results.append(check("不備理由も戻る", clear_session.rows["書1-1"].defect_code, "確認不可"))
 
         print("\n=== 書類のトグル（キーボード操作）===")
         toggle_session = ReviewSession.open(rules, store, "4444444")

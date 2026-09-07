@@ -138,6 +138,29 @@ class ReviewSession:
         self._apply_dependencies()
         self._autosave()
 
+    def clear(self) -> None:
+        """この案件の入力をすべて消す.
+
+        **1 回の操作として扱う**（Ctrl+Z 一度で元に戻せる）。
+        設問ごとに戻す作りだと、押し間違えたときに復旧できない。
+        """
+        self._push_undo()
+        self.documents.clear()
+        self.touched.clear()
+        for row in self.rows.values():
+            row.result = CHECK_BLANK
+            row.defect_code = ""
+            row.editable = True
+        self.refresh()
+        self._autosave()
+
+    @property
+    def has_input(self) -> bool:
+        """消して困る入力があるか（確認を出すかの判断に使う）."""
+        return bool(self.documents) or any(
+            r.result != CHECK_BLANK for r in self.rows.values()
+        )
+
     def all_ok(self) -> None:
         """判定表が答えを持たない設問を、まとめて OK にする.
 
@@ -170,6 +193,13 @@ class ReviewSession:
         関係する書類が 1 つも選ばれていなければ、その設問については未提出とみなす。
         """
         if not self.rules.docs_for_item(item_id):
+            return None
+
+        # 書類を 1 つも選んでいないうちは判定しない。
+        # **「未入力」と「未提出」は違う。** 案件を開いた直後にいきなり NG が付くと、
+        # まだ何も見ていないのに不備が決まったように見えてしまう。
+        # 「未提出」は、担当者がそう選んだときにだけ成立する。
+        if not self.documents:
             return None
 
         # 仮登録が混ざっているときは、どの設問も判定できない

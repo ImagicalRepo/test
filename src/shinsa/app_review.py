@@ -23,7 +23,7 @@ from .app_canvas import CanvasWindow
 from .app_tools import AuditDialog, MaskQueueDialog, PrescanDialog
 from .caselist import build_cases, scan_folder
 from .config import (
-    CASE_CONSULT, CASE_DONE, CASE_WORKING, CHECK_ASK, CHECK_BLANK, CHECK_NA,
+    CASE_CONSULT, CASE_DONE, CASE_WORKING, CHECK_ASK, CHECK_NA,
     CHECK_NG, CHECK_OK, MASK_TODO, app_dir, data_dir,
 )
 from .markup import SIDE_LEFT, SIDE_RIGHT, export_comparison
@@ -32,7 +32,7 @@ from .rules import RuleSet
 from .session import ReviewSession
 from .store import Store
 from .theme import CHECK_SYMBOLS, THEMES, Theme, load_theme_name, save_theme_name
-from .ui import Fonts, KeyHintBar
+from .ui import Fonts, KeyHintBar, ProgressWindow
 
 WINDOW_TITLE = "審査データ見直しツール"
 
@@ -77,6 +77,7 @@ class App(tk.Tk):
 
         self.title(WINDOW_TITLE)
         self.geometry("1500x920")
+        self.minsize(1180, 700)
         self.configure(bg=self.theme.bg)
         self._build_menu()
         self._build()
@@ -153,7 +154,7 @@ class App(tk.Tk):
 
         header = tk.Frame(right, bg=t.bg)
         header.pack(fill="x")
-        self.case_label = tk.Label(header, text="（案件を選んでください）",
+        self.case_label = tk.Label(header, text="",
                                    font=self.fonts.heading, bg=t.bg, fg=t.fg, anchor="w")
         self.case_label.pack(side="left")
         self.swap_button = tk.Button(header, text="本体を入れ替える", command=self._swap_primary,
@@ -327,8 +328,17 @@ class App(tk.Tk):
         folder = filedialog.askdirectory(title="スキャンデータのフォルダ（サブフォルダも探します）")
         if not folder:
             return
-        parsed, unparsed = scan_folder(Path(folder))
-        added, updated = self.store.sync_cases(build_cases(parsed))
+        progress = ProgressWindow(self, self.fonts, self.theme, "取り込み中")
+        try:
+            progress.report("フォルダを調べています…（サブフォルダも探します）")
+            parsed, unparsed = scan_folder(Path(folder))
+            progress.report(f"{len(parsed)} 件のファイルを読みました。作業リストを作っています…")
+            cases = build_cases(parsed)
+            added, updated = self.store.sync_cases(
+                cases, progress=lambda i, n: progress.report("作業リストに登録中", i, n)
+            )
+        finally:
+            progress.close()
         message = f"{added} 件を追加、{updated} 件を更新しました。"
         if unparsed:
             message += (
@@ -366,10 +376,16 @@ class App(tk.Tk):
         )
 
     def _resume(self) -> None:
-        """前回の続きから開く."""
+        """前回の続きから開く。何も無ければ、次にすることを案内する."""
         case = self.store.resume_point()
         if case:
             self._load_case(case.recipient_no)
+        elif self.store.progress()["合計"] == 0:
+            self.case_label.config(
+                text="まず「フォルダを取り込む」で、スキャンデータのある場所を指定してください。"
+            )
+        else:
+            self.case_label.config(text="未着手の案件はありません。おつかれさまでした。")
 
     def _open_selected(self) -> None:
         selection = self.case_list.curselection()
@@ -493,7 +509,22 @@ class App(tk.Tk):
         self.item_ids = []
 
         defect_options = [""] + self._defect_codes()
-        row_index = 0
+
+        # 列の見出し。何を選ぶ欄なのかを示す（入力欄にラベルを付ける）
+        header = tk.Frame(self.check_area, bg=t.bg, padx=2)
+        header.grid(row=0, column=0, sticky="w")
+        # 幅は本文と同じ書体で数える。見出しだけ小さい書体にすると列がずれる。
+        tk.Label(header, text="設問", font=self.fonts.small, bg=t.bg, fg=t.muted,
+                 width=7, anchor="w").pack(side="left")
+        tk.Label(header, text="確認内容", font=self.fonts.base, bg=t.bg, fg=t.muted,
+                 width=70, anchor="w").pack(side="left")
+        for _key, _state, label in STATE_CELLS:
+            tk.Label(header, text=label, font=self.fonts.small, bg=t.bg,
+                     fg=t.muted, width=8, padx=2).pack(side="left", padx=1)
+        tk.Label(header, text="不備理由 / 判定表の候補", font=self.fonts.small, bg=t.bg,
+                 fg=t.muted, anchor="w").pack(side="left", padx=(6, 0))
+
+        row_index = 1
         previous_group = None
         for item in self.rules.tool_items():
             item_id = item["設問ID"]
@@ -522,10 +553,14 @@ class App(tk.Tk):
 
             cells = {}
             for _key, state, label in STATE_CELLS:
+                # 押せる場所だと分かるように、カーソルを変え、触れたら色を変える。
+                # ただの文字に見えると、クリックできることに気づかれない。
                 cell = tk.Label(row, text=label, font=self.fonts.base, width=8,
-                                padx=2, bg=t.bg, fg=t.muted)
+                                padx=2, bg=t.bg, fg=t.muted, cursor="hand2")
                 cell.pack(side="left", padx=1)
                 cell.bind("<Button-1>", lambda _e, i=item_id, s=state: self._click_state(i, s))
+                cell.bind("<Enter>", lambda _e, c=cell, i=item_id, v=state: self._hover(c, i, v, True))
+                cell.bind("<Leave>", lambda _e, c=cell, i=item_id, v=state: self._hover(c, i, v, False))
                 cells[state] = cell
 
             defect = tk.StringVar()
@@ -541,6 +576,15 @@ class App(tk.Tk):
             self.row_widgets[item_id] = {
                 "row": row, "cells": cells, "combo": combo, "defect": defect, "hint": hint,
             }
+
+    def _hover(self, cell: tk.Label, item_id: str, state: str, entering: bool) -> None:
+        """触れている間だけ薄く色を付ける（選択済みの見た目は変えない）."""
+        if not self.session:
+            return
+        row = self.session.rows.get(item_id)
+        if row is None or row.result == state or not row.editable:
+            return
+        cell.config(bg=self.theme.select_bg if entering else self.theme.bg)
 
     def _click_state(self, item_id: str, state: str) -> None:
         if not self.session:
@@ -608,11 +652,20 @@ class App(tk.Tk):
             self._render_rows()
 
     def _clear_inputs(self) -> None:
+        """この案件の入力を消す（Esc）.
+
+        Esc は押し間違えやすいので、入力があるときは確認する。
+        消しても Ctrl+Z 一度で元に戻せる。
+        """
         if not self.session:
             return
-        self.session.set_documents(set())
-        for item_id in self.item_ids:
-            self.session.set_check(item_id, CHECK_BLANK, "")
+        if self.session.has_input and not messagebox.askyesno(
+            WINDOW_TITLE,
+            "この案件の入力をすべて消します。よろしいですか？\n\n"
+            "（消しても Ctrl+Z で元に戻せます）",
+        ):
+            return
+        self.session.clear()
         self._render_documents()
         self._render_rows()
 
