@@ -41,6 +41,10 @@ def main() -> int:
             ("相談", theme.ask_fg, theme.ask_bg, MIN_RATIO),
             ("罫線/地", theme.line, theme.bg, MIN_LARGE),
             ("フォーカス枠/地", theme.focus, theme.bg, MIN_LARGE),
+            # 枠線・強調にだけ使う色。文字には使わないので 3.0:1 で判定する。
+            # ここを甘くすると #D1D5DB のような「ほぼ見えない枠線」が紛れ込む。
+            ("強調枠/地", theme.accent, theme.bg, MIN_LARGE),
+            ("警告枠/地", theme.danger, theme.bg, MIN_LARGE),
         ]
         results = []
         for label, front, back, minimum in pairs:
@@ -51,6 +55,19 @@ def main() -> int:
                 failures.append(f"{name} / {label}: {ratio:.2f} (必要 {minimum})")
             results.append(f"{label} {ratio:4.1f}{'' if ok else ' ✗'}")
         print(f"  {name:<8} {' | '.join(results)}")
+
+    print("\n=== 強調色を本文に使っていないこと ===")
+    # #3B82F6 や #EF4444 は彩度を落とした分だけコントラストも落ちる。
+    # 枠線には使えるが、本文に使うと 4.5:1 を割る。用途の取り違えを防ぐ。
+    misuse = []
+    for name, theme in THEMES.items():
+        for label, color in [("強調", theme.accent), ("警告", theme.danger)]:
+            if contrast_ratio(color, theme.bg) < MIN_RATIO and color in (
+                theme.fg, theme.muted, theme.ok_fg, theme.ng_fg, theme.ask_fg
+            ):
+                misuse.append(f"{name}: {label}色 {color} を文字色に使っている")
+    print(f"  {'PASS' if not misuse else 'FAIL'}  文字色に転用していない")
+    failures.extend(misuse)
 
     print("\n=== 状態が色以外でも判別できること ===")
     symbol_ok = True

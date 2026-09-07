@@ -32,7 +32,7 @@ from .rules import RuleSet
 from .session import ReviewSession
 from .store import Store
 from .theme import CHECK_SYMBOLS, THEMES, Theme, load_theme_name, save_theme_name
-from .ui import Fonts, KeyHintBar, ProgressWindow
+from .ui import Fonts, KeyHintBar, ProgressWindow, polish, setup_ttk_style
 
 WINDOW_TITLE = "審査データ見直しツール"
 
@@ -79,8 +79,11 @@ class App(tk.Tk):
         self.geometry("1500x920")
         self.minsize(1180, 700)
         self.configure(bg=self.theme.bg)
+        setup_ttk_style(self, self.theme, self.fonts)
         self._build_menu()
         self._build()
+        # 組み終わってから平らにする。構築側に触れないので bind も配置も無傷。
+        polish(self, self.theme)
         self._bind_keys()
         self._refresh_list()
         self._resume()
@@ -462,6 +465,7 @@ class App(tk.Tk):
         tk.Button(self.doc_area, text="＋ 一覧にない書類を追加", command=self._add_provisional,
                   font=self.fonts.small).grid(row=len(docs) // 3 + 1, column=0, sticky="w",
                                               pady=(4, 0))
+        polish(self.doc_area, self.theme)
 
     def _render_documents(self) -> None:
         if self.session:
@@ -576,6 +580,8 @@ class App(tk.Tk):
             self.row_widgets[item_id] = {
                 "row": row, "cells": cells, "combo": combo, "defect": defect, "hint": hint,
             }
+
+        polish(self.check_area, self.theme)
 
     def _hover(self, cell: tk.Label, item_id: str, state: str, entering: bool) -> None:
         """触れている間だけ薄く色を付ける（選択済みの見た目は変えない）."""

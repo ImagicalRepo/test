@@ -18,7 +18,7 @@ from . import detect, masking, prescan
 from .config import MASK_DONE, MASK_NOT_NEEDED, MASK_TODO, app_dir
 from .store import Store
 from .theme import Theme
-from .ui import Fonts
+from .ui import Fonts, polish, setup_ttk_style
 
 
 class PrescanDialog(tk.Toplevel):
@@ -41,7 +41,9 @@ class PrescanDialog(tk.Toplevel):
         self.title("事前バッチ　－　確認する順序を決める")
         self.geometry("820x620")
         self.configure(bg=self.theme.bg)
+        setup_ttk_style(self, theme, fonts)
         self._build()
+        polish(self, theme)
         self._load_template()
 
     def _build(self) -> None:
@@ -209,7 +211,9 @@ class MaskQueueDialog(tk.Toplevel):
         self.title("マスキング待ち")
         self.geometry("980x560")
         self.configure(bg=self.theme.bg)
+        setup_ttk_style(self, theme, fonts)
         self._build()
+        polish(self, theme)
         self._refresh()
 
     def _build(self) -> None:
@@ -282,7 +286,9 @@ class AuditDialog(tk.Toplevel):
         self.title("出力点検　－　持ち出す前に")
         self.geometry("900x600")
         self.configure(bg=self.theme.bg)
+        setup_ttk_style(self, theme, fonts)
         self._build()
+        polish(self, theme)
 
     def _build(self) -> None:
         bar = tk.Frame(self, bg=self.theme.bg, padx=10, pady=8)

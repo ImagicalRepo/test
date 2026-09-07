@@ -57,6 +57,11 @@ class Theme:
     ng_bg: str
     ask_fg: str
     ask_bg: str
+    # 枠線・強調にだけ使う色。彩度を落としてあり、本文の 4.5:1 は満たさないので
+    # **文字色には使わない**。用途を分けることで、目に優しさと可読性を両立させる。
+    accent: str = "#3b82f6"        # 強調（枠線・下線）
+    accent_soft: str = "#93b8f5"   # 弱い強調（区切り・非活性）
+    danger: str = "#ef4444"        # 警告の枠線
     font_scale: float = 1.0
 
     def result_colors(self) -> dict[str, tuple[str, str]]:
@@ -69,54 +74,61 @@ class Theme:
 
 THEMES: dict[str, Theme] = {
     "標準": Theme(
+        accent="#3b82f6", accent_soft="#9dbdf5", danger="#ef4444",
         name="標準", note="白地。既定",
-        bg="#ffffff", surface="#f2f2f2", fg="#141414", muted="#4a4a4a",
+        bg="#ffffff", surface="#f2f2f2", fg="#141414", muted="#475569",
         line="#919191", focus="#0d47a1", canvas_bg="#5c5c5c",
         select_bg="#d6e4f7", select_fg="#101010",
         ok_fg="#14521a", ok_bg="#e4f2e5", ng_fg="#8c1111", ng_bg="#fbe4e4",
         ask_fg="#6b3a00", ask_bg="#fdf0d9",
     ),
     "アイボリー": Theme(
+        accent="#b06d1f", accent_soft="#ddc08e", danger="#d9534f",
         name="アイボリー", note="白がまぶしい人向け",
-        bg="#faf7ef", surface="#f0eadb", fg="#241f16", muted="#4f4638",
+        bg="#faf7ef", surface="#f0eadb", fg="#241f16", muted="#4d4638",
         line="#978c73", focus="#8a4b00", canvas_bg="#5a544a",
         select_bg="#e6d9b8", select_fg="#1a160f",
         ok_fg="#14521a", ok_bg="#e2eedd", ng_fg="#8c1111", ng_bg="#f6e2dc",
         ask_fg="#6b3a00", ask_bg="#f4e6c8",
     ),
     "ミント": Theme(
+        accent="#2f8f73", accent_soft="#9ccfbc", danger="#d9534f",
         name="ミント", note="淡い緑",
-        bg="#f1f7f4", surface="#e3efea", fg="#12271f", muted="#3f564d",
+        bg="#f1f7f4", surface="#e3efea", fg="#12271f", muted="#3d5349",
         line="#759388", focus="#0d5c46", canvas_bg="#4f5a56",
         select_bg="#c9e3d8", select_fg="#0d1f19",
         ok_fg="#14521a", ok_bg="#dcecdd", ng_fg="#8c1111", ng_bg="#f5e0e0",
         ask_fg="#6b3a00", ask_bg="#f1e6cc",
     ),
     "サクラ": Theme(
+        accent="#c2557a", accent_soft="#e6adc0", danger="#d9534f",
         name="サクラ", note="淡い桃",
-        bg="#fdf4f6", surface="#f7e7eb", fg="#2b1a1f", muted="#59444a",
+        bg="#fdf4f6", surface="#f7e7eb", fg="#2b1a1f", muted="#564249",
         line="#a2848b", focus="#8a1f43", canvas_bg="#5c5254",
         select_bg="#f0d2da", select_fg="#22151a",
         ok_fg="#14521a", ok_bg="#e4efe2", ng_fg="#8c1111", ng_bg="#f8ddde",
         ask_fg="#6b3a00", ask_bg="#f6e7cd",
     ),
     "スカイ": Theme(
+        accent="#2f7fbf", accent_soft="#9dc4e0", danger="#d9534f",
         name="スカイ", note="淡い青",
-        bg="#f2f7fc", surface="#e4eef7", fg="#12222e", muted="#3e5261",
+        bg="#f2f7fc", surface="#e4eef7", fg="#12222e", muted="#41525f",
         line="#7990a2", focus="#0b4a7a", canvas_bg="#4e565e",
         select_bg="#cde0f0", select_fg="#0d1a23",
         ok_fg="#14521a", ok_bg="#e0eede", ng_fg="#8c1111", ng_bg="#f7dfe0",
         ask_fg="#6b3a00", ask_bg="#f4e7cc",
     ),
     "ラベンダー": Theme(
+        accent="#7a5fb0", accent_soft="#c0aede", danger="#d9534f",
         name="ラベンダー", note="淡い紫",
-        bg="#f7f4fb", surface="#ebe4f4", fg="#211a2c", muted="#4b4059",
+        bg="#f7f4fb", surface="#ebe4f4", fg="#211a2c", muted="#4a4057",
         line="#9185a5", focus="#4a2a7a", canvas_bg="#575262",
         select_bg="#ddd0ee", select_fg="#191324",
         ok_fg="#14521a", ok_bg="#e2eee0", ng_fg="#8c1111", ng_bg="#f7dfe2",
         ask_fg="#6b3a00", ask_bg="#f4e6cd",
     ),
     "高コントラスト": Theme(
+        accent="#00308f", accent_soft="#5a7fc0", danger="#7a0000",
         name="高コントラスト", note="文字を大きく、線を濃く",
         bg="#ffffff", surface="#ededed", fg="#000000", muted="#2b2b2b",
         line="#000000", focus="#00308f", canvas_bg="#3a3a3a",
@@ -126,6 +138,7 @@ THEMES: dict[str, Theme] = {
         font_scale=1.15,
     ),
     "ダーク": Theme(
+        accent="#7fb3ff", accent_soft="#4a6a99", danger="#f28b82",
         name="ダーク", note="暗い部屋・夜間",
         bg="#1f2124", surface="#2a2d31", fg="#e9eaec", muted="#a9adb3",
         line="#686e75", focus="#7fb3ff", canvas_bg="#141517",

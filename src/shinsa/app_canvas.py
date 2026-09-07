@@ -24,7 +24,7 @@ from .markup import SIDE_LEFT, SIDE_RIGHT, ComparisonSet, MarkupRegion, MaskRegi
 from .masking import BLACKOUT, MOSAIC
 from .prefetch import Prefetcher
 from .theme import Theme
-from .ui import Fonts, KeyHintBar
+from .ui import Fonts, KeyHintBar, keep_style, polish, setup_ttk_style
 from .viewport import Viewport
 
 MODE_VIEW = "閲覧"
@@ -106,7 +106,9 @@ class CanvasWindow(tk.Toplevel):
         self.configure(bg=theme.bg)
         self.protocol("WM_DELETE_WINDOW", self.withdraw)  # 閉じても状態を捨てない
 
+        setup_ttk_style(self, theme, fonts)
         self._build(comparison_options or [], defect_options or [])
+        polish(self, theme)
         self._bind_keys()
         self.canvas.bind("<Configure>", lambda _e: self._relayout())
         self._update_mode_look()
@@ -128,6 +130,7 @@ class CanvasWindow(tk.Toplevel):
                 command=self._on_mode_changed,
             )
             button.pack(side="left", padx=(0, 4))
+            keep_style(button)   # _update_mode_look が色を塗り替えるため
             self.mode_buttons[value] = button
 
         tk.Label(bar, text="│", bg=t.surface, fg=t.line).pack(side="left", padx=6)
@@ -337,6 +340,7 @@ class CanvasWindow(tk.Toplevel):
                 widgets["marks"], text=f"p.{page_index + 1}", font=self.fonts.small,
                 command=lambda s=side, p=page_index: self._goto(s, p),
             ).pack(side="left", padx=1)
+        polish(widgets["marks"], self.theme)
 
     # ---------- 操作 ----------
 
