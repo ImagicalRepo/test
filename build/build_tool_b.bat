@@ -2,9 +2,11 @@
 rem ツールB（審査判断支援ツール）を exe にする
 rem 判定表は exe に埋め込まず、data フォルダの CSV を読む。
 rem そのため判定内容の修正に再ビルドは要らない。
+rem pyinstaller 単体ではなく python -m PyInstaller を使う。
+rem 単体コマンドはパスが通っていないことがある（pip と同じ理由）。
 cd /d "%~dp0\.."
 
-pyinstaller ^
+python -m PyInstaller ^
   --noconfirm ^
   --onedir ^
   --windowed ^
