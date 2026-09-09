@@ -251,16 +251,17 @@ async function main() {
   const off0 = await snap();
   check('既定では工程名を出さない', off0.labels === 0, String(off0.labels));
 
+  const btnText = () => page.evaluate(() => document.getElementById('btnLabels').textContent);
+  check('既定の見た目は「工程名」', await btnText() === '工程名', await btnText());
+
   await page.click('#btnLabels');
   await page.waitForTimeout(400);
   const on = await snap();
-  check('［工程名］で吹き出しが出る', on.labels > 0, String(on.labels));
+  check('1回押すと［4段］で吹き出しが出る', on.labels > 0, String(on.labels));
+  check('ボタンにいまの段数が出る', await btnText() === '工程名 4段', await btnText());
   check('引き出し線が吹き出しと同数', on.leaders === on.labels, on.leaders + ' vs ' + on.labels);
   check('押している状態が見て分かる',
-    await page.evaluate(() => {
-      const b = document.getElementById('btnLabels');
-      return b.classList.contains('on') && b.getAttribute('aria-pressed') === 'true';
-    }));
+    await page.evaluate(() => document.getElementById('btnLabels').classList.contains('on')));
   check('ON にしても画面からはみ出さない', on.used <= on.avail, on.used + ' / ' + on.avail);
   // ラベルが行の高さぶん伸びないと、背景が欠けて裏の土日の網掛けが透けて見える
   const labelFit = await page.evaluate(() => [...document.querySelectorAll('#grid .lane')]
@@ -270,10 +271,18 @@ async function main() {
 
   await page.click('#btnLabels');
   await page.waitForTimeout(400);
+  check('2回目は［全部］になる', await btnText() === '工程名 全部', await btnText());
+  const all = await snap();
+  check('［全部］でも吹き出しは出たまま', all.labels > 0, String(all.labels));
+  check('［全部］が保存される',
+    await page.evaluate(() => localStorage.getItem('schedule.labels')) === 'all');
+
+  await page.click('#btnLabels');
+  await page.waitForTimeout(400);
   const off1 = await snap();
-  check('もう一度押すと消える', off1.labels === 0 && off1.leaders === 0,
+  check('3回目で消える', off1.labels === 0 && off1.leaders === 0,
     off1.labels + ' / ' + off1.leaders);
-  check('ON/OFF が保存される',
+  check('［なし］が保存される',
     await page.evaluate(() => localStorage.getItem('schedule.labels')) === 'off');
 
   await page.evaluate(() => document.querySelector('#tabs button[data-view="month"]').click());

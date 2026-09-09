@@ -1,4 +1,4 @@
-<!-- version: 2.3.0 -->
+<!-- version: 2.4.0 -->
 <!-- スケジュール画面：ガント（業務横断）／業務別／月間カレンダー の3ビュー -->
 <style>
   /* ============ テーマ変数（既定はライト。JS で上書きする） ============ */
@@ -102,6 +102,9 @@
     z-index: 0;
   }
 
+  /* ［工程名］は なし／4段／全部 と替わるので、押すたびに幅が動かないようにする */
+  #btnLabels { min-width: 96px; }
+
   .applink {
     font-size: 13px; color: var(--accent); text-decoration: none; white-space: nowrap;
     border: 1px solid var(--border); border-radius: 7px; padding: 6px 12px;
@@ -166,7 +169,17 @@
   .side-view { overflow-y: auto; padding: 12px; background: var(--surface-2); }
 
   /* ============ 凡例 ============ */
-  .legend { display: flex; flex-wrap: wrap; gap: 6px; padding: 9px 13px; border-bottom: 1px solid var(--border); background: var(--surface); }
+  /* 凡例は1行に固定する。業務が25個あると折り返しで8行・279px まで伸び、
+     ガント本体の高さを食い潰してしまうため。まとめて選ぶのは［業務を選ぶ］に逃がす */
+  .legend {
+    display: flex; flex-wrap: nowrap; align-items: center; gap: 8px;
+    padding: 8px 13px; border-bottom: 1px solid var(--border); background: var(--surface);
+  }
+  .legend-strip { display: flex; gap: 6px; overflow-x: auto; flex: 1; min-width: 0; padding-bottom: 1px; }
+  .legend-strip::-webkit-scrollbar { height: 5px; }
+  .legend-strip::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .legend-pick { flex: 0 0 auto; font-size: var(--fs-sm); padding: 5px 10px; }
+  .legend-pick .n { color: var(--accent); font-weight: 700; }
   .chip {
     display: inline-flex; align-items: center; gap: 6px;
     border: 1px solid var(--border); border-radius: 999px;
@@ -239,6 +252,8 @@
   .lane-sub { font-size: var(--fs-xs); color: var(--muted); display: flex; align-items: center; gap: 9px; }
   .lane-sub a { color: var(--accent); text-decoration: none; cursor: pointer; }
   .lane-sub a:hover { text-decoration: underline; }
+  /* 吹き出しを4段までに抑えたとき、隠した件数を出す */
+  .lane-sub .clipped { color: var(--muted); font-size: var(--fs-xs); }
   .swatch { width: 3px; height: 15px; border-radius: 2px; flex: 0 0 3px; }
 
   .track { position: relative; flex: 1 0 auto; }
@@ -340,6 +355,7 @@
     border-bottom: 1px solid var(--border); background: var(--surface);
   }
   .chip { white-space: nowrap; }
+  .legend .chip { flex: 0 0 auto; }
   .cal-title { font-size: var(--fs-lg); font-weight: 700; min-width: 132px; }
   /* 月グリッドは縦スクロールさせず、画面の高さに合わせて行を分け合う */
   .cal-wrap {
@@ -436,9 +452,6 @@
     .mark.anchor { width: 19px; height: 19px; margin-top: -9.5px; }
     .range { height: 14px; }
 
-    /* 凡例は折り返さずに横スクロールで逃がす */
-    .legend { flex-wrap: nowrap; overflow-x: auto; }
-    .legend .chip { flex: 0 0 auto; }
   }
 
   /* 画面が低いときは余白と文字を詰めて、1か月ぶんを収める */
@@ -551,6 +564,33 @@
   .dlg .err { color: var(--danger); font-size: var(--fs-sm); margin-top: 7px; }
   .dlg button.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
 
+  /* ============ 業務を選ぶ ============ */
+  .picker { width: min(520px, 92vw); }
+  .picker .find { display: flex; gap: 7px; margin-bottom: 9px; }
+  .picker .find input {
+    flex: 1; min-width: 0; padding: 7px 9px; font-size: var(--fs-md); font-family: inherit;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text);
+  }
+  .picker .find input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .picker .list {
+    max-height: min(46vh, 340px); overflow-y: auto;
+    border: 1px solid var(--border); border-radius: 9px; background: var(--surface-2);
+  }
+  .picker .list::-webkit-scrollbar { width: 6px; }
+  .picker .list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .pk-row {
+    display: flex; align-items: center; gap: 9px; padding: 8px 11px; cursor: pointer;
+    border-bottom: 1px solid var(--border); font-size: var(--fs-md); line-height: 1.4;
+  }
+  .pk-row:last-child { border-bottom: none; }
+  .pk-row:hover { background: var(--surface); }
+  .pk-row.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .pk-row input { flex: 0 0 auto; width: 16px; height: 16px; accent-color: var(--accent); }
+  .pk-row .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .pk-row .cnt { flex: 0 0 auto; font-size: var(--fs-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .picker .count { font-size: var(--fs-sm); color: var(--muted); margin-top: 9px; }
+  .picker .none { padding: 16px 12px; text-align: center; color: var(--muted); font-size: var(--fs-sm); }
+
   /* 画面内の通知（alert の代わり） */
   .notice {
     position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
@@ -615,6 +655,8 @@
   /* スマホ幅の窓から刷ることもある。紙は 1062px 幅で組むので、
      狭い画面向けに詰めた指定（下の @media max-width）はここで戻す */
   body.printing .legend { flex-wrap: wrap; overflow-x: visible; }
+  body.printing .legend-strip { display: contents; }
+  body.printing .legend-pick { display: none !important; }
   body.printing .lane-title { display: flex; -webkit-line-clamp: none; }
   body.printing .mark { width: 13px; height: 13px; margin-top: -6.5px; }
   body.printing .mark.anchor { width: 15px; height: 15px; margin-top: -7.5px; }
@@ -906,10 +948,19 @@ var NARROW_PX = 720;      // これ以下の幅を「スマホ」として扱う
 var wasNarrow = false;    // 直前がスマホ幅だったか。跨いだときだけ組み直す
 var dayW = 30;            // 1日あたりの幅。［小］［中］［大］で変わる
 var laneH = 72;           // ガント1行の高さの下限。同上
-var labelsOn = false;     // ガントに工程名を出すか（［工程名］ボタン。既定は出さない）
+/**
+ * ガントに工程名を出すか。［工程名］ボタンで なし → 4段 → 全部 と替わる。
+ * 工程が近い日に固まっていると吹き出しが10段以上積み、1行が250px近くまで伸びて
+ * 画面に2行しか入らなくなるため、既定の「4段」で頭打ちにする。
+ */
+var LABEL_MODES = ['off', 'cap', 'all'];
+var LABEL_MODE_TEXT = { off: '工程名', cap: '工程名 4段', all: '工程名 全部' };
+var LABEL_CAP = 4;        // ［4段］のときに積む段数の上限
+var labelMode = 'off';    // 既定は出さない
 var showLabels = false;   // 実際に出しているか（印刷中は必ず出す）
 var SIZE_KEY = 'schedule.size';
 var LABELS_KEY = 'schedule.labels';
+var HIDDEN_KEY = 'schedule.hidden';
 var hidden = {};          // 業務IDごとの表示/非表示（ガント・月間）
 var query = '';           // 工程名・業務名・メモの検索語
 var ownerFilter = '';     // 担当での絞り込み
@@ -1303,22 +1354,191 @@ function movePill() {
 }
 
 // =====================================================================
+// 業務の凡例と［業務を選ぶ］
+// =====================================================================
+
+/** 画面に出す業務（無効にしたものは除く） */
+function enabledWorks() {
+  return DATA.works.filter(function (w) { return w.enabled; });
+}
+
+/** 凡例のチップ1つ。ガント・月間は表示/非表示、業務別は選択 */
+function workChip(w, single) {
+  var on = single ? w.id === selectedWork : !hidden[w.id];
+  var chip = el('span', 'chip' + (single ? (on ? ' sel' : '') : (on ? '' : ' off')));
+  var dot = el('span', 'dot');
+  dot.style.background = hues(w.color).bar;
+  chip.appendChild(dot);
+  chip.appendChild(document.createTextNode(w.name));
+  chip.onclick = function () {
+    if (single) selectedWork = w.id;
+    else hidden[w.id] = !hidden[w.id];
+    if (!single) saveHidden();
+    renderView();
+  };
+  return chip;
+}
+
+/**
+ * 業務の凡例。
+ * 業務が25個あると折り返しで8行・279px まで伸び、ガント本体を潰してしまうため、
+ * 1行に収めて横スクロールにし、まとめて選ぶのは［業務を選ぶ］のモーダルに逃がす。
+ * 3つのビューで同じ作りにしてある（業務別だけは1つを選ぶ）。
+ */
+function workLegend(single) {
+  var bar = el('div', 'legend');
+  var works = enabledWorks();
+
+  var pick = el('button', 'legend-pick');
+  pick.type = 'button';
+  pick.appendChild(document.createTextNode('業務を選ぶ'));
+  if (!single) {
+    var shown = works.filter(function (w) { return !hidden[w.id]; }).length;
+    if (shown < works.length) {
+      pick.appendChild(el('span', 'n', '　' + shown + '/' + works.length));
+    }
+  }
+  pick.title = single ? '見る業務を選ぶ' : '表示する業務をまとめて選ぶ';
+  pick.onclick = function () { openWorkPicker(single); };
+  bar.appendChild(pick);
+
+  var strip = el('div', 'legend-strip');
+  works.forEach(function (w) { strip.appendChild(workChip(w, single)); });
+  bar.appendChild(strip);
+  return bar;
+}
+
+/**
+ * 業務をまとめて選ぶモーダル。
+ * 凡例のチップは横に長くなると探しづらいので、検索して選べるようにする。
+ */
+function openWorkPicker(single) {
+  var works = enabledWorks();
+  // 開いている間の仮の状態。［適用］を押すまで画面には反映しない
+  var draft = {};
+  works.forEach(function (w) { draft[w.id] = single ? w.id === selectedWork : !hidden[w.id]; });
+
+  var back = el('div', 'dlg-back');
+  back.id = 'workPicker';
+  var box = el('div', 'dlg picker');
+  box.setAttribute('role', 'dialog');
+  box.setAttribute('aria-modal', 'true');
+  box.onclick = function (ev) { ev.stopPropagation(); };
+  box.appendChild(el('h3', '', single ? '見る業務を選ぶ' : '表示する業務'));
+
+  var find = el('div', 'find');
+  var q = document.createElement('input');
+  q.type = 'search';
+  q.placeholder = '業務名で絞り込む';
+  q.setAttribute('aria-label', '業務名で絞り込む');
+  find.appendChild(q);
+  if (!single) {
+    var all = el('button', '', 'すべて');
+    all.type = 'button';
+    all.onclick = function () { setAll(true); };
+    var none = el('button', '', 'なし');
+    none.type = 'button';
+    none.onclick = function () { setAll(false); };
+    find.appendChild(all);
+    find.appendChild(none);
+  }
+  box.appendChild(find);
+
+  var list = el('div', 'list');
+  box.appendChild(list);
+  var count = el('div', 'count');
+  if (!single) box.appendChild(count);
+
+  var row = el('div', 'row');
+  var cancel = el('button', '', 'キャンセル');
+  cancel.type = 'button';
+  cancel.onclick = close;
+  var ok = el('button', 'primary', single ? '表示する' : '適用');
+  ok.type = 'button';
+  ok.onclick = apply;
+  row.appendChild(cancel);
+  row.appendChild(ok);
+  box.appendChild(row);
+
+  back.appendChild(box);
+  back.onclick = close;
+  document.body.appendChild(back);
+  draw();
+  q.focus();
+
+  /** 絞り込んで見えている業務だけをまとめて変える */
+  function setAll(on) {
+    visible().forEach(function (w) { draft[w.id] = on; });
+    draw();
+  }
+  function visible() {
+    var t = q.value.trim().toLowerCase();
+    return t ? works.filter(function (w) { return w.name.toLowerCase().indexOf(t) >= 0; }) : works;
+  }
+  function laneCount(id) {
+    var n = 0;
+    DATA.lanes.forEach(function (l) { if (l.workId === id) n += l.items.length; });
+    return n;
+  }
+  function draw() {
+    list.innerHTML = '';
+    var vis = visible();
+    if (!vis.length) {
+      list.appendChild(el('div', 'none', '当てはまる業務はありません。'));
+    }
+    vis.forEach(function (w) {
+      var r = el('div', 'pk-row' + (draft[w.id] ? ' on' : ''));
+      var cb = document.createElement('input');
+      cb.type = single ? 'radio' : 'checkbox';
+      cb.name = 'pk';
+      cb.checked = !!draft[w.id];
+      cb.tabIndex = -1;
+      r.appendChild(cb);
+      var dot = el('span', 'dot');
+      dot.style.background = hues(w.color).bar;
+      r.appendChild(dot);
+      r.appendChild(el('span', 'name', w.name));
+      r.appendChild(el('span', 'cnt', laneCount(w.id) + '工程'));
+      r.onclick = function () {
+        if (single) { works.forEach(function (x) { draft[x.id] = x.id === w.id; }); }
+        else { draft[w.id] = !draft[w.id]; }
+        draw();
+      };
+      list.appendChild(r);
+    });
+    var on = works.filter(function (w) { return draft[w.id]; }).length;
+    count.textContent = works.length + ' 件中 ' + on + ' 件を表示';
+    ok.disabled = single && !on;
+  }
+  function apply() {
+    if (single) {
+      works.forEach(function (w) { if (draft[w.id]) selectedWork = w.id; });
+    } else {
+      works.forEach(function (w) { hidden[w.id] = !draft[w.id]; });
+      saveHidden();
+    }
+    close();
+    renderAll();
+  }
+  function close() {
+    if (back.parentNode) back.parentNode.removeChild(back);
+    document.removeEventListener('keydown', onKey);
+  }
+  function onKey(ev) {
+    if (ev.key === 'Escape') close();
+  }
+  q.oninput = draw;
+  document.addEventListener('keydown', onKey);
+  return close;
+}
+
+// =====================================================================
 // ビュー1：ガント（業務横断）
 // =====================================================================
 function renderGantt(root) {
   var wrap = el('div', 'view');
 
-  var legend = el('div', 'legend');
-  DATA.works.filter(function (w) { return w.enabled; }).forEach(function (w) {
-    var chip = el('span', 'chip' + (hidden[w.id] ? ' off' : ''));
-    var dot = el('span', 'dot');
-    dot.style.background = hues(w.color).bar;
-    chip.appendChild(dot);
-    chip.appendChild(document.createTextNode(w.name));
-    chip.onclick = function () { hidden[w.id] = !hidden[w.id]; renderView(); };
-    legend.appendChild(chip);
-  });
-  wrap.appendChild(legend);
+  wrap.appendChild(workLegend(false));
 
   var note = filterNote();
   if (note) wrap.appendChild(note);
@@ -1437,7 +1657,7 @@ function drawGantt(grid) {
   }
 
   laneRoom(grid);
-  showLabels = !printing && labelsOn;
+  showLabels = printing || labelMode !== 'off';
   document.body.classList.toggle('labels', showLabels);
 
   shown.forEach(function (lane, li) {
@@ -1575,17 +1795,7 @@ function scrollToToday() {
 function renderWorkView(root) {
   var wrap = el('div', 'view');
 
-  var bar = el('div', 'legend');
-  DATA.works.filter(function (w) { return w.enabled; }).forEach(function (w) {
-    var chip = el('span', 'chip' + (w.id === selectedWork ? ' sel' : ''));
-    var dot = el('span', 'dot');
-    dot.style.background = hues(w.color).bar;
-    chip.appendChild(dot);
-    chip.appendChild(document.createTextNode(w.name));
-    chip.onclick = function () { selectedWork = w.id; renderView(); };
-    bar.appendChild(chip);
-  });
-  wrap.appendChild(bar);
+  wrap.appendChild(workLegend(true));
   var note = filterNote();
   if (note) wrap.appendChild(note);
 
@@ -1721,17 +1931,7 @@ function renderMonth(root) {
 
   wrap.appendChild(bar);
 
-  var legend = el('div', 'legend');
-  DATA.works.filter(function (w) { return w.enabled; }).forEach(function (w) {
-    var chip = el('span', 'chip' + (hidden[w.id] ? ' off' : ''));
-    var dot = el('span', 'dot');
-    dot.style.background = hues(w.color).bar;
-    chip.appendChild(dot);
-    chip.appendChild(document.createTextNode(w.name));
-    chip.onclick = function () { hidden[w.id] = !hidden[w.id]; renderView(); };
-    legend.appendChild(chip);
-  });
-  wrap.appendChild(legend);
+  wrap.appendChild(workLegend(false));
   var note = filterNote();
   if (note) wrap.appendChild(note);
 
@@ -2246,6 +2446,18 @@ function printHeader() {
  * 吹き出しを段組みして重なりを避ける。
  * 左端をマーカーに合わせ、同じ段の直前の吹き出しと重なるなら1段上げる。
  */
+/** 吹き出しを何件隠したかを、業務名の欄に出す（隠したことが分からないと誤解を招く） */
+function showClipped(laneEl, n) {
+  var sub = laneEl.querySelector('.lane-sub');
+  if (!sub) return;
+  var old = sub.querySelector('.clipped');
+  if (old) sub.removeChild(old);
+  if (!n) return;
+  var tag = el('span', 'clipped', '工程名 +' + n);
+  tag.title = n + ' 件は場所が足りないので出していません。［工程名 全部］にするか、丸を押すと読めます';
+  sub.appendChild(tag);
+}
+
 function layoutLabels() {
   var grid = document.getElementById('grid');
   var floor = grid ? parseFloat(grid.style.getPropertyValue('--lane-h')) || 0 : 0;
@@ -2263,15 +2475,27 @@ function layoutLabels() {
       return { el: lab, left: Math.max(0, Math.min(x, trackW - w)), w: w, x: x };
     }).sort(function (a, b) { return a.left - b.left; });
 
+    // 紙は全部出す。画面は［4段］のとき、そこで頭打ちにする
+    var cap = (printing || labelMode === 'all') ? Infinity : LABEL_CAP;
     var levelEnd = [];
     var maxLevel = 0;
+    var clipped = 0;
     boxes.forEach(function (b) {
       var level = 0;
       while (levelEnd[level] !== undefined && levelEnd[level] + 3 > b.left) level++;
+      if (level >= cap) {
+        // 段が足りない工程は吹き出しを出さない。丸は残るので押せば内容が読める
+        b.el.hidden = true;
+        clipped++;
+        return;
+      }
       levelEnd[level] = b.left + b.w;
       b.level = level;
       if (level > maxLevel) maxLevel = level;
     });
+    boxes = boxes.filter(function (b) { return !b.el.hidden; });
+    showClipped(laneEl, clipped);
+    if (!boxes.length) { laneEl.style.minHeight = floor + 'px'; return; }
 
     // 段の間隔は吹き出しの実際の高さから決める。
     // 決め打ちにすると、文字サイズや行間の違いでわずかに接触してしまう。
@@ -2444,6 +2668,22 @@ function applySize(b, rerender) {
   if (rerender && DATA) { renderView(); setTimeout(scrollToToday, 40); }
 }
 
+/**
+ * 隠している業務を覚える。
+ * 業務が多いと選び直すのが手間なので、次に開いたときも同じ絞り込みで始める。
+ */
+function saveHidden() {
+  var off = Object.keys(hidden).filter(function (k) { return hidden[k]; });
+  try { localStorage.setItem(HIDDEN_KEY, off.join(',')); } catch (e) { /* 保存できなくてもよい */ }
+}
+
+function loadHidden() {
+  var saved = null;
+  try { saved = localStorage.getItem(HIDDEN_KEY); } catch (e) { /* 読めなくてもよい */ }
+  if (!saved) return;
+  saved.split(',').forEach(function (id) { if (id) hidden[id] = true; });
+}
+
 /** 前回選んだ表示サイズを復元する（未保存ならPCは［中］、スマホは［小］） */
 function loadSize() {
   var saved = null;
@@ -2459,7 +2699,9 @@ function loadSize() {
 
   var lab = null;
   try { lab = localStorage.getItem(LABELS_KEY); } catch (e) { /* 読めなくてもよい */ }
-  applyLabels(lab === 'on', false);
+  // 3段階にする前は 'on' / 'off' で持っていた。'on' だった人は「全部」に読み替える
+  if (lab === 'on') lab = 'all';
+  applyLabels(lab, false);
 }
 
 document.getElementById('zoom').onclick = function (ev) {
@@ -2467,19 +2709,22 @@ document.getElementById('zoom').onclick = function (ev) {
 };
 
 /** ガントに工程名を出すかを切り替える */
-function applyLabels(on, rerender) {
-  labelsOn = !!on;
+function applyLabels(mode, rerender) {
+  labelMode = LABEL_MODES.indexOf(mode) >= 0 ? mode : 'off';
   var b = document.getElementById('btnLabels');
-  b.classList.toggle('on', labelsOn);
-  b.setAttribute('aria-pressed', labelsOn ? 'true' : 'false');
-  try { localStorage.setItem(LABELS_KEY, labelsOn ? 'on' : 'off'); } catch (e) { /* 保存できなくてもよい */ }
+  b.classList.toggle('on', labelMode !== 'off');
+  b.textContent = LABEL_MODE_TEXT[labelMode];
+  b.setAttribute('aria-label', '工程名の出し方：' + LABEL_MODE_TEXT[labelMode] + '（押すと替わります）');
+  try { localStorage.setItem(LABELS_KEY, labelMode); } catch (e) { /* 保存できなくてもよい */ }
   if (rerender && DATA && view === 'gantt') {
     drawGantt(document.getElementById('grid'));
     setTimeout(scrollToToday, 40);
   }
 }
 
-document.getElementById('btnLabels').onclick = function () { applyLabels(!labelsOn, true); };
+document.getElementById('btnLabels').onclick = function () {
+  applyLabels(LABEL_MODES[(LABEL_MODES.indexOf(labelMode) + 1) % LABEL_MODES.length], true);
+};
 
 document.getElementById('btnPrint').onclick = startPrint;
 
@@ -2561,6 +2806,7 @@ document.getElementById('btnMore').onclick = function () {
 
 loadTheme();
 applyTheme(themeId, false);
+loadHidden();
 // スマホでは、まず「今日やること」が見えたほうが役に立つ
 if (isNarrow()) view = 'side';
 wasNarrow = isNarrow();

@@ -344,6 +344,55 @@ async function main() {
     narrowPrint.cells + ' マス / リスト ' + narrowPrint.list);
   await page4.close();
 
+  // ---- 11. 業務が多いときの紙 ----
+  // 画面は凡例を1行に畳み、吹き出しを4段で止めるが、紙は全部出す約束
+  console.log('\n業務が25個あるときの紙');
+  const page5 = await browser.newPage({ viewport: { width: 1400, height: 680 } });
+  page5.on('pageerror', e => errors.push('pageerror: ' + e.message));
+  await page5.goto('file://' + path.join(OUT, 'stress.html'));
+  await page5.waitForSelector('#grid .lane');
+  await page5.waitForTimeout(900);
+  // 画面では［4段］にしておく
+  await page5.click('#btnLabels');
+  await page5.waitForTimeout(600);
+  const beforePrint = await page5.evaluate(() => ({
+    stack: Math.max(0, ...[].slice.call(document.querySelectorAll('#grid .lane')).map(l => {
+      const ls = [].slice.call(l.querySelectorAll('.plabel')).filter(x => !x.hidden);
+      return ls.length ? new Set(ls.map(x => x.style.bottom)).size : 0;
+    })),
+    clipped: document.querySelectorAll('.lane-sub .clipped').length
+  }));
+  check('画面では4段で止まっている', beforePrint.stack <= 4 && beforePrint.clipped > 0,
+    beforePrint.stack + '段 / ' + beforePrint.clipped + '行で間引き');
+
+  await page5.evaluate(() => { window.print = function () {}; startPrint(); });
+  await page5.emulateMedia({ media: 'print' });
+  await page5.waitForTimeout(600);
+  const bigPrint = await page5.evaluate(() => {
+    const pages = [].slice.call(document.querySelectorAll('.gpage'));
+    return {
+      hiddenLabels: [].slice.call(document.querySelectorAll('.plabel')).filter(x => x.hidden).length,
+      clipped: document.querySelectorAll('.lane-sub .clipped').length,
+      legendRows: new Set([].slice.call(document.querySelectorAll('.legend .chip'))
+        .map(c => Math.round(c.getBoundingClientRect().top))).size,
+      pickShown: document.querySelector('.legend-pick').offsetHeight > 0,
+      lanes: document.querySelectorAll('#grid .lane').length,
+      pages: pages.length,
+      tallest: Math.max(0, ...pages.map(p => Math.round(p.getBoundingClientRect().height))),
+      printH: PRINT_H
+    };
+  });
+  check('紙では吹き出しを間引かない', bigPrint.hiddenLabels === 0, bigPrint.hiddenLabels + '件を非表示');
+  check('紙では間引きの表示も出さない', bigPrint.clipped === 0, bigPrint.clipped + '行');
+  check('紙の凡例は折り返して全部出す', bigPrint.legendRows > 1, bigPrint.legendRows + '行');
+  check('［業務を選ぶ］は刷らない', bigPrint.pickShown === false);
+  check('工程が1行も欠けない', bigPrint.lanes === 25, bigPrint.lanes + '行');
+  check('ページに分かれて用紙に収まる',
+    bigPrint.pages > 1 && bigPrint.tallest <= bigPrint.printH,
+    bigPrint.pages + 'ページ / 最大 ' + bigPrint.tallest + 'px / ' + bigPrint.printH + 'px');
+  await page5.screenshot({ path: path.join(OUT, 'print-scale.png'), fullPage: true });
+  await page5.close();
+
   await browser.close();
 
   console.log('\n' + '─'.repeat(48));

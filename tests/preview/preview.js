@@ -51,6 +51,10 @@ function build() {
   const main = path.join(OUT_DIR, 'index.html');
   fs.writeFileSync(main, wrap('gantt.html', [read('mock.js')]));
 
+  // 業務が25個あるときの確認用（凡例・吹き出しの段数・［業務を選ぶ］）
+  const stress = path.join(OUT_DIR, 'stress.html');
+  fs.writeFileSync(stress, wrap('gantt.html', [read('mock.js'), read('stress-mock.js')]));
+
   const editor = path.join(OUT_DIR, 'editor.html');
   fs.writeFileSync(editor, wrap('editor.html', core.concat([read('editor-mock.js')])));
 
@@ -65,7 +69,7 @@ function build() {
   const jsonImport = jsonPage('json-import.html', 'import', '');
   const jsonExport = jsonPage('json-export.html', 'export', '{"format":"gyomu-schedule-template"}');
 
-  return { main, editor, jsonImport, jsonExport };
+  return { main, stress, editor, jsonImport, jsonExport };
 }
 
 const SHOTS = [
