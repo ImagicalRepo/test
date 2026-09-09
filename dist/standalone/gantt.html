@@ -1032,8 +1032,18 @@ function toKey(d) {
   return d.getUTCFullYear() + '-' + (m < 10 ? '0' : '') + m + '-' + (day < 10 ? '0' : '') + day;
 }
 function addDays(k, n) { var d = toDate(k); d.setUTCDate(d.getUTCDate() + n); return toKey(d); }
-/** 回次の表示名。日付指定だけで組んだ工程は回次を持たない */
-function periodLabel(p) { return p ? p : '日付指定'; }
+/** 回次。日付指定だけで組んだ工程は回次を持たないので、そのときは空にする */
+function periodLabel(p) { return p ? String(p) : ''; }
+
+/**
+ * 「業務名 回次」の表示。
+ * 回次が無いときに区切りだけ残ると「定例の事務 　本日」のように間が空くので入れない。
+ * Chat通知の formatWorkLabel（04_core_digest.gs）と同じ扱い。
+ */
+function workLabel(workName, period, sep) {
+  var p = periodLabel(period);
+  return p ? workName + (sep || ' ') + p : String(workName || '');
+}
 function fmtShort(k) { var p = k.split('-'); return (+p[1]) + '/' + (+p[2]) + '(' + WD[toDate(k).getUTCDay()] + ')'; }
 /** 印刷の吹き出し用に、曜日を省いた短い日付 */
 function shortMD(k) { var p = k.split('-'); return (+p[1]) + '/' + (+p[2]); }
@@ -1244,7 +1254,7 @@ function section(parent, title, color, items, kind, start) {
     var when = kind === 'today' ? '本日'
       : kind === 'overdue' ? fmtShort(i.dueKey) + '・' + Math.abs(i.remainingBusinessDays) + '営業日超過'
       : fmtShort(i.dueKey) + '・あと' + i.remainingBusinessDays + '営業日';
-    c.appendChild(el('div', 'meta', i.workName + ' ' + periodLabel(i.period) + '\n' + when + (i.owner ? '　' + i.owner : '')));
+    c.appendChild(el('div', 'meta', workLabel(i.workName, i.period) + '\n' + when + (i.owner ? '　' + i.owner : '')));
     c.onclick = function (ev) {
       var ctx = findItem(i.workId + '|' + i.period, i.dueKey, i.name);
       if (ctx) openDetail(ev, ctx);
@@ -1480,7 +1490,7 @@ function renderLane(lane, trackW, laneIndex, repeat) {
   label.appendChild(title);
 
   var sub = el('div', 'lane-sub');
-  sub.appendChild(el('span', 'period', periodLabel(lane.period)));
+  if (periodLabel(lane.period)) sub.appendChild(el('span', 'period', periodLabel(lane.period)));
   if (lane.anchorKey) {
     var a = el('a', '', lane.anchorName + ' ' + fmtShort(lane.anchorKey));
     a.title = '基準日を変更する';
@@ -1602,7 +1612,7 @@ function renderKase(lane, laneIndex) {
   sw.style.background = color.bar;
   sw.style.height = '18px';
   head.appendChild(sw);
-  head.appendChild(el('span', 'kase-period', periodLabel(lane.period)));
+  if (periodLabel(lane.period)) head.appendChild(el('span', 'kase-period', periodLabel(lane.period)));
 
   if (lane.anchorKey) {
     var an = el('span', 'kase-anchor');
@@ -1850,7 +1860,7 @@ function makeEventChip(ctx, order) {
   if (ctx.edge === 'start') label = label + ' 〜';
   else if (ctx.edge === 'end') label = '〜 ' + label;
   ev.appendChild(el('span', '', label));
-  ev.title = ctx.lane.workName + ' ' + periodLabel(ctx.lane.period) + '\n' + ctx.item.name
+  ev.title = workLabel(ctx.lane.workName, ctx.lane.period) + '\n' + ctx.item.name
     + (ctx.item.endKey ? '\n' + fmtShort(ctx.item.dueKey) + '〜' + fmtShort(ctx.item.endKey) : '')
     + '\n' + ctx.item.status;
   ev.onclick = function (e) { e.stopPropagation(); openDetail(e, ctx); };
@@ -1917,7 +1927,7 @@ function openDetail(ev, ctx) {
     ? fmtLong(ctx.item.dueKey) + ' 〜 ' + fmtLong(ctx.item.endKey)
     : fmtLong(ctx.item.dueKey) + '　' + remainText;
   box.appendChild(el('div', 'sub',
-    ctx.lane.workName + ' ' + periodLabel(ctx.lane.period) + '\n'
+    workLabel(ctx.lane.workName, ctx.lane.period) + '\n'
     + whenText
     + (ctx.item.owner ? '\n担当：' + ctx.item.owner : '')
     + '\n状態：' + ctx.item.status));
@@ -2001,7 +2011,7 @@ function applyStatusLocally(keys, status) {
 function bulkStatus(lane, status, btn) {
   var items = laneItems(lane).filter(function (i) { return i.status !== status; });
   if (!items.length) { notice('変更が必要な工程はありません。'); return; }
-  var label = lane.workName + '　' + periodLabel(lane.period);
+  var label = workLabel(lane.workName, lane.period, '　');
   askConfirm({
     title: items.length + ' 工程を「' + status + '」にします',
     sub: label + '\nよろしいですか？',
@@ -2150,7 +2160,7 @@ function openDateDialog(o) {
 function changeAnchor(lane) {
   openDateDialog({
     title: lane.anchorName + 'を変更',
-    sub: lane.workName + '　' + periodLabel(lane.period) + '\n'
+    sub: workLabel(lane.workName, lane.period, '　') + '\n'
       + 'この回次の工程がすべて計算し直されます。',
     value: lane.anchorKey,
     okLabel: '変更する',

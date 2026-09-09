@@ -284,6 +284,57 @@ async function main() {
   await page.waitForSelector('#grid .lane');
   await page.waitForTimeout(300);
 
+  // ---- 回次を持たない業務に「日付指定」と書かない ----
+  // 日付指定だけで組んだ業務は回次が無い。そこへ既定の文字を入れると
+  // 「定例の事務（日付指定だけ） 日付指定」と重なって読みにくい（Chat通知は入れていない）
+  console.log('\n回次を持たない業務');
+  const noPeriod = await page.evaluate(() => {
+    const lane = [...document.querySelectorAll('#grid .lane')]
+      .find(l => l.querySelector('.lane-title').textContent.indexOf('定例の事務') >= 0);
+    return {
+      period: lane.querySelectorAll('.lane-sub .period').length,
+      sub: lane.querySelector('.lane-sub').textContent.replace(/\s+/g, ' ').trim()
+    };
+  });
+  check('ガントの見出しに回次の欄を作らない', noPeriod.period === 0, noPeriod.sub);
+  check('進捗だけが残る', noPeriod.sub === '1/3', noPeriod.sub);
+
+  const detailSub = await page.evaluate(() => {
+    const lane = [...document.querySelectorAll('#grid .lane')]
+      .find(l => l.querySelector('.lane-title').textContent.indexOf('定例の事務') >= 0);
+    lane.querySelector('.track .mark').click();
+    return document.querySelector('#detail .sub').textContent.split('\n')[0];
+  });
+  check('詳細カードは業務名だけを出す', detailSub === '定例の事務（日付指定だけ）', detailSub);
+  await page.evaluate(() => closeDetail());
+
+  await page.evaluate(() => {
+    document.querySelector('#tabs button[data-view="work"]').click();
+  });
+  await page.waitForTimeout(300);
+  await page.evaluate(() => {
+    [...document.querySelectorAll('.legend .chip')]
+      .find(c => c.textContent.indexOf('定例の事務') >= 0).click();
+  });
+  await page.waitForTimeout(400);
+  check('業務別の見出しにも回次の欄を作らない',
+    await page.evaluate(() => document.querySelectorAll('.kase-period').length === 0));
+
+  // 回次がある業務では今までどおり出ること
+  await page.evaluate(() => {
+    [...document.querySelectorAll('.legend .chip')]
+      .find(c => c.textContent.indexOf('月次審査会') >= 0).click();
+  });
+  await page.waitForTimeout(400);
+  const withPeriod = await page.evaluate(() =>
+    [...document.querySelectorAll('.kase-period')].map(e => e.textContent));
+  check('回次がある業務では今までどおり出る',
+    withPeriod.length > 0 && withPeriod[0] === '2026-09', JSON.stringify(withPeriod));
+
+  await page.evaluate(() => document.querySelector('#tabs button[data-view="gantt"]').click());
+  await page.waitForSelector('#grid .lane');
+  await page.waitForTimeout(300);
+
   await page.screenshot({ path: path.join(OUT, 'gantt-filter.png') });
   await browser.close();
 
