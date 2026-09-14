@@ -12,7 +12,12 @@ const now = () => Date.now();
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const STATUS = { open: '未解決', wip: '確認中', done: '解決' };
 const STATUS_ICON = { open: '🔴', wip: '🟡', done: '🟢' };
-const TAGS = { important: '⭐ 重要', todo: '☑ やること', later: '📌 あとで見る', share: '👥 みんなにも' };
+const OLD_TAGS = { important: '⭐重要', todo: '☑やること', later: '📌あとで見る', share: '👥みんなにも' };
+const PRESET_TAGS = ['⭐重要', '☑やること', '📌あとで見る', '👥みんなにも', '手順', '用語', 'よくある'];
+const normTags = (arr) => [...new Set((arr || []).map(t => OLD_TAGS[t] || String(t).trim()).filter(Boolean))];
+// 使用頻度順のタグ一覧(プリセット込み)
+function allTags() { const n = {}; for (const it of state.items) for (const t of it.tags) n[t] = (n[t] || 0) + 1;
+  return [...new Set([...Object.keys(n).sort((a, b) => n[b] - n[a]), ...PRESET_TAGS])].map(t => ({ t, n: n[t] || 0 })); }
 const fmt = (t) => { if (!t) return ''; const d = new Date(t); const td = new Date(); const same = d.toDateString() === td.toDateString();
   const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; return same ? `今日 ${hm}` : `${d.getMonth() + 1}/${d.getDate()} ${hm}`; };
 let toastTimer;
@@ -49,7 +54,7 @@ const DEFAULT_CATS = [
 const state = {
   items: [], cats: [], me: '',
   view: { type: 'home', id: null },      // home | all | pinned | tags | cat
-  filter: { status: '', q: '' },
+  filter: { status: '', q: '', tag: '' },
   editing: null, dirty: false,
   ink: { tool: 'pen', color: '#1f2328', width: 3.5, penOnly: false },
 };
@@ -64,7 +69,7 @@ function migrate(it) {
   if (it.body && it.body.trim()) blocks.push({ id: uid(), type: 'text', text: it.body });
   const c = typeof it.cat === 'string' && !state.cats.find(x => x.id === it.cat) ? (catByName(it.cat) || null) : null;
   const out = { v: 2, id: it.id, title: it.title || '', cat: c ? c.id : (state.cats.find(x => x.id === it.cat) ? it.cat : 'inbox'),
-    status: it.status || 'open', tags: it.tags || [], pinned: !!it.pinned, blocks: it.blocks || blocks,
+    status: it.status || 'open', tags: normTags(it.tags), pinned: !!it.pinned, blocks: it.blocks || blocks,
     answer: it.answer || '', answeredBy: it.answeredBy || '', answerAt: it.answerAt || (it.answer ? it.updatedAt : 0), answerReadAt: it.answerReadAt || 0,
     history: it.history || [{ at: it.createdAt || now(), by: it.createdBy || '', ev: 'created' }],
     createdAt: it.createdAt || now(), updatedAt: it.updatedAt || now(), createdBy: it.createdBy || '' };
@@ -84,7 +89,7 @@ async function load() {
   if (!state.cats.find(c => c.id === 'inbox')) { state.cats.unshift(DEFAULT_CATS[0]); await saveCats(); }
   const raw = await DB.all('items');
   state.items = [];
-  for (const r of raw) { const m = migrate(r); state.items.push(m); if (m !== r) await saveItem(m); }
+  for (const r of raw) { const m = migrate(r); const nt = normTags(m.tags); const changed = m !== r || JSON.stringify(nt) !== JSON.stringify(m.tags); m.tags = nt; state.items.push(m); if (changed) await saveItem(m); }
   if (!meta.seeded) { await seed(); await DB.put('meta', { key: 'seeded', value: true }); }
   state.firstRun = !meta.me;
 }
@@ -95,7 +100,7 @@ const saveItem = (it) => DB.put('items', it);
 async function seed() {
   if (state.items.length) return;
   const t = now();
-  const it = { v: 2, id: uid(), title: '（例）このページは削除してOK：使い方の見本', cat: 'inbox', status: 'done', tags: ['later'], pinned: true,
+  const it = { v: 2, id: uid(), title: '（例）このページは削除してOK：使い方の見本', cat: 'inbox', status: 'done', tags: ['📌あとで見る', 'よくある'], pinned: true,
     blocks: [
       { id: uid(), type: 'text', text: '疑問は1ページに1つ。殴り書きでもいいので、その場で残すのがコツです。\nタイトル・業務・タグはあとで直せます。' },
       { id: uid(), type: 'check', items: [{ text: '手書きは「✎ 手書き」で紙を追加', done: true }, { text: '写真は「📷 写真」で画面や資料を撮って貼る', done: true }, { text: '解決したら 🟢解決 にする', done: false }] },
@@ -111,6 +116,21 @@ const isUnread = (it) => it.answer && it.answerAt > (it.answerReadAt || 0) && it
 const textOf = (it) => [it.title, it.answer, it.answeredBy, it.createdBy, catOf(it.cat)?.name,
   ...it.blocks.map(b => b.type === 'text' ? b.text : b.type === 'check' ? b.items.map(x => x.text).join(' ') : b.type === 'image' ? b.caption : '')].join('\n').toLowerCase();
 const firstLine = (it) => { for (const b of it.blocks) { if (b.type === 'text' && b.text.trim()) return b.text.trim().split('\n')[0]; if (b.type === 'check' && b.items.length) return '☑ ' + b.items[0].text; } return ''; };
+// 関連ページ: タグ共有 > 同じ業務 > 文字の重なり(2文字ずつ)
+function grams(s) { const g = new Set(); const t = s.replace(/[\s、。・,.（）()「」【】\[\]]/g, ''); for (let i = 0; i < t.length - 1; i++) g.add(t.slice(i, i + 2)); return g; }
+function related(it, limit = 5) {
+  const mine = grams((it.title + ' ' + it.blocks.filter(b => b.type === 'text').map(b => b.text).join(' ')).slice(0, 400).toLowerCase());
+  return state.items.filter(o => o.id !== it.id).map(o => {
+    const shared = o.tags.filter(t => it.tags.includes(t));
+    let score = shared.length * 4 + (o.cat === it.cat ? 1.5 : 0) + (o.answer ? 0.5 : 0);
+    const og = grams((o.title + ' ' + o.blocks.filter(b => b.type === 'text').map(b => b.text).join(' ')).slice(0, 400).toLowerCase());
+    let hit = 0; for (const g of og) if (mine.has(g)) hit++;
+    const sim = hit / Math.max(8, Math.min(mine.size, og.size));
+    score += sim * 10;
+    const why = shared.length ? `タグ「${shared[0]}」` : sim > 0.15 ? '似た内容' : o.cat === it.cat ? '同じ業務' : '';
+    return { ...o, score, why };
+  }).filter(o => o.score >= 2).sort((a, b) => b.score - a.score).slice(0, limit);
+}
 function log(it, ev, v) { it.history = it.history || []; it.history.push({ at: now(), by: state.me, ev, v }); if (it.history.length > 60) it.history.shift(); }
 
 function viewItems() {
@@ -120,8 +140,9 @@ function viewItems() {
   if (type === 'pinned') arr = arr.filter(i => i.pinned);
   if (type === 'tags') arr = arr.filter(i => i.tags && i.tags.length);
   if (type === 'unread') arr = arr.filter(isUnread);
-  const { status, q } = state.filter; const qq = q.trim().toLowerCase();
+  const { status, q, tag } = state.filter; const qq = q.trim().toLowerCase();
   if (status) arr = arr.filter(i => i.status === status);
+  if (tag) arr = arr.filter(i => i.tags.includes(tag));
   if (qq) arr = arr.filter(i => textOf(i).includes(qq));
   const o = { open: 0, wip: 1, done: 2 };
   return arr.slice().sort((a, b) => (b.pinned - a.pinned) || (o[a.status] - o[b.status]) || (b.updatedAt - a.updatedAt));
@@ -155,6 +176,7 @@ function renderList() {
     (v.type === 'cat' ? `<span class="dot" style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${catOf(v.id).color}"></span>${esc(catOf(v.id).name)}` : '');
   $('#viewTitle').innerHTML = title;
   $('#filters').hidden = v.type === 'home';
+  renderTagFilter();
   $('#home').hidden = v.type !== 'home';
   $('#list').hidden = v.type === 'home';
   if (v.type === 'home') return renderHome();
@@ -170,13 +192,13 @@ function renderList() {
     list.innerHTML = `<div class="empty"><div class="big">📝</div>${msg}</div>`;
     return;
   }
-  let h = '';
+  let h = (state.filter.q || state.filter.tag) ? `<div class="group-h">検索結果 ${items.length} 件</div>` : '';
   if (v.type === 'tags') {
-    for (const [k, label] of Object.entries(TAGS)) {
-      const grp = items.filter(i => i.tags.includes(k)); if (!grp.length) continue;
-      h += `<div class="group-h">${label}（${grp.length}）</div>` + grp.map(card).join('');
+    for (const { t } of allTags()) {
+      const grp = items.filter(i => i.tags.includes(t)); if (!grp.length) continue;
+      h += `<div class="group-h">🏷 ${esc(t)}（${grp.length}）</div>` + grp.map(card).join('');
     }
-  } else if (!state.filter.status && !state.filter.q) {
+  } else if (!state.filter.status && !state.filter.q && !state.filter.tag) {
     const pin = items.filter(i => i.pinned);
     if (pin.length) h += `<div class="group-h">📌 ピン留め</div>` + pin.map(card).join('');
     for (const s of ['open', 'wip', 'done']) {
@@ -187,6 +209,12 @@ function renderList() {
   list.innerHTML = h;
 }
 
+function renderTagFilter() {
+  const tags = allTags().filter(x => x.n > 0);
+  const el = $('#tagChips'); el.hidden = !tags.length;
+  el.innerHTML = `<button class="chip sm ${state.filter.tag ? '' : 'on'}" data-tag="">🏷 すべて</button>` +
+    tags.map(x => `<button class="chip sm ${state.filter.tag === x.t ? 'on' : ''}" data-tag="${esc(x.t)}">${esc(x.t)} <span class="muted">${x.n}</span></button>`).join('');
+}
 function card(it) {
   const c = catOf(it.cat);
   const th = thumb(it);
@@ -197,7 +225,7 @@ function card(it) {
     <div class="body">
       <div class="t ${it.title ? '' : 'untitled'}">${it.pinned ? '📌 ' : ''}${esc(it.title || line || '（無題）')}${isUnread(it) ? ' <span class="pill new">新しい回答</span>' : ''}</div>
       <div class="m"><span class="pill ${it.status}">${STATUS[it.status]}</span><span class="pill cat">${esc(c.name)}</span><span>${fmt(it.updatedAt)}</span>${it.createdBy ? `<span>${esc(it.createdBy)}</span>` : ''}
-        ${it.tags?.length ? `<span class="tg">${it.tags.map(t => TAGS[t]?.split(' ')[0] || '').join('')}</span>` : ''}</div>
+        ${it.tags?.length ? it.tags.slice(0, 3).map(t => `<span class="pill tag">${esc(t)}</span>`).join('') : ''}</div>
       ${it.answer ? `<div class="a">💬 ${esc(it.answer)}</div>` : ''}
     </div></button>`;
 }
@@ -215,7 +243,12 @@ function renderHome() {
   $('#home').innerHTML = `
     <h2>${greet}${state.me ? '、' + esc(state.me) + 'さん' : ''}</h2>
     <div class="sub">分からないことは、そのまま書いて残せばOK。答えはあとから集まります。</div>
-    ${tipHidden ? '' : `<div class="tip">💡<div>迷ったら右下の <b>「＋ 疑問を書く」</b>。手書きでもテキストでも、殴り書きで大丈夫です。</div><button class="x" id="tipX">✕</button></div>`}
+    <div class="capture">
+      <textarea id="qc" rows="2" placeholder="今、何に困っている？ ここに書いて「残す」だけでOK"></textarea>
+      <div class="qc-acts"><button class="btn sm ghost" id="qcInk">✎ 手書きで</button><span style="flex:1"></span><button class="btn sm primary" id="qcSave">残す</button></div>
+    </div>
+    ${tipHidden ? '' : `<div class="tip">💡<div>タイトルや業務はあとでOK。残したメモは「未分類」に入るので、落ち着いたときに整理しましょう。</div><button class="x" id="tipX">✕</button></div>`}
+    ${rediscoverCard()}
     <div class="tiles">
       <button class="tile open" data-go="all:open"><div class="k">未解決</div><div class="v">${open}</div></button>
       <button class="tile wip" data-go="all:wip"><div class="k">確認中</div><div class="v">${wip}</div></button>
@@ -228,6 +261,19 @@ function renderHome() {
     ${recent.length ? recent.map(card).join('') : `<div class="empty">まだページがありません。<br>右下の「＋ 疑問を書く」から始めましょう。</div>`}`;
 }
 
+// 今日の再発見: 14日以上前のページから、日替わりで1つ
+function rediscoverCard() {
+  const old = state.items.filter(i => now() - i.createdAt > 14 * 864e5 && i.createdBy !== 'アプリ');
+  if (!old.length) return '';
+  const day = Math.floor(now() / 864e5); const it = old[day % old.length];
+  const days = Math.round((now() - it.createdAt) / 864e5);
+  const hint = it.status === 'done' ? 'もう覚えていますか？' : it.status === 'open' ? 'まだ未解決です。誰かに聞けそう？' : '回答待ちのままです';
+  return `<button class="redis" data-id="${it.id}"><span class="ri">🔭</span><span><b>${days}日前の「${esc(it.title || firstLine(it) || '（無題）')}」を見返してみませんか？</b><br><span class="muted small">${esc(catOf(it.cat).name)} ・ ${hint}</span></span><span class="muted">›</span></button>`;
+}
+async function quickCapture(text) {
+  const it = newItem('text'); it.blocks = [{ id: uid(), type: 'text', text }]; it.title = '';
+  state.items.push(it); await saveItem(it); renderAll(); toast('未分類に残しました。あとで整理すればOK');
+}
 // サムネイル(手書き or 写真)
 const thumbCache = new Map();
 function thumb(it) {
@@ -335,8 +381,11 @@ const ED = {
     $('#edTitle').addEventListener('input', () => { state.editing.title = $('#edTitle').value; this.touch(); });
     $('#edStatus').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; this.setStatus(b.dataset.s, true); });
     $('#edCats').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; state.editing.cat = b.dataset.cat; this.renderProps(); this.touch(true); });
-    $('#edTags').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; const it = state.editing; const t = b.dataset.tag;
-      it.tags = it.tags.includes(t) ? it.tags.filter(x => x !== t) : [...it.tags, t]; this.renderProps(); this.touch(true); });
+    $('#edTags').addEventListener('click', async e => { const b = e.target.closest('button'); if (!b) return; const it = state.editing;
+      let t = b.dataset.tag;
+      if (b.dataset.newtag) { t = (await prompt_('新しいタグ', '例：転送、用語、深夜帯')); if (!t) return; t = t.replace(/^#/, '').trim(); if (!t) return; if (!it.tags.includes(t)) it.tags.push(t); }
+      else it.tags = it.tags.includes(t) ? it.tags.filter(x => x !== t) : [...it.tags, t];
+      this.renderProps(); this.renderRelated(); this.touch(true); });
     $('#edAnswer').addEventListener('input', () => {
       const it = state.editing; const v = $('#edAnswer').value;
       if (v.trim() && !it.answer.trim()) { if (!$('#edAnsweredBy').value && state.me) $('#edAnsweredBy').value = state.me; log(it, 'answer'); }
@@ -358,12 +407,12 @@ const ED = {
     if (state.editing && state.editing !== it) this.flush();
     state.editing = it; state.dirty = false;
     if (isUnread(it)) { it.answerReadAt = now(); saveItem(it); }
-    $('#edEmpty').hidden = true; $('#edBody').hidden = false;
+    $('#edEmpty').hidden = true; $('#edBody').hidden = false; $$('#edPin,#edShare,#edDone').forEach(b => b.hidden = false);
     $('#edTitle').value = it.title;
     $('#edAnswer').value = it.answer; $('#edAnsweredBy').value = it.answeredBy; $('#edAnsweredAt').textContent = fmt(it.answerAt);
     $('#doneCta').hidden = !(it.answer.trim() && it.status !== 'done');
     $('#edPin').classList.toggle('on', it.pinned);
-    this.renderProps(); this.renderBlocks(); this.renderHistory();
+    this.renderProps(); this.renderBlocks(); this.renderHistory(); this.renderRelated();
     $('#editPane').classList.add('open'); $('#editPane .scroll').scrollTop = 0;
     renderAll();
   },
@@ -371,7 +420,9 @@ const ED = {
     const it = state.editing;
     $$('#edStatus button').forEach(b => b.classList.toggle('on', b.dataset.s === it.status));
     $('#edCats').innerHTML = state.cats.map(c => `<button class="chip catchip ${c.id === it.cat ? 'on' : ''}" data-cat="${c.id}" style="${c.id === it.cat ? 'border-color:' + c.color : ''}"><span class="dot" style="background:${c.color}"></span>${esc(c.name)}</button>`).join('');
-    $('#edTags').innerHTML = Object.entries(TAGS).map(([k, l]) => `<button class="chip tagchip ${it.tags.includes(k) ? 'on' : ''}" data-tag="${k}">${l}</button>`).join('');
+    const cand = [...new Set([...it.tags, ...allTags().map(x => x.t)])].slice(0, 10);
+    $('#edTags').innerHTML = cand.map(t => `<button class="chip tagchip ${it.tags.includes(t) ? 'on' : ''}" data-tag="${esc(t)}">${esc(t)}</button>`).join('') +
+      `<button class="chip" data-newtag="1">＋ タグ</button>`;
     const c = catOf(it.cat);
     $('#edCrumb').innerHTML = `<span class="dot" style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${c.color}"></span><span class="muted small">${esc(c.name)}</span>`;
   },
@@ -381,6 +432,12 @@ const ED = {
     $$('#edStatus button').forEach(b => b.classList.toggle('on', b.dataset.s === s));
     $('#doneCta').hidden = !(it.answer.trim() && s !== 'done');
     this.renderHistory(); this.touch(true);
+  },
+  renderRelated() {
+    const it = state.editing; const rel = related(it);
+    $('#relatedBox').hidden = !rel.length;
+    $('#relatedList').innerHTML = rel.map(r => `<button class="rel" data-id="${r.id}"><span class="dot" style="background:${catOf(r.cat).color}"></span>
+      <span class="rt">${esc(r.title || firstLine(r) || '（無題）')}</span><span class="pill ${r.status}">${STATUS[r.status]}</span><span class="muted small">${esc(r.why)}</span></button>`).join('');
   },
   renderHistory() {
     const it = state.editing;
@@ -483,14 +540,14 @@ const ED = {
     if (this.isEmpty(it)) { state.items = state.items.filter(x => x !== it); await DB.del('items', it.id); toast('空のページは保存しませんでした'); }
     else if (state.dirty || !state.items.includes(it)) await this.save();
     for (const p of this.pads.values()) p.destroy(); this.pads.clear();
-    state.editing = null; $('#edBody').hidden = true; $('#edEmpty').hidden = false; $('#editPane').classList.remove('open');
+    state.editing = null; $('#edBody').hidden = true; $('#edEmpty').hidden = false; $$('#edPin,#edShare,#edDone').forEach(b => b.hidden = true); $('#editPane').classList.remove('open');
     renderAll();
   },
   async remove() {
     const it = state.editing; if (!(await confirm_('このページを削除しますか？（取り消せません）', '削除する'))) return;
     state.items = state.items.filter(x => x !== it); await DB.del('items', it.id);
     for (const p of this.pads.values()) p.destroy(); this.pads.clear();
-    state.editing = null; $('#edBody').hidden = true; $('#edEmpty').hidden = false; $('#editPane').classList.remove('open');
+    state.editing = null; $('#edBody').hidden = true; $('#edEmpty').hidden = false; $$('#edPin,#edShare,#edDone').forEach(b => b.hidden = true); $('#editPane').classList.remove('open');
     renderAll(); toast('削除しました');
   },
 };
@@ -511,8 +568,9 @@ function newItem(tpl) {
     question: [{ id: uid(), type: 'text', text: '', placeholder: '【状況】いつ・どの業務で・何が起きた？' }, { id: uid(), type: 'text', text: '', placeholder: '【自分がやったこと / 調べたこと】' }, { id: uid(), type: 'text', text: '', placeholder: '【聞きたいこと】ズバリ何を知りたい？' }],
     steps: [{ id: uid(), type: 'check', items: [{ text: '', done: false }, { text: '', done: false }, { text: '', done: false }] }, { id: uid(), type: 'text', text: '', placeholder: '補足・注意点' }],
     call: [{ id: uid(), type: 'text', text: '', placeholder: '【相手】会社名・名前・連絡先' }, { id: uid(), type: 'text', text: '', placeholder: '【用件】' }, { id: uid(), type: 'text', text: '', placeholder: '【対応したこと】' }, { id: uid(), type: 'check', items: [{ text: '', done: false }] }],
+    text: [{ id: uid(), type: 'text', text: '' }],
   }[tpl] || [{ id: uid(), type: 'ink', strokes: [], w: 0, h: 360 }];
-  const it = { v: 2, id: uid(), title: '', cat, status: 'open', tags: tpl === 'call' ? ['todo'] : [], pinned: false, blocks,
+  const it = { v: 2, id: uid(), title: '', cat, status: 'open', tags: tpl === 'call' ? ['☑やること'] : [], pinned: false, blocks,
     answer: '', answeredBy: '', answerAt: 0, answerReadAt: 0, history: [{ at: now(), by: state.me, ev: 'created' }], createdAt: now(), updatedAt: now(), createdBy: state.me };
   if (tpl === 'steps') it.status = 'done';
   return it;
@@ -524,6 +582,13 @@ function confirm_(text, yes = '実行', title = '確認') {
     $('#cfTitle').textContent = title; $('#cfText').textContent = text; $('#cfYes').textContent = yes;
     const done = (v) => { d.close(); $('#cfYes').onclick = $('#cfNo').onclick = null; res(v); };
     $('#cfYes').onclick = () => done(true); $('#cfNo').onclick = () => done(false); d.showModal(); });
+}
+function prompt_(title, placeholder) {
+  return new Promise(res => { const d = $('#dlgPrompt'); $('#ptTitle').textContent = title; const inp = $('#ptInput'); inp.value = ''; inp.placeholder = placeholder || '';
+    const done = (v) => { d.close(); $('#ptOk').onclick = $('#ptNo').onclick = null; inp.onkeydown = null; res(v); };
+    $('#ptOk').onclick = () => done(inp.value.trim()); $('#ptNo').onclick = () => done(null);
+    inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); done(inp.value.trim()); } };
+    d.showModal(); setTimeout(() => inp.focus(), 50); });
 }
 function catDialog() {
   const d = $('#dlgCats'); let cats = state.cats.map(c => ({ ...c }));
@@ -612,7 +677,7 @@ function inkPng(b) { const W = 800, H = Math.round(W * (b.h || 320) / (b.w || 80
 
 // ============ 配線 ============
 function go(type, id, status) {
-  state.view = { type, id: id || null }; if (status !== undefined) { state.filter.status = status; $$('#statusChips button').forEach(b => b.classList.toggle('on', b.dataset.s === status)); }
+  state.view = { type, id: id || null }; state.filter.tag = ''; if (status !== undefined) { state.filter.status = status; $$('#statusChips button').forEach(b => b.classList.toggle('on', b.dataset.s === status)); }
   $('#side').classList.remove('open'); $('#sideBg').hidden = true; $('#listScroll').scrollTop = 0; renderAll();
 }
 async function main() {
@@ -626,9 +691,14 @@ async function main() {
   $('#listScroll').addEventListener('click', e => {
     const tile = e.target.closest('[data-go]'); if (tile) { const [t, s] = tile.dataset.go.split(':'); return go(t, null, s); }
     if (e.target.id === 'tipX') { localStorage.setItem('tipHidden', '1'); return renderHome(); }
+    if (e.target.id === 'qcSave') { const t = $('#qc').value.trim(); if (!t) { $('#qc').focus(); return; } return quickCapture(t); }
+    if (e.target.id === 'qcInk') { const it = newItem('ink'); const t = $('#qc').value.trim(); if (t) it.blocks.unshift({ id: uid(), type: 'text', text: t }); return ED.open(it); }
+    const rd = e.target.closest('.redis'); if (rd) { const it = state.items.find(x => x.id === rd.dataset.id); if (it) ED.open(it); return; }
     const c = e.target.closest('.card'); if (!c) return; const it = state.items.find(x => x.id === c.dataset.id); if (it) ED.open(it);
   });
   $('#q').addEventListener('input', e => { state.filter.q = e.target.value; renderList(); });
+  $('#tagChips').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; state.filter.tag = b.dataset.tag; renderList(); });
+  $('#relatedList').addEventListener('click', e => { const b = e.target.closest('.rel'); if (!b) return; const it = state.items.find(x => x.id === b.dataset.id); if (it) ED.open(it); });
   $('#statusChips').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; state.filter.status = b.dataset.s; $$('#statusChips button').forEach(x => x.classList.toggle('on', x === b)); renderList(); });
   $('#btnPrint').onclick = printFAQ;
 

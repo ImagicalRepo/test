@@ -179,6 +179,22 @@ canvas.pad{display:block;width:100%;height:100%;touch-action:none}
 .answer .who{display:flex;gap:8px;align-items:center;margin-top:8px;font-size:13px;color:var(--muted)}
 .answer .who input{flex:0 1 180px;border:1px solid var(--line);border-radius:8px;padding:6px 10px;background:var(--panel)}
 .answer .done-cta{margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.pill.tag{color:var(--new);background:var(--new-bg);font-weight:500}
+.chip.sm{padding:4px 10px;font-size:13px;min-height:28px}
+.filters{flex-wrap:wrap}
+.tagrow{width:100%}
+.capture{background:var(--panel);border:2px solid var(--accent);border-radius:var(--radius);padding:10px 12px 8px;margin-bottom:12px;box-shadow:var(--shadow)}
+.capture textarea{width:100%;border:0;background:transparent;resize:none;outline:none;font-size:17px;min-height:52px;padding:4px 2px}
+.qc-acts{display:flex;align-items:center;gap:6px;margin-top:4px}
+.redis{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:linear-gradient(135deg,var(--new-bg),var(--panel));border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;margin-bottom:16px;line-height:1.5}
+.redis .ri{font-size:24px} .redis > span:nth-child(2){flex:1;min-width:0}
+.redis:active{opacity:.7}
+.related{margin-top:18px}
+.related h3{font-size:14px;color:var(--muted);margin:0 0 6px}
+.rel{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:9px 12px;background:var(--panel);border:1px solid var(--line);border-radius:10px;margin-bottom:6px}
+.rel .dot{width:10px;height:10px;border-radius:3px;flex:0 0 10px}
+.rel .rt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14.5px}
+.rel:active{background:var(--panel2)}
 .history{margin-top:18px;font-size:12.5px;color:var(--muted)}
 .history summary{cursor:pointer;font-weight:600;padding:6px 0}
 .history li{padding:2px 0}
@@ -282,6 +298,7 @@ dialog input[type=text]{width:100%;padding:10px 12px;border:1px solid var(--line
         <button class="chip" data-s="wip">確認中</button>
         <button class="chip" data-s="done">解決</button>
       </div>
+      <div class="chips scroll-x tagrow" id="tagChips" hidden></div>
     </div>
     <div class="scroll" id="listScroll">
       <div class="home" id="home"></div>
@@ -295,9 +312,9 @@ dialog input[type=text]{width:100%;padding:10px 12px;border:1px solid var(--line
     <div class="hdr">
       <button class="btn ghost back-btn" id="edBack">‹ 一覧へ</button>
       <div class="ttl" id="edCrumb"></div>
-      <button class="btn sm ghost" id="edPin" title="ピン留め">📌</button>
-      <button class="btn sm ghost" id="edShare" title="このページを共有">⇪</button>
-      <button class="btn sm primary" id="edDone">閉じる</button>
+      <button class="btn sm ghost" id="edPin" title="ピン留め" hidden>📌</button>
+      <button class="btn sm ghost" id="edShare" title="このページを共有" hidden>⇪</button>
+      <button class="btn sm primary" id="edDone" hidden>閉じる</button>
     </div>
     <div class="scroll">
       <div class="editor-empty" id="edEmpty">
@@ -335,6 +352,7 @@ dialog input[type=text]{width:100%;padding:10px 12px;border:1px solid var(--line
           </div>
         </div>
 
+        <div class="related" id="relatedBox" hidden><h3>🔗 関連するページ</h3><div id="relatedList"></div></div>
         <details class="history" id="histBox"><summary>履歴</summary><ul id="historyList"></ul></details>
 
         <div class="ed-foot">
@@ -396,6 +414,9 @@ dialog input[type=text]{width:100%;padding:10px 12px;border:1px solid var(--line
   </div>
 </dialog>
 
+<dialog id="dlgPrompt">
+  <div class="d"><h2 id="ptTitle">入力</h2><input type="text" id="ptInput" autocomplete="off"><div class="acts"><button class="btn" id="ptNo">キャンセル</button><button class="btn primary" id="ptOk">追加</button></div></div>
+</dialog>
 <dialog id="dlgConfirm">
   <div class="d">
     <h2 id="cfTitle">確認</h2>
