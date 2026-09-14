@@ -38,8 +38,8 @@ LDが回答を書き込んで「未解決 → 確認中 → 解決」で管理�
 
 1. **GitHub Pages**（一番手軽）：リポジトリの **Settings → Pages** を開き、
    Source に **Deploy from a branch**、Branch に **`claude/ipad-note-app-usmbla` / `docs`** を選んで Save。
-   数十秒後に `https://<オーナー名>.github.io/test/` で開けます。
-   （Source に **GitHub Actions** を選ぶ場合は、同梱の `.github/workflows/pages.yml` が `docs/` を公開します）
+   数十秒後に公開されます（このリポジトリは **https://imagicalrepo.github.io/test/** で公開中）。
+   以後 `docs/` に push するたび、GitHub が自動で再公開します。
 2. **社内Webサーバー / 共有ストレージのWeb公開領域**：`docs/` フォルダをそのまま置く。
 3. **手元だけで試す**：`docs/` があるPCで `python3 -m http.server 8000` を起動し、同じWi-FiのiPadから `http://<PCのIP>:8000/` を開く。
 
@@ -68,8 +68,6 @@ docs/                  ← GitHub Pages の公開フォルダ
   manifest.webmanifest ホーム画面追加用
   icon.svg             アイコン
   .nojekyll            Jekyll の処理を無効化
-.github/workflows/
-  pages.yml            Pages の Source に GitHub Actions を選んだ場合のデプロイ
 ```
 
 ## 動作確認
