@@ -5,7 +5,7 @@ LDが回答を書き込んで「未解決 → 確認中 → 解決」で管理�
 蓄積した疑問と回答は、そのまま引継ぎ資料・新人向けFAQになります。
 
 アプリのインストールや購入ができないiPadでも使えるよう、**Safariで開くだけで動くWebアプリ**として作っています。
-ライブラリ依存なし、`app/` 以下の静的ファイルだけで動きます。
+ライブラリ依存なし、`docs/` 以下の静的ファイルだけで動きます。
 
 ## 画面構成（iPadOS ヒューマンインターフェイスガイドラインに準拠）
 
@@ -34,11 +34,14 @@ LDが回答を書き込んで「未解決 → 確認中 → 解決」で管理�
 
 ## 置き方（配布方法）
 
-どこかにURLとして置く必要があります。候補は3つ。
+どこかに URL として置く必要があります。候補は3つ。
 
-1. **GitHub Pages**（一番手軽）：このリポジトリの Settings → Pages で `app/` を公開する。
-2. **社内Webサーバー / 共有ストレージのWeb公開領域**：`app/` フォルダをそのまま置く。
-3. **手元だけで試す**：`app/` があるPCで `python3 -m http.server 8000` を起動し、同じWi-FiのiPadから `http://<PCのIP>:8000/` を開く。
+1. **GitHub Pages**（一番手軽）：リポジトリの **Settings → Pages** を開き、
+   Source に **Deploy from a branch**、Branch に **`claude/ipad-note-app-usmbla` / `docs`** を選んで Save。
+   数十秒後に `https://<オーナー名>.github.io/test/` で開けます。
+   （Source に **GitHub Actions** を選ぶ場合は、同梱の `.github/workflows/pages.yml` が `docs/` を公開します）
+2. **社内Webサーバー / 共有ストレージのWeb公開領域**：`docs/` フォルダをそのまま置く。
+3. **手元だけで試す**：`docs/` があるPCで `python3 -m http.server 8000` を起動し、同じWi-FiのiPadから `http://<PCのIP>:8000/` を開く。
 
 iPadのSafariでURLを開いたら、共有ボタン → **「ホーム画面に追加」**。以後はアプリのように起動できます。
 
@@ -58,12 +61,15 @@ iPadのSafariでURLを開いたら、共有ボタン → **「ホーム画面に
 ## ファイル構成
 
 ```
-app/
+docs/                  ← GitHub Pages の公開フォルダ
   index.html           画面とスタイル
-  app.js               ロジック（保存・一覧・手書きパッド・共有）
+  app.js               ロジック（保存・一覧・手書き・共有）
   sw.js                オフライン用キャッシュ
   manifest.webmanifest ホーム画面追加用
   icon.svg             アイコン
+  .nojekyll            Jekyll の処理を無効化
+.github/workflows/
+  pages.yml            Pages の Source に GitHub Actions を選んだ場合のデプロイ
 ```
 
 ## 動作確認
