@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="疑問ノート">
+<meta name="theme-color" content="#f6f5f1">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<title>疑問ノート</title>
+<style>
+:root{
+  --bg:#f6f5f1; --panel:#ffffff; --ink:#1f2328; --muted:#6b7280; --line:#e3e1da;
+  --accent:#2f6fed; --accent-ink:#ffffff;
+  --open:#d9480f; --open-bg:#fff1e6;
+  --wip:#b7791f; --wip-bg:#fff8e1;
+  --done:#2b8a3e; --done-bg:#e9f7ec;
+  --radius:12px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+  font-family:-apple-system,"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;font-size:16px;
+  overscroll-behavior:none}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+input,textarea,select{font:inherit;color:inherit}
+.app{display:flex;height:100%;height:100dvh}
+
+/* ---- sidebar ---- */
+.side{width:260px;flex:0 0 260px;border-right:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;
+  padding-top:env(safe-area-inset-top)}
+.side h1{font-size:18px;margin:0;padding:16px 16px 8px}
+.side .sub{color:var(--muted);font-size:12px;padding:0 16px 12px}
+.cats{flex:1;overflow:auto;padding:0 8px 8px}
+.cat{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:10px 10px;border-radius:8px;font-size:15px}
+.cat.active{background:#eef3ff;color:var(--accent);font-weight:600}
+.cat .n{margin-left:auto;font-size:12px;color:var(--open);background:var(--open-bg);border-radius:999px;padding:2px 8px;min-width:24px;text-align:center}
+.cat .n.zero{color:var(--muted);background:#f1f1ee}
+.cat .dots{color:var(--muted);font-size:18px;padding:0 4px}
+.side .foot{border-top:1px solid var(--line);padding:10px 12px;display:flex;flex-direction:column;gap:6px;padding-bottom:calc(10px + env(safe-area-inset-bottom))}
+.side .foot button{text-align:left;padding:8px 6px;border-radius:8px;font-size:14px;color:var(--muted)}
+.side .foot button:active{background:#f1f1ee}
+
+/* ---- main ---- */
+.main{flex:1;display:flex;flex-direction:column;min-width:0;padding-top:env(safe-area-inset-top)}
+.bar{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.bar .title{font-weight:700;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.search{flex:1;min-width:0;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:#faf9f6}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#faf9f6}
+.seg button{padding:8px 12px;font-size:14px;color:var(--muted)}
+.seg button.on{background:var(--ink);color:#fff}
+.btn{padding:9px 14px;border-radius:10px;border:1px solid var(--line);background:var(--panel);font-size:15px;white-space:nowrap}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+.btn.danger{color:#c92a2a}
+.btn:active{opacity:.75}
+.btn.icon{width:40px;padding:0;height:40px;display:inline-flex;align-items:center;justify-content:center;font-size:18px}
+
+.list{flex:1;overflow:auto;padding:12px 16px;padding-bottom:calc(90px + env(safe-area-inset-bottom))}
+.empty{color:var(--muted);text-align:center;padding:60px 20px;line-height:1.8}
+.item{display:flex;gap:12px;padding:12px 14px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:10px;width:100%;text-align:left;align-items:flex-start}
+.item:active{background:#faf9f6}
+.item .thumb{width:72px;height:54px;flex:0 0 72px;border:1px solid var(--line);border-radius:6px;background:#fff;object-fit:cover}
+.item .body{flex:1;min-width:0}
+.item .t{font-weight:600;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .t.untitled{color:var(--muted);font-weight:400}
+.item .m{color:var(--muted);font-size:12px;margin-top:4px;display:flex;gap:8px;flex-wrap:wrap}
+.item .a{font-size:13px;color:var(--done);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pill{display:inline-block;font-size:12px;padding:3px 9px;border-radius:999px;font-weight:600;white-space:nowrap}
+.pill.open{color:var(--open);background:var(--open-bg)}
+.pill.wip{color:var(--wip);background:var(--wip-bg)}
+.pill.done{color:var(--done);background:var(--done-bg)}
+
+.fab{position:fixed;right:24px;bottom:calc(24px + env(safe-area-inset-bottom));width:64px;height:64px;border-radius:50%;background:var(--accent);color:#fff;font-size:34px;box-shadow:0 6px 18px rgba(47,111,237,.35);display:flex;align-items:center;justify-content:center}
+.fab:active{transform:scale(.96)}
+
+/* ---- editor ---- */
+.editor{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;z-index:20;padding-top:env(safe-area-inset-top)}
+.editor[hidden]{display:none}
+.editor .bar{gap:8px}
+.editor .bar .spacer{flex:1}
+.ed-body{flex:1;overflow:auto;padding:12px 16px;padding-bottom:calc(20px + env(safe-area-inset-bottom))}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+.field input[type=text],.field textarea,.field select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+.field textarea{min-height:72px;resize:vertical;line-height:1.5}
+.row{display:flex;gap:10px}
+.row .field{flex:1;min-width:0}
+.status-row{display:flex;gap:8px;flex-wrap:wrap}
+.status-row button{padding:9px 16px;border-radius:999px;border:1px solid var(--line);background:var(--panel);font-size:15px}
+.status-row button.on.open{background:var(--open);color:#fff;border-color:var(--open)}
+.status-row button.on.wip{background:var(--wip);color:#fff;border-color:var(--wip)}
+.status-row button.on.done{background:var(--done);color:#fff;border-color:var(--done)}
+
+.answer{background:#f3faf4;border:1px solid #cfe8d4;border-radius:var(--radius);padding:12px;margin:14px 0}
+.answer h3{margin:0 0 8px;font-size:14px;color:var(--done)}
+.answer textarea{background:#fff}
+
+.sketch{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;margin-bottom:12px}
+.sketch .tools{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.sketch .tools .g{display:flex;gap:4px;margin-right:6px}
+.tool{width:36px;height:36px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:16px;border:1px solid transparent}
+.tool.on{background:#eef3ff;border-color:var(--accent);color:var(--accent)}
+.swatch{width:26px;height:26px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--line)}
+.swatch.on{box-shadow:0 0 0 2px var(--accent)}
+.sketch .tools .r{margin-left:auto;display:flex;gap:4px}
+.sketch .tools .hint{font-size:12px;color:var(--muted);width:100%}
+.canvas-wrap{position:relative;touch-action:none;background:#fff;
+  background-image:linear-gradient(#f0eee8 1px,transparent 1px);background-size:100% 32px}
+canvas.pad{display:block;width:100%;height:100%;touch-action:none}
+
+.meta{color:var(--muted);font-size:12px;margin-top:16px;line-height:1.7}
+
+/* ---- dialog ---- */
+dialog{border:0;border-radius:14px;padding:0;max-width:92vw;width:420px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+dialog::backdrop{background:rgba(0,0,0,.3)}
+dialog .d{padding:18px}
+dialog h2{margin:0 0 12px;font-size:17px}
+dialog p{color:var(--muted);font-size:14px;line-height:1.6;margin:0 0 12px}
+dialog .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+.catlist{display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow:auto;margin-bottom:10px}
+.catlist .c{display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--line);border-radius:8px}
+.catlist .c input{flex:1;border:0;background:transparent;padding:4px}
+.catlist .c button{color:var(--muted);padding:4px 6px}
+
+.toast{position:fixed;left:50%;bottom:calc(100px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:999px;font-size:14px;z-index:50;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+
+@media (max-width:700px){
+  .side{position:fixed;inset:0 auto 0 0;z-index:30;transform:translateX(-100%);transition:transform .2s;box-shadow:0 0 30px rgba(0,0,0,.2)}
+  .side.open{transform:none}
+  .menu-btn{display:inline-flex}
+  .bar .title{display:none}
+}
+@media (min-width:701px){ .btn.icon.menu-btn{display:none} }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side" id="side">
+    <h1>疑問ノート</h1>
+    <div class="sub" id="sub">業務ごとに疑問をためて、解消する</div>
+    <div class="cats" id="cats"></div>
+    <div class="foot">
+      <button id="btnCats">＋ 業務カテゴリを編集</button>
+      <button id="btnExport">⇪ 書き出し（共有）</button>
+      <button id="btnImport">⇩ 取り込み（マージ）</button>
+      <button id="btnName" title="表示名">👤 <span id="myName">名前未設定</span></button>
+      <input type="file" id="fileImport" accept="application/json,.json" hidden>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="bar">
+      <button class="btn icon menu-btn" id="btnMenu">☰</button>
+      <div class="title" id="viewTitle">すべて</div>
+      <input class="search" id="q" type="search" placeholder="検索（タイトル・本文・回答）" autocomplete="off">
+      <div class="seg" id="statusSeg">
+        <button data-s="" class="on">全部</button>
+        <button data-s="open">未解決</button>
+        <button data-s="wip">確認中</button>
+        <button data-s="done">解決</button>
+      </div>
+    </div>
+    <div class="list" id="list"></div>
+    <button class="fab" id="fab" aria-label="新しい疑問">＋</button>
+  </main>
+</div>
+
+<!-- editor -->
+<section class="editor" id="editor" hidden>
+  <div class="bar">
+    <button class="btn" id="edBack">‹ 一覧</button>
+    <span class="spacer"></span>
+    <button class="btn danger" id="edDelete">削除</button>
+    <button class="btn primary" id="edDone">保存して閉じる</button>
+  </div>
+  <div class="ed-body">
+    <div class="field">
+      <input type="text" id="edTitle" placeholder="疑問を一言で（空でもOK）" autocomplete="off">
+    </div>
+
+    <div class="sketch" id="sketch">
+      <div class="tools">
+        <div class="g">
+          <button class="tool on" data-tool="pen" title="ペン">✎</button>
+          <button class="tool" data-tool="eraser" title="消しゴム">◻</button>
+        </div>
+        <div class="g" id="swatches">
+          <button class="swatch on" data-color="#1f2328" style="background:#1f2328"></button>
+          <button class="swatch" data-color="#d9480f" style="background:#d9480f"></button>
+          <button class="swatch" data-color="#2f6fed" style="background:#2f6fed"></button>
+          <button class="swatch" data-color="#2b8a3e" style="background:#2b8a3e"></button>
+        </div>
+        <div class="g">
+          <button class="tool" data-w="2" title="細">·</button>
+          <button class="tool on" data-w="3.5" title="中">•</button>
+          <button class="tool" data-w="6" title="太">●</button>
+        </div>
+        <div class="r">
+          <button class="tool" id="skUndo" title="元に戻す">↶</button>
+          <button class="tool" id="skClear" title="全消去">🗑</button>
+          <button class="tool" id="skTaller" title="紙を伸ばす">↕</button>
+          <button class="tool" id="skPenOnly" title="ペンのみ受け付ける（手のひら無視）">✋</button>
+        </div>
+      </div>
+      <div class="canvas-wrap" id="canvasWrap" style="height:320px">
+        <canvas class="pad" id="pad"></canvas>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label>業務カテゴリ</label>
+        <select id="edCat"></select>
+      </div>
+      <div class="field">
+        <label>ステータス</label>
+        <div class="status-row" id="edStatus">
+          <button class="open" data-s="open">未解決</button>
+          <button class="wip" data-s="wip">確認中</button>
+          <button class="done" data-s="done">解決</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>補足（テキスト。Apple Pencilならそのまま手書き入力できます）</label>
+      <textarea id="edBody" placeholder="状況、いつ起きたか、誰に聞いたか など"></textarea>
+    </div>
+
+    <div class="answer">
+      <h3>回答・対応（LD / 分かった人が書く）</h3>
+      <div class="field">
+        <textarea id="edAnswer" placeholder="結論、根拠、参照先。次の人が読んで分かるように"></textarea>
+      </div>
+      <div class="row">
+        <div class="field"><label>回答者</label><input type="text" id="edAnsweredBy" placeholder="名前"></div>
+      </div>
+    </div>
+
+    <div class="meta" id="edMeta"></div>
+  </div>
+</section>
+
+<dialog id="dlgCats">
+  <div class="d">
+    <h2>業務カテゴリ</h2>
+    <p>多岐にわたるなら、迷わず増やしてOK。あとで統合もできます（並び替えはドラッグ不可、上下ボタン）。</p>
+    <div class="catlist" id="catEdit"></div>
+    <button class="btn" id="catAdd">＋ 追加</button>
+    <div class="acts">
+      <button class="btn" id="catCancel">閉じる</button>
+      <button class="btn primary" id="catSave">保存</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="dlgName">
+  <div class="d">
+    <h2>あなたの表示名</h2>
+    <p>作成者・回答者として記録されます。書き出したデータをLDと突き合わせるときの目印です。</p>
+    <div class="field"><input type="text" id="nameInput" placeholder="例：田中"></div>
+    <div class="acts">
+      <button class="btn" id="nameCancel">キャンセル</button>
+      <button class="btn primary" id="nameSave">保存</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="dlgConfirm">
+  <div class="d">
+    <h2 id="cfTitle">確認</h2>
+    <p id="cfText"></p>
+    <div class="acts">
+      <button class="btn" id="cfNo">キャンセル</button>
+      <button class="btn danger" id="cfYes">実行</button>
+    </div>
+  </div>
+</dialog>
+
+<div class="toast" id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>
