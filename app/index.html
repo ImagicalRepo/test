@@ -6,427 +6,624 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="疑問ノート">
-<meta name="theme-color" content="#f6f5f1">
+<meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <title>疑問ノート</title>
 <style>
+/* ============================================================
+   iPadOS Human Interface Guidelines に準拠したスタイル
+   - システムカラー / セマンティックカラー
+   - SF Pro のテキストスタイル（Dynamic Type 対応）
+   - 最小タップ領域 44pt、インセットグループドリスト
+   ============================================================ */
+
+/* ---- システムカラー（ライト） ---- */
 :root{
-  --bg:#f3f2ee; --panel:#ffffff; --panel2:#faf9f6; --ink:#1f2328; --muted:#6b7280; --line:#e4e2db; --line2:#eeede8;
-  --accent:#2f6fed; --accent-bg:#e9f0ff; --accent-ink:#ffffff;
-  --open:#d9480f; --open-bg:#fff1e6;
-  --wip:#b7791f; --wip-bg:#fff8e1;
-  --done:#2b8a3e; --done-bg:#e9f7ec;
-  --new:#7c3aed; --new-bg:#f1eaff;
-  --shadow:0 8px 24px rgba(20,20,30,.08);
-  --radius:14px; --r2:10px;
+  --blue:#007AFF; --red:#FF3B30; --orange:#FF9500; --green:#34C759;
+  --indigo:#5856D6; --purple:#AF52DE; --teal:#30B0C7; --pink:#FF2D55; --brown:#A2845E;
+
+  --label:#000000;
+  --label-2:rgba(60,60,67,.60);
+  --label-3:rgba(60,60,67,.30);
+  --label-4:rgba(60,60,67,.18);
+
+  --sep:rgba(60,60,67,.29);
+  --sep-opaque:#C6C6C8;
+
+  --bg-grouped:#F2F2F7;
+  --bg-grouped-2:#FFFFFF;
+  --bg:#FFFFFF;
+  --bg-2:#F2F2F7;
+  --bg-elevated:#FFFFFF;
+  --bg-bar:rgba(249,249,249,.94);
+  --bg-menu:rgba(246,246,246,.82);
+  --bg-alert:rgba(242,242,242,.86);
+  --bg-sidebar:#F2F2F7;
+
+  --fill:rgba(120,120,128,.20);
+  --fill-2:rgba(120,120,128,.16);
+  --fill-3:rgba(118,118,128,.12);
+  --fill-4:rgba(116,116,128,.08);
+
+  --tint:var(--blue);
+  --paper:#FFFFFF;
+  --rule:#E8E8ED;
+
+  /* テキストスタイル（root = body サイズ） */
+  --largetitle:2.000rem; --title1:1.647rem; --title2:1.294rem; --title3:1.176rem;
+  --headline:1rem; --body:1rem; --callout:.941rem; --subhead:.882rem;
+  --footnote:.765rem; --caption1:.706rem; --caption2:.647rem;
+
+  --r-cell:10px; --r-card:12px; --r-control:9px;
+  --bar-h:50px;
+  --margin:20px;
 }
 @media (prefers-color-scheme: dark){
-  :root{ --bg:#17181b; --panel:#212328; --panel2:#2a2c32; --ink:#ececee; --muted:#9a9ca6; --line:#34363d; --line2:#2c2e34;
-    --accent:#6b9bff; --accent-bg:#1f2b48; --open:#ff8a4d; --open-bg:#3a2417; --wip:#e0aa3d; --wip-bg:#3a2f14; --done:#63c47a; --done-bg:#163a20;
-    --new:#b48cff; --new-bg:#2c1f45; --shadow:0 8px 24px rgba(0,0,0,.4); }
+  :root{
+    --blue:#0A84FF; --red:#FF453A; --orange:#FF9F0A; --green:#30D158;
+    --indigo:#5E5CE6; --purple:#BF5AF2; --teal:#40CBE0; --pink:#FF375F; --brown:#AC8E68;
+
+    --label:#FFFFFF;
+    --label-2:rgba(235,235,245,.60);
+    --label-3:rgba(235,235,245,.30);
+    --label-4:rgba(235,235,245,.18);
+
+    --sep:rgba(84,84,88,.65);
+    --sep-opaque:#38383A;
+
+    --bg-grouped:#000000;
+    --bg-grouped-2:#1C1C1E;
+    --bg:#000000;
+    --bg-2:#1C1C1E;
+    --bg-elevated:#2C2C2E;
+    --bg-bar:rgba(30,30,32,.92);
+    --bg-menu:rgba(44,44,46,.82);
+    --bg-alert:rgba(44,44,46,.86);
+    --bg-sidebar:#1C1C1E;
+
+    --fill:rgba(120,120,128,.36);
+    --fill-2:rgba(120,120,128,.32);
+    --fill-3:rgba(118,118,128,.24);
+    --fill-4:rgba(118,118,128,.18);
+
+    /* 手書きの紙は常に白のまま。ダークでも線が見え、印刷や共有でも同じに見える */
+    --paper:#F6F6F4;
+    --rule:#E4E4E8;
+  }
 }
+
+/* ---- 基本 ---- */
+html{font-size:17px;-webkit-text-size-adjust:100%}
+@supports (font:-apple-system-body){ html{font:-apple-system-body} }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
-  font-family:-apple-system,"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;font-size:16px;line-height:1.5;
-  overscroll-behavior:none}
-button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;line-height:1.3}
-input,textarea,select{font:inherit;color:inherit}
-textarea{line-height:1.6}
-[hidden]{display:none !important}
-.muted{color:var(--muted)}
-.small{font-size:12px}
+body{
+  margin:0;height:100%;height:100dvh;overflow:hidden;
+  background:var(--bg-grouped);color:var(--label);
+  font-family:-apple-system,"SF Pro Text","SF Pro Display","Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+  font-size:var(--body);line-height:1.29;letter-spacing:-.01em;
+  overscroll-behavior:none;
+}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;line-height:1.2}
+input,textarea,select{font:inherit;color:inherit;letter-spacing:inherit}
+[hidden]{display:none!important}
+.sprite{position:absolute;width:0;height:0;overflow:hidden}
+svg.g{width:22px;height:22px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+svg.g.sm{width:17px;height:17px;stroke-width:2}
+svg.g.lg{width:26px;height:26px}
+:focus-visible{outline:3px solid var(--blue);outline-offset:2px;border-radius:6px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
-/* ===== レイアウト ===== */
-.app{display:flex;height:100%;height:100dvh;overflow:hidden}
-.side{width:236px;flex:0 0 236px;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top)}
-.pane{flex:1;min-width:0;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top)}
-.list-pane{position:relative;flex:0 0 340px;width:340px;border-right:1px solid var(--line);background:var(--bg)}
-.edit-pane{flex:1;background:var(--panel2)}
-.hdr{display:flex;align-items:center;gap:8px;padding:10px 14px;min-height:56px;border-bottom:1px solid var(--line);background:var(--panel)}
-.hdr .ttl{font-weight:700;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;display:flex;align-items:center;gap:8px}
-.scroll{flex:1;overflow:auto;-webkit-overflow-scrolling:touch}
+/* タイポグラフィのユーティリティ */
+.t-largetitle{font-size:var(--largetitle);font-weight:700;line-height:1.21;letter-spacing:.008em}
+.t-title2{font-size:var(--title2);font-weight:700;line-height:1.27}
+.t-title3{font-size:var(--title3);font-weight:600;line-height:1.25}
+.t-headline{font-size:var(--headline);font-weight:600;line-height:1.29}
+.t-body{font-size:var(--body);line-height:1.29}
+.t-subhead{font-size:var(--subhead);line-height:1.33}
+.t-footnote{font-size:var(--footnote);line-height:1.38}
+.t-caption{font-size:var(--caption1);line-height:1.33}
+.c2{color:var(--label-2)} .c3{color:var(--label-3)} .tint{color:var(--tint)}
 
-/* ===== サイドバー ===== */
-.brand{display:flex;align-items:center;gap:10px;padding:16px 16px 6px}
-.brand .logo{width:32px;height:32px;border-radius:9px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px}
-.brand h1{font-size:17px;margin:0}
-.nav{padding:6px 10px}
-.nav .lbl{font-size:11px;color:var(--muted);letter-spacing:.06em;padding:14px 8px 4px;font-weight:600}
-.navi{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:9px 10px;border-radius:9px;font-size:15px;position:relative}
-.navi .ico{width:22px;text-align:center;font-size:15px}
-.navi .dot{width:10px;height:10px;border-radius:3px;flex:0 0 10px}
-.navi .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.navi .n{font-size:12px;color:var(--open);background:var(--open-bg);border-radius:999px;padding:1px 8px;min-width:24px;text-align:center;font-weight:600}
-.navi .n.zero{color:var(--muted);background:var(--line2);font-weight:400}
-.navi .n.new{color:var(--new);background:var(--new-bg)}
-.navi.active{background:var(--accent-bg);color:var(--accent);font-weight:600}
-.navi:active{opacity:.7}
-.side .foot{border-top:1px solid var(--line);padding:8px 10px;padding-bottom:calc(8px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:2px}
-.side .foot .navi{font-size:14px;color:var(--muted)}
+/* ============================================================
+   スプリットビュー（サイドバー + コンテンツ）
+   ============================================================ */
+.split{display:flex;height:100dvh;overflow:hidden}
+.sidebar{
+  width:288px;flex:0 0 288px;background:var(--bg-sidebar);
+  display:flex;flex-direction:column;
+  border-right:.5px solid var(--sep);
+  padding-top:env(safe-area-inset-top);
+  transition:margin-left .35s cubic-bezier(.32,.72,0,1);
+}
+.split.collapsed .sidebar{margin-left:-288px}
+.content{flex:1;min-width:0;position:relative;overflow:hidden;background:var(--bg-grouped);padding-top:env(safe-area-inset-top)}
 
-/* ===== ボタン ===== */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 14px;border-radius:var(--r2);border:1px solid var(--line);background:var(--panel);font-size:15px;white-space:nowrap;min-height:40px}
-.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
-.btn.danger{color:#d6336c}
-.btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
-.btn.sm{padding:6px 10px;font-size:13px;min-height:32px}
-.btn:active{opacity:.7}
-.btn.icon{width:40px;padding:0}
-.chip{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel);font-size:14px;white-space:nowrap;min-height:34px}
-.chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
-.chip:active{opacity:.7}
-.chips{display:flex;gap:6px;flex-wrap:wrap}
-.chips.scroll-x{flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
-.chips.scroll-x::-webkit-scrollbar{display:none}
+/* スタック（一覧 ⇄ ページ） */
+.stack{position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg-grouped)}
+.stack.pushed{transform:translateX(100%);visibility:hidden;
+  transition:transform .38s cubic-bezier(.32,.72,0,1),visibility .38s}
+.stack.pushed.on{transform:none;visibility:visible;box-shadow:-1px 0 0 var(--sep)}
+.stack.under{transition:transform .38s cubic-bezier(.32,.72,0,1)}
+.stack.under.back{transform:translateX(-22%)}
+@media (prefers-reduced-motion:reduce){
+  .sidebar,.stack,.stack.under{transition:none}
+}
 
-/* ===== 一覧 ===== */
-.search{flex:1;min-width:0;padding:9px 12px 9px 34px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239a9ca6' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-3.5-3.5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:11px center}
-.filters{padding:8px 12px;display:flex;gap:6px;align-items:center;border-bottom:1px solid var(--line);background:var(--panel)}
-.list{padding:10px 12px;padding-bottom:calc(100px + env(safe-area-inset-bottom))}
-.card{display:flex;gap:12px;padding:12px 14px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:8px;width:100%;text-align:left;align-items:flex-start;position:relative}
-.card:active{background:var(--panel2)}
-.card.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-bg)}
-.card .bar{position:absolute;left:0;top:12px;bottom:12px;width:4px;border-radius:0 3px 3px 0}
-.card .thumb{width:64px;height:48px;flex:0 0 64px;border:1px solid var(--line);border-radius:6px;background:#fff;object-fit:cover}
-.card .thumb.ph{display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:18px;background:var(--panel2)}
-.card .body{flex:1;min-width:0}
-.card .t{font-weight:600;font-size:15.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:6px}
-.card .t.untitled{color:var(--muted);font-weight:400}
-.card .m{color:var(--muted);font-size:12px;margin-top:3px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.card .a{font-size:13px;color:var(--done);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.card .tg{display:flex;gap:4px}
-.pill{display:inline-block;font-size:11.5px;padding:2px 8px;border-radius:999px;font-weight:600;white-space:nowrap}
-.pill.open{color:var(--open);background:var(--open-bg)}
-.pill.wip{color:var(--wip);background:var(--wip-bg)}
-.pill.done{color:var(--done);background:var(--done-bg)}
-.pill.new{color:var(--new);background:var(--new-bg)}
-.pill.cat{color:var(--muted);background:var(--line2);font-weight:500}
-.group-h{font-size:12px;color:var(--muted);font-weight:600;padding:12px 4px 6px;letter-spacing:.04em}
-.empty{color:var(--muted);text-align:center;padding:50px 20px;line-height:1.9}
-.empty .big{font-size:40px;line-height:1.2}
-.empty b{color:var(--ink)}
+.colscroll{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
 
-/* ===== ホーム ===== */
-.home{padding:20px 22px;padding-bottom:calc(100px + env(safe-area-inset-bottom));max-width:900px}
-.home h2{font-size:22px;margin:4px 0 2px}
-.home .sub{color:var(--muted);margin-bottom:18px}
-.tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:22px}
-.tile{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;text-align:left}
-.tile .k{font-size:12px;color:var(--muted)}
-.tile .v{font-size:30px;font-weight:800;line-height:1.2;margin-top:2px}
-.tile.open .v{color:var(--open)} .tile.wip .v{color:var(--wip)} .tile.new .v{color:var(--new)} .tile.done .v{color:var(--done)}
-.tile:active{opacity:.7}
-.home h3{font-size:14px;color:var(--muted);margin:18px 0 8px;letter-spacing:.04em}
-.cta{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px}
-.cta .btn{min-height:52px;padding:0 18px;font-size:16px;border-radius:14px}
-.tip{background:var(--accent-bg);border-radius:var(--radius);padding:12px 14px;font-size:14px;color:var(--ink);margin-bottom:16px;display:flex;gap:10px;align-items:flex-start}
-.tip .x{margin-left:auto;color:var(--muted)}
+/* ---- ナビゲーションバー ---- */
+.navbar{
+  display:flex;align-items:center;gap:2px;min-height:var(--bar-h);
+  padding:0 8px;background:var(--bg-bar);
+  -webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);
+  border-bottom:.5px solid var(--sep);position:relative;z-index:5;flex:none;
+}
+.navbar .title{
+  flex:1;min-width:0;text-align:center;font-size:var(--headline);font-weight:600;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+}
+.navbar .lead,.navbar .trail{display:flex;align-items:center;gap:2px;min-width:44px}
+.navbar .trail{justify-content:flex-end}
+.navbtn{
+  min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center;gap:4px;
+  color:var(--tint);border-radius:8px;padding:0 6px;
+}
+.navbtn:active{opacity:.35}
+.navbtn[disabled]{color:var(--label-3);pointer-events:none}
+.navbtn.text{font-size:var(--body);padding:0 8px}
+.navbtn.text svg{margin-left:-4px}
+.navbtn.on{color:var(--tint)}
+.navbtn.plain{color:var(--label)}
 
-/* ===== エディタ ===== */
-.editor-empty{display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);text-align:center;line-height:1.9;padding:20px}
-.ed-body{padding:16px 20px;padding-bottom:calc(120px + env(safe-area-inset-bottom));max-width:860px}
-.ed-title{width:100%;font-size:22px;font-weight:700;border:0;background:transparent;padding:6px 0;outline:none;border-bottom:2px solid transparent}
-.ed-title:focus{border-bottom-color:var(--accent)}
-.ed-title::placeholder{color:var(--muted);font-weight:400}
-.props{display:flex;flex-direction:column;gap:8px;margin:8px 0 14px}
-.prop{display:flex;align-items:center;gap:10px;min-height:36px}
-.prop .k{font-size:12px;color:var(--muted);width:76px;flex:0 0 76px}
-.prop .chips{flex:1}
-.stchip.on.open{background:var(--open);border-color:var(--open);color:#fff}
-.stchip.on.wip{background:var(--wip);border-color:var(--wip);color:#fff}
-.stchip.on.done{background:var(--done);border-color:var(--done);color:#fff}
-.catchip{gap:7px} .catchip .dot{width:10px;height:10px;border-radius:3px}
-.catchip.on{background:var(--panel);color:var(--ink);border-width:2px}
-.tagchip.on{background:var(--new-bg);color:var(--new);border-color:var(--new)}
+/* 大タイトル */
+.largehead{padding:4px var(--margin) 10px;background:var(--bg-sidebar)}
+.largehead h1{margin:0;font-size:var(--largetitle);font-weight:700;line-height:1.21;letter-spacing:.008em}
 
-.blocks{display:flex;flex-direction:column;gap:10px}
-.blk{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);position:relative}
-.blk .bh{display:flex;align-items:center;gap:4px;padding:6px 8px;border-bottom:1px solid var(--line2);min-height:38px}
-.blk .bh .k{font-size:12px;color:var(--muted);padding:0 6px;flex:1}
-.blk .bh .tool{opacity:.7}
-.blk textarea{width:100%;border:0;background:transparent;padding:12px 14px;resize:none;outline:none;min-height:56px;display:block;font-size:16px}
-.blk textarea::placeholder{color:var(--muted)}
-.tool{width:31px;height:31px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:15px;border:1px solid transparent}
-.tool.on{background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
-.tool:active{opacity:.6}
-.swatch{width:21px;height:21px;border-radius:50%;border:2px solid var(--panel);box-shadow:0 0 0 1px var(--line);margin:0 2px}
-.swatch.on{box-shadow:0 0 0 2px var(--accent)}
-.ink-tools{display:flex;align-items:center;gap:2px;flex-wrap:wrap;flex:1}
-.ink-tools .sep{width:1px;height:20px;background:var(--line);margin:0 3px}
-.canvas-wrap{position:relative;touch-action:none;background:#fff;border-radius:0 0 var(--radius) var(--radius);overflow:hidden;
-  background-image:linear-gradient(#eeece6 1px,transparent 1px);background-size:100% 32px}
+/* バー付属（検索・セグメント） */
+.accessory{padding:8px max(16px,calc((100% - 952px)/2)) 10px;background:var(--bg-bar);
+  -webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);
+  border-bottom:.5px solid var(--sep);display:flex;flex-direction:column;gap:9px;flex:none}
+.searchfield{display:flex;align-items:center;gap:6px;height:36px;padding:0 8px;border-radius:10px;background:var(--fill-3);color:var(--label-2)}
+.searchfield input{flex:1;min-width:0;border:0;background:none;outline:none;font-size:var(--body);color:var(--label);-webkit-appearance:none}
+.searchfield input::-webkit-search-cancel-button{display:none}
+.searchfield input::placeholder{color:var(--label-2)}
+.searchfield .clr{width:28px;height:28px;display:flex;align-items:center;justify-content:center;color:var(--label-3);border-radius:50%}
+
+/* セグメンテッドコントロール */
+.segmented{display:flex;background:var(--fill-3);border-radius:var(--r-control);padding:2px;height:32px;position:relative}
+.segmented button{
+  flex:1;border-radius:7px;font-size:var(--footnote);font-weight:500;color:var(--label);
+  display:flex;align-items:center;justify-content:center;min-width:0;white-space:nowrap;
+  transition:background .2s,box-shadow .2s;
+}
+.segmented button[aria-selected="true"]{background:var(--bg-elevated);font-weight:600;
+  box-shadow:0 3px 8px rgba(0,0,0,.12),0 3px 1px rgba(0,0,0,.04)}
+.segmented button:not(:last-child)::after{content:"";position:absolute}
+
+/* ============================================================
+   サイドバー
+   ============================================================ */
+.sblist{padding:0 8px calc(16px + env(safe-area-inset-bottom))}
+.sbsec{font-size:var(--footnote);font-weight:600;color:var(--label-2);padding:18px 12px 6px}
+.sbrow{
+  display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:0 12px;
+  border-radius:8px;text-align:left;font-size:var(--body);
+}
+.sbrow .g{color:var(--tint)}
+.sbrow .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sbrow .cnt{font-size:var(--subhead);color:var(--label-2);font-variant-numeric:tabular-nums}
+.sbrow .badge{font-size:var(--footnote);font-weight:600;color:#fff;background:var(--blue);border-radius:999px;padding:2px 8px;min-width:22px;text-align:center}
+.sbrow[aria-current="true"]{background:var(--fill-3);font-weight:600}
+.sbrow[aria-current="true"] .g{color:var(--tint)}
+.sbrow:active{background:var(--fill-4)}
+.swatch{width:14px;height:14px;border-radius:50%;flex:none}
+
+/* ============================================================
+   インセットグループドリスト
+   ============================================================ */
+.grouped{padding:10px 0 calc(28px + env(safe-area-inset-bottom));max-width:760px;margin:0 auto}
+.content .grouped{max-width:920px}
+.gsec{margin:0 0 22px}
+.ghead{font-size:var(--footnote);color:var(--label-2);padding:0 var(--margin) 7px;display:flex;align-items:baseline;gap:8px}
+.ghead .more{margin-left:auto;color:var(--tint);font-size:var(--footnote)}
+.gfoot{font-size:var(--footnote);color:var(--label-2);padding:7px var(--margin) 0;line-height:1.38}
+.glist{background:var(--bg-grouped-2);border-radius:var(--r-cell);margin:0 16px;overflow:hidden}
+
+.cell{display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:11px 16px;text-align:left;position:relative;background:none}
+.cell + .cell::before{content:"";position:absolute;left:16px;right:0;top:0;height:.5px;background:var(--sep);transform:scaleY(.5)}
+.cell.inset-sep + .cell::before,.cell + .cell.inset-sep::before{left:44px}
+.cell:active{background:var(--fill-4)}
+.cell .cbody{flex:1;min-width:0}
+.cell .ctitle{font-size:var(--body);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cell .cvalue{font-size:var(--body);color:var(--label-2);white-space:nowrap;display:flex;align-items:center;gap:6px}
+.cell .chev{color:var(--label-3);flex:none}
+.cell .lead-icon{width:29px;height:29px;border-radius:7px;display:flex;align-items:center;justify-content:center;color:#fff;flex:none}
+.cell .lead-icon svg{width:17px;height:17px;stroke-width:2}
+
+/* ページ一覧セル */
+.note{align-items:flex-start;padding:11px 16px}
+.note .ntitle{font-size:var(--headline);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.note .ntitle.untitled{font-weight:400;color:var(--label-2)}
+.note .nsnip{font-size:var(--subhead);color:var(--label-2);margin-top:1px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.33}
+.note .nmeta{display:flex;align-items:center;gap:6px;margin-top:5px;flex-wrap:wrap;font-size:var(--footnote);color:var(--label-2)}
+.note .nthumb{width:56px;height:56px;border-radius:6px;object-fit:cover;background:var(--fill-4);flex:none;border:.5px solid var(--sep)}
+.status{display:inline-flex;align-items:center;gap:4px;font-size:var(--footnote);white-space:nowrap}
+.status .dot{width:9px;height:9px;border-radius:50%;flex:none}
+.st-open{color:var(--red)} .st-open .dot{background:var(--red)}
+.st-wip{color:var(--orange)} .st-wip .dot{background:var(--orange)}
+.st-done{color:var(--green)} .st-done .dot{background:var(--green)}
+.newdot{width:10px;height:10px;border-radius:50%;background:var(--blue);flex:none;margin-right:2px}
+.tagtoken{display:inline-flex;align-items:center;gap:3px;font-size:var(--footnote);color:var(--tint)}
+
+/* 統計 */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);background:var(--bg-grouped-2);border-radius:var(--r-cell);margin:0 16px;overflow:hidden}
+.stat{padding:14px 8px;text-align:center;position:relative}
+.stat + .stat::before{content:"";position:absolute;left:0;top:12px;bottom:12px;width:.5px;background:var(--sep)}
+.stat .v{font-size:var(--title2);font-weight:600;font-variant-numeric:tabular-nums;line-height:1.1}
+.stat .k{font-size:var(--caption1);color:var(--label-2);margin-top:3px}
+.stat:active{background:var(--fill-4)}
+@media (max-width:520px){ .stats{grid-template-columns:repeat(2,1fr)} .stat:nth-child(3)::before{display:none} }
+
+/* クイックメモ */
+.capture{background:var(--bg-grouped-2);border-radius:var(--r-cell);margin:0 16px;padding:12px 16px 10px}
+.capture textarea{width:100%;border:0;background:none;outline:none;resize:none;font-size:var(--body);
+  min-height:56px;line-height:1.38;padding:0}
+.capture textarea::placeholder{color:var(--label-2)}
+.capture .row{display:flex;align-items:center;gap:8px;margin-top:6px;padding-top:9px;border-top:.5px solid var(--sep)}
+.capture .row .sp{flex:1}
+
+/* 塗りボタン */
+.filled{min-height:34px;padding:0 16px;border-radius:999px;background:var(--blue);color:#fff;
+  font-size:var(--subhead);font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.filled:active{opacity:.7}
+.filled[disabled]{background:var(--fill);color:var(--label-3)}
+.tinted{min-height:34px;padding:0 14px;border-radius:999px;background:var(--fill-3);color:var(--tint);
+  font-size:var(--subhead);font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.tinted:active{opacity:.6}
+.plainbtn{min-height:44px;color:var(--tint);font-size:var(--body);display:inline-flex;align-items:center;gap:8px;padding:0 16px;width:100%}
+.plainbtn.destructive{color:var(--red)}
+.plainbtn.center{justify-content:center}
+.plainbtn:active{background:var(--fill-4)}
+
+/* 空表示 */
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+  padding:64px 32px;text-align:center;color:var(--label-2)}
+.empty svg{width:46px;height:46px;stroke-width:1.3;color:var(--label-3)}
+.empty .h{font-size:var(--title3);font-weight:600;color:var(--label)}
+.empty .d{font-size:var(--subhead);line-height:1.4;max-width:30ch}
+
+/* ============================================================
+   ページ（詳細）
+   ============================================================ */
+.doc{max-width:820px;margin:0 auto;padding:14px 16px calc(60px + env(safe-area-inset-bottom))}
+.doc-title{width:100%;border:0;background:none;outline:none;font-size:var(--title2);font-weight:700;
+  line-height:1.27;padding:6px 4px;margin-bottom:6px;resize:none;overflow:hidden}
+.doc-title::placeholder{color:var(--label-3);font-weight:400}
+.doc .gsec{margin-bottom:20px}
+.doc .glist{margin:0}
+
+.tokens{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;flex:1;min-width:0}
+.token{display:inline-flex;align-items:center;gap:4px;font-size:var(--subhead);color:var(--tint);
+  background:var(--fill-4);border-radius:999px;padding:3px 10px}
+
+/* ブロック */
+.blocks{display:flex;flex-direction:column;gap:14px;margin-bottom:14px}
+.block{background:var(--bg-grouped-2);border-radius:var(--r-card);overflow:hidden}
+.block-bar{display:flex;align-items:center;gap:2px;padding:4px 6px 4px 14px;min-height:38px;color:var(--label-2);font-size:var(--footnote)}
+.block-bar .bk{flex:1}
+.iconbtn{min-width:34px;min-height:34px;display:inline-flex;align-items:center;justify-content:center;border-radius:7px;color:var(--tint)}
+.iconbtn:active{background:var(--fill-4)}
+.iconbtn[disabled]{color:var(--label-4);pointer-events:none}
+.iconbtn.plain{color:var(--label-2)}
+.block textarea{width:100%;border:0;background:none;outline:none;resize:none;font-size:var(--body);
+  line-height:1.47;padding:2px 16px 14px;min-height:52px;display:block}
+.block textarea::placeholder{color:var(--label-3)}
+
+/* 手書き（PencilKit 風のツールパレット） */
+.paper{position:relative;background:var(--paper);touch-action:none;
+  background-image:repeating-linear-gradient(var(--rule) 0 .5px,transparent .5px 30px)}
 canvas.pad{display:block;width:100%;height:100%;touch-action:none}
-.canvas-wrap .grip{position:absolute;right:0;left:0;bottom:0;height:18px;display:flex;align-items:center;justify-content:center;color:#b5b3ac;font-size:12px;background:linear-gradient(transparent,rgba(255,255,255,.9));touch-action:none;cursor:ns-resize}
-.check{padding:6px 10px 8px}
-.ci{display:flex;align-items:flex-start;gap:8px;padding:4px 4px}
-.ci input[type=checkbox]{width:22px;height:22px;margin:4px 0 0;accent-color:var(--done);flex:0 0 22px}
-.ci input[type=text]{flex:1;border:0;background:transparent;padding:4px 2px;outline:none;min-width:0;font-size:16px}
-.ci.done input[type=text]{text-decoration:line-through;color:var(--muted)}
-.ci .rm{color:var(--muted);width:30px;height:30px}
-.check .add{color:var(--accent);font-size:14px;padding:6px 8px}
-.img{padding:10px}
-.img img{max-width:100%;border-radius:8px;display:block;margin:0 auto}
-.img input{width:100%;border:0;background:transparent;padding:8px 4px 0;outline:none;font-size:14px;text-align:center;color:var(--muted)}
-.addblk{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 4px;align-items:center}
-.addblk .lbl{font-size:12px;color:var(--muted);margin-right:4px}
+.grip{position:absolute;left:0;right:0;bottom:0;height:22px;display:flex;align-items:center;justify-content:center;
+  touch-action:none;cursor:ns-resize}
+.grip span{width:38px;height:4px;border-radius:2px;background:var(--label-4)}
+.palette{position:absolute;left:50%;transform:translateX(-50%);bottom:12px;display:flex;align-items:center;gap:2px;
+  padding:5px 7px;border-radius:14px;background:var(--bg-menu);
+  -webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);
+  box-shadow:0 6px 20px rgba(0,0,0,.18),0 0 0 .5px var(--sep);max-width:calc(100% - 24px);overflow-x:auto;scrollbar-width:none}
+.palette::-webkit-scrollbar{display:none}
+.palette .div{width:.5px;height:22px;background:var(--sep);margin:0 5px;flex:none}
+.tool{min-width:38px;min-height:38px;display:inline-flex;align-items:center;justify-content:center;border-radius:9px;color:var(--label)}
+.tool[aria-pressed="true"]{background:var(--fill-3);color:var(--tint)}
+.tool:active{opacity:.5}
+.ink{width:26px;height:26px;border-radius:50%;flex:none;border:2px solid transparent;min-width:26px;min-height:26px;
+  display:inline-flex;align-items:center;justify-content:center}
+.ink i{width:20px;height:20px;border-radius:50%;display:block;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.25)}
+.ink[aria-pressed="true"]{border-color:var(--tint)}
+.widths{display:flex;align-items:center;gap:2px}
+.wbtn{min-width:34px;min-height:38px;display:inline-flex;align-items:center;justify-content:center;border-radius:8px}
+.wbtn i{background:var(--label);border-radius:999px;display:block}
+.wbtn[aria-pressed="true"]{background:var(--fill-3)}
+.wbtn[aria-pressed="true"] i{background:var(--tint)}
 
-.answer{background:var(--done-bg);border:1px solid color-mix(in srgb,var(--done) 30%,transparent);border-radius:var(--radius);padding:12px 14px;margin:18px 0 12px}
-.answer h3{margin:0 0 6px;font-size:14px;color:var(--done);display:flex;align-items:center;gap:8px}
-.answer textarea{width:100%;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:80px;resize:vertical;outline:none;font-size:16px}
-.answer .who{display:flex;gap:8px;align-items:center;margin-top:8px;font-size:13px;color:var(--muted)}
-.answer .who input{flex:0 1 180px;border:1px solid var(--line);border-radius:8px;padding:6px 10px;background:var(--panel)}
-.answer .done-cta{margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.pill.tag{color:var(--new);background:var(--new-bg);font-weight:500}
-.chip.sm{padding:4px 10px;font-size:13px;min-height:28px}
-.filters{flex-wrap:wrap}
-.tagrow{width:100%}
-.capture{background:var(--panel);border:2px solid var(--accent);border-radius:var(--radius);padding:10px 12px 8px;margin-bottom:12px;box-shadow:var(--shadow)}
-.capture textarea{width:100%;border:0;background:transparent;resize:none;outline:none;font-size:17px;min-height:52px;padding:4px 2px}
-.qc-acts{display:flex;align-items:center;gap:6px;margin-top:4px}
-.redis{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:linear-gradient(135deg,var(--new-bg),var(--panel));border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;margin-bottom:16px;line-height:1.5}
-.redis .ri{font-size:24px} .redis > span:nth-child(2){flex:1;min-width:0}
-.redis:active{opacity:.7}
-.related{margin-top:18px}
-.related h3{font-size:14px;color:var(--muted);margin:0 0 6px}
-.rel{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:9px 12px;background:var(--panel);border:1px solid var(--line);border-radius:10px;margin-bottom:6px}
-.rel .dot{width:10px;height:10px;border-radius:3px;flex:0 0 10px}
-.rel .rt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14.5px}
-.rel:active{background:var(--panel2)}
-.history{margin-top:18px;font-size:12.5px;color:var(--muted)}
-.history summary{cursor:pointer;font-weight:600;padding:6px 0}
-.history li{padding:2px 0}
-.ed-foot{display:flex;gap:8px;margin-top:20px;flex-wrap:wrap}
+/* チェックリスト */
+.checks{padding:2px 10px 8px}
+.chk{display:flex;align-items:flex-start;gap:10px;padding:5px 6px;min-height:38px}
+.chkbox{width:24px;height:24px;min-width:24px;min-height:24px;border-radius:50%;border:1.6px solid var(--label-3);
+  display:inline-flex;align-items:center;justify-content:center;margin-top:2px;flex:none;color:#fff;background:none}
+.chk.on .chkbox{background:var(--tint);border-color:var(--tint)}
+.chk.on .chkbox svg{opacity:1}
+.chkbox svg{width:14px;height:14px;stroke-width:2.6;opacity:0}
+.chk input[type=text]{flex:1;min-width:0;border:0;background:none;outline:none;font-size:var(--body);padding:4px 0}
+.chk.on input[type=text]{color:var(--label-2);text-decoration:line-through}
+.chk .rm{color:var(--label-3);min-width:34px;min-height:34px;display:inline-flex;align-items:center;justify-content:center;border-radius:7px}
 
-/* FAB / シート */
-.fab{position:absolute;right:18px;bottom:calc(18px + env(safe-area-inset-bottom));height:60px;padding:0 22px 0 18px;border-radius:999px;background:var(--accent);color:#fff;font-size:17px;font-weight:700;box-shadow:0 8px 22px rgba(47,111,237,.4);display:flex;align-items:center;gap:8px;z-index:15}
-.fab .p{font-size:28px;font-weight:400;line-height:1}
-.fab:active{transform:scale(.97)}
-.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:40;display:flex;align-items:flex-end;justify-content:center}
-.sheet{background:var(--panel);border-radius:18px 18px 0 0;width:100%;max-width:560px;padding:14px 16px;padding-bottom:calc(18px + env(safe-area-inset-bottom));box-shadow:var(--shadow)}
-@media (min-width:700px){ .sheet-bg{align-items:center} .sheet{border-radius:18px} }
-.sheet h2{font-size:16px;margin:4px 4px 10px}
-.tpl{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:12px;border-radius:12px;border:1px solid var(--line);margin-bottom:8px;background:var(--panel2)}
-.tpl:active{background:var(--accent-bg)}
-.tpl .i{font-size:26px;width:40px;text-align:center}
-.tpl .t{font-weight:600} .tpl .d{font-size:12.5px;color:var(--muted)}
+/* 写真 */
+.photo{padding:12px 16px 14px}
+.photo img{display:block;max-width:100%;max-height:60vh;margin:0 auto;border-radius:8px}
+.photo input{width:100%;border:0;background:none;outline:none;text-align:center;font-size:var(--footnote);
+  color:var(--label-2);padding:9px 0 0}
 
-/* ダイアログ */
-dialog{border:0;border-radius:16px;padding:0;max-width:92vw;width:460px;box-shadow:0 20px 60px rgba(0,0,0,.3);background:var(--panel);color:var(--ink)}
-dialog::backdrop{background:rgba(0,0,0,.35)}
-dialog .d{padding:20px}
-dialog h2{margin:0 0 10px;font-size:18px}
-dialog p{color:var(--muted);font-size:14px;line-height:1.7;margin:0 0 12px}
-dialog .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;flex-wrap:wrap}
-dialog input[type=text]{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2)}
-.catlist{display:flex;flex-direction:column;gap:6px;max-height:46vh;overflow:auto;margin-bottom:10px}
-.catlist .c{display:flex;align-items:center;gap:6px;padding:6px 8px;border:1px solid var(--line);border-radius:10px}
-.catlist .c input[type=text]{flex:1;border:0;background:transparent;padding:4px}
-.catlist .c input[type=color]{width:30px;height:30px;border:0;padding:0;background:none;border-radius:6px}
-.catlist .c button{color:var(--muted);width:30px;height:30px;border-radius:6px}
-.steps{display:flex;flex-direction:column;gap:10px;margin:8px 0}
-.step{display:flex;gap:12px;align-items:flex-start;background:var(--panel2);border-radius:12px;padding:12px}
-.step .n{width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;flex:0 0 28px}
-.step b{display:block;margin-bottom:2px}
-.step span{font-size:13.5px;color:var(--muted)}
-.setrow{display:flex;justify-content:space-between;align-items:center;padding:12px 4px;border-bottom:1px solid var(--line2);gap:10px}
-.setrow .k b{display:block} .setrow .k span{font-size:12.5px;color:var(--muted)}
+/* 回答 */
+.answer textarea{width:100%;border:0;background:none;outline:none;resize:none;font-size:var(--body);
+  line-height:1.47;padding:12px 16px;min-height:88px;display:block}
+.answer textarea::placeholder{color:var(--label-3)}
+.answer .who{display:flex;align-items:center;gap:12px;min-height:44px;padding:0 16px;position:relative}
+.answer .who::before{content:"";position:absolute;left:16px;right:0;top:0;height:.5px;background:var(--sep);transform:scaleY(.5)}
+.answer .who label{font-size:var(--body);color:var(--label)}
+.answer .who input{flex:1;min-width:0;border:0;background:none;outline:none;text-align:right;font-size:var(--body);color:var(--label-2)}
 
-.toast{position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:999px;font-size:14px;z-index:60;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw;text-align:center}
-.toast.show{opacity:1}
-.menu-btn{display:none}
-.back-btn{display:none}
+/* 履歴 */
+.hist summary{list-style:none;min-height:44px;display:flex;align-items:center;gap:8px;padding:0 16px;
+  font-size:var(--body);color:var(--tint);cursor:pointer}
+.hist summary::-webkit-details-marker{display:none}
+.hist summary .chev{transition:transform .2s;color:var(--label-3)}
+.hist[open] summary .chev{transform:rotate(90deg)}
+.hist ul{margin:0;padding:2px 16px 12px;list-style:none}
+.hist li{font-size:var(--footnote);color:var(--label-2);padding:3px 0;display:flex;gap:10px}
+.hist li b{font-weight:400;color:var(--label-3);min-width:88px;font-variant-numeric:tabular-nums}
 
-/* ===== レスポンシブ: 3ペイン / 2ペイン / 1ペイン ===== */
-@media (max-width:999px){
-  .edit-pane{position:fixed;inset:0;z-index:20;transform:translateX(100%);transition:transform .22s;padding-top:env(safe-area-inset-top)}
-  .edit-pane.open{transform:none}
-  .list-pane{flex:1;width:auto}
-  .back-btn{display:inline-flex}
+/* ============================================================
+   ポップオーバー / アクションシート / アラート / シート
+   ============================================================ */
+.scrim{position:fixed;inset:0;z-index:40;background:transparent}
+.scrim.dim{background:rgba(0,0,0,.28)}
+.sidebar-scrim{position:fixed;inset:0;z-index:25;background:rgba(0,0,0,.28)}
+
+.popover{
+  position:fixed;z-index:45;min-width:260px;max-width:340px;border-radius:13px;overflow:hidden;
+  background:var(--bg-menu);-webkit-backdrop-filter:blur(30px) saturate(180%);backdrop-filter:blur(30px) saturate(180%);
+  box-shadow:0 12px 40px rgba(0,0,0,.24),0 0 0 .5px var(--sep);
+  transform-origin:top right;animation:pop .22s cubic-bezier(.32,.72,0,1);
 }
-@media (max-width:720px){
-  .side{position:fixed;inset:0 auto 0 0;z-index:30;transform:translateX(-100%);transition:transform .2s;box-shadow:0 0 40px rgba(0,0,0,.3)}
-  .side.open{transform:none}
-  .side-bg{position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:29}
-  .menu-btn{display:inline-flex}
-  .filters{flex-wrap:wrap}
-  .prop{align-items:flex-start;flex-direction:column;gap:4px}
-  .prop .k{width:auto}
-}
+@keyframes pop{from{transform:scale(.94);opacity:0}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){ .popover{animation:none} }
+.menu-item{display:flex;align-items:center;gap:12px;width:100%;min-height:46px;padding:9px 16px;text-align:left;font-size:var(--body);position:relative}
+.menu-item + .menu-item::before{content:"";position:absolute;left:0;right:0;top:0;height:.5px;background:var(--sep);transform:scaleY(.5)}
+.menu-item .mi-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.menu-item .mi-sub{display:block;font-size:var(--footnote);color:var(--label-2);line-height:1.3}
+.menu-item .mi-check{color:var(--tint);opacity:0;flex:none}
+.menu-item[aria-checked="true"] .mi-check{opacity:1}
+.menu-item.destructive{color:var(--red)}
+.menu-item:active{background:var(--fill-3)}
 
-/* ===== 印刷(FAQ) ===== */
+/* コンパクト幅ではポップオーバーをシートにする（HIG の適応） */
+.sheet-wrap{position:fixed;inset:0;z-index:45;display:flex;align-items:flex-end;justify-content:center;padding:8px}
+.sheet-wrap .popover{position:static;width:100%;max-width:520px;min-width:0;animation:up .32s cubic-bezier(.32,.72,0,1);transform-origin:bottom center;
+  margin-bottom:calc(8px + env(safe-area-inset-bottom))}
+@keyframes up{from{transform:translateY(14px);opacity:0}to{transform:none;opacity:1}}
+
+/* アラート */
+.alert-wrap{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.28);display:flex;align-items:center;justify-content:center;padding:20px}
+.alert{width:270px;border-radius:14px;overflow:hidden;text-align:center;
+  background:var(--bg-alert);-webkit-backdrop-filter:blur(30px) saturate(180%);backdrop-filter:blur(30px) saturate(180%);
+  box-shadow:0 20px 60px rgba(0,0,0,.3);animation:pop .2s ease-out}
+.alert .a-body{padding:19px 16px 18px}
+.alert .a-title{font-size:var(--headline);font-weight:600}
+.alert .a-msg{font-size:var(--footnote);margin-top:4px;line-height:1.38}
+.alert .a-field{margin-top:14px;background:var(--bg);border:.5px solid var(--sep);border-radius:6px;
+  height:32px;display:flex;align-items:center;padding:0 8px}
+.alert .a-field input{flex:1;min-width:0;border:0;background:none;outline:none;font-size:var(--subhead)}
+.alert .a-acts{display:flex;position:relative}
+.alert .a-acts::before{content:"";position:absolute;left:0;right:0;top:0;height:.5px;background:var(--sep);transform:scaleY(.5)}
+.alert .a-acts button{flex:1;min-height:44px;color:var(--tint);font-size:var(--body);position:relative}
+.alert .a-acts button + button::before{content:"";position:absolute;left:0;top:0;bottom:0;width:.5px;background:var(--sep);transform:scaleX(.5)}
+.alert .a-acts button.cancel{font-weight:600}
+.alert .a-acts button.destructive{color:var(--red)}
+.alert .a-acts button:active{background:var(--fill-3)}
+
+/* フォームシート */
+.formsheet-wrap{position:fixed;inset:0;z-index:48;background:rgba(0,0,0,.28);display:flex;align-items:center;justify-content:center;padding:20px}
+.formsheet{width:540px;max-width:100%;max-height:min(620px,86dvh);border-radius:14px;overflow:hidden;
+  background:var(--bg-grouped);box-shadow:0 24px 70px rgba(0,0,0,.32);display:flex;flex-direction:column;
+  animation:pop .24s cubic-bezier(.32,.72,0,1)}
+.formsheet .navbar{border-radius:14px 14px 0 0}
+.formsheet .fs-body{overflow-y:auto;-webkit-overflow-scrolling:touch}
+.formsheet .grouped{padding-top:18px}
+@media (max-width:700px){
+  .formsheet-wrap{align-items:flex-end;padding:0}
+  .formsheet{width:100%;max-height:92dvh;border-radius:14px 14px 0 0;animation:up .34s cubic-bezier(.32,.72,0,1)}
+  .formsheet .fs-body{padding-bottom:env(safe-area-inset-bottom)}
+}
+@media (prefers-reduced-motion:reduce){ .formsheet,.alert,.sheet-wrap .popover{animation:none} }
+
+/* iOS スイッチ */
+.switch{appearance:none;-webkit-appearance:none;width:51px;height:31px;min-width:51px;border-radius:16px;
+  background:var(--fill);position:relative;transition:background .22s;flex:none;margin:0}
+.switch:checked{background:var(--green)}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;
+  box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16);transition:transform .22s cubic-bezier(.32,.72,0,1)}
+.switch:checked::after{transform:translateX(20px)}
+@media (prefers-reduced-motion:reduce){ .switch,.switch::after{transition:none} }
+
+/* テキストフィールド行 */
+.cell input.tf{flex:1;min-width:0;border:0;background:none;outline:none;font-size:var(--body);text-align:right;color:var(--label-2)}
+.cell input.tf::placeholder{color:var(--label-3)}
+.catrow{display:flex;align-items:center;gap:10px;width:100%;min-height:48px;padding:7px 16px;position:relative}
+.catrow + .catrow::before{content:"";position:absolute;left:16px;right:0;top:0;height:.5px;background:var(--sep);transform:scaleY(.5)}
+.catrow input[type=color]{width:30px;height:30px;min-width:30px;border:0;padding:0;background:none;border-radius:50%;flex:none}
+.catrow input[type=text]{flex:1;min-width:0;border:0;background:none;outline:none;font-size:var(--body)}
+
+/* HUD（保存などの短い通知） */
+.hud{position:fixed;left:50%;bottom:calc(34px + env(safe-area-inset-bottom));transform:translateX(-50%) scale(.96);
+  z-index:60;padding:11px 20px;border-radius:999px;max-width:88vw;text-align:center;
+  background:var(--bg-menu);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);
+  box-shadow:0 8px 28px rgba(0,0,0,.2),0 0 0 .5px var(--sep);
+  font-size:var(--subhead);opacity:0;pointer-events:none;transition:opacity .24s,transform .24s}
+.hud.on{opacity:1;transform:translateX(-50%) scale(1)}
+
+/* ============================================================
+   コンパクト幅
+   ============================================================ */
+.compact-only{display:none}
+@media (max-width:768px){
+  .sidebar{position:fixed;top:0;bottom:0;left:0;z-index:26;margin-left:-288px;box-shadow:0 0 40px rgba(0,0,0,.2)}
+  .split.show-sidebar .sidebar{margin-left:0}
+  .compact-only{display:inline-flex}
+  :root{--margin:16px}
+  .glist,.stats,.capture{margin-left:12px;margin-right:12px}
+}
+@media (min-width:769px){ .sidebar-scrim{display:none} }
+
+/* ============================================================
+   FAQ 印刷
+   ============================================================ */
 #printView{display:none}
 @media print{
   body *{visibility:hidden}
   #printView,#printView *{visibility:visible}
-  #printView{display:block;position:absolute;left:0;top:0;width:100%;padding:20px;background:#fff;color:#000}
-  .pq{page-break-inside:avoid;border-bottom:1px solid #ccc;padding:10px 0;margin-bottom:8px}
-  .pq h4{margin:0 0 4px;font-size:15px}
-  .pq .pa{white-space:pre-wrap;font-size:13.5px}
-  .pq .pm{font-size:11px;color:#666}
-  .pq img{max-width:60%;display:block;border:1px solid #ddd;margin:6px 0}
+  #printView{display:block;position:absolute;left:0;top:0;width:100%;padding:24px;background:#fff;color:#000;font-size:11pt}
+  #printView h2{font-size:16pt;margin:0 0 2px}
+  .pq{page-break-inside:avoid;border-top:1px solid #d0d0d0;padding:12px 0}
+  .pq h4{margin:0 0 3px;font-size:12pt}
+  .pq .pm{font-size:9pt;color:#666}
+  .pq .pa{white-space:pre-wrap;font-size:10.5pt;margin-top:5px;line-height:1.5}
+  .pq img{max-width:55%;display:block;border:1px solid #ddd;margin:6px 0}
 }
 </style>
 </head>
 <body>
-<div class="app">
-  <!-- ===== サイドバー(セクション) ===== -->
-  <aside class="side" id="side">
-    <div class="brand"><div class="logo">？</div><h1>疑問ノート</h1></div>
-    <div class="scroll nav" id="nav"></div>
-    <div class="foot">
-      <button class="navi" id="btnHelp"><span class="ico">📖</span><span class="nm">使い方</span></button>
-      <button class="navi" id="btnSettings"><span class="ico">⚙️</span><span class="nm" id="meLabel">設定</span></button>
+
+<svg class="sprite" aria-hidden="true"><defs>
+<symbol id="i-house" viewBox="0 0 24 24"><path d="M3.5 10.6 12 3.6l8.5 7v8.6a1.8 1.8 0 0 1-1.8 1.8h-3.4v-6H8.7v6H5.3a1.8 1.8 0 0 1-1.8-1.8z"/></symbol>
+<symbol id="i-tray" viewBox="0 0 24 24"><path d="M3.5 14.5h4.2l1.4 2.2h5.8l1.4-2.2h4.2M5.6 5.5h12.8l2.1 9v3.2a1.8 1.8 0 0 1-1.8 1.8H5.3a1.8 1.8 0 0 1-1.8-1.8v-3.2z"/></symbol>
+<symbol id="i-pin" viewBox="0 0 24 24"><path d="M9.2 3.5h5.6l-.9 5 2.8 2.9v1.9H7.3v-1.9l2.8-2.9zM12 13.3V20.5"/></symbol>
+<symbol id="i-bubble" viewBox="0 0 24 24"><path d="M4 6.3a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7.4a2 2 0 0 1-2 2H9.6L5.4 19.6v-3.9H6a2 2 0 0 1-2-2z"/></symbol>
+<symbol id="i-tag" viewBox="0 0 24 24"><path d="M3.6 11.4 11.4 3.6h7.6a1.4 1.4 0 0 1 1.4 1.4v7.6l-7.8 7.8a1.4 1.4 0 0 1-2 0l-7-7a1.4 1.4 0 0 1 0-2z"/><circle cx="15.8" cy="8.2" r="1.3"/></symbol>
+<symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.9"/><path d="M19.5 12a7.6 7.6 0 0 0-.1-1.2l2-1.5-1.9-3.3-2.4.9a7.5 7.5 0 0 0-2.1-1.2L14.6 3h-3.8l-.4 2.6a7.5 7.5 0 0 0-2.1 1.2l-2.4-.9L4 9.3l2 1.5a7.6 7.6 0 0 0 0 2.4l-2 1.5 1.9 3.3 2.4-.9a7.5 7.5 0 0 0 2.1 1.2l.4 2.7h3.8l.4-2.7a7.5 7.5 0 0 0 2.1-1.2l2.4.9 1.9-3.3-2-1.5c.06-.4.1-.8.1-1.2z"/></symbol>
+<symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5.2a2 2 0 0 1 2-2h11.5v15.6H6a2 2 0 0 0-2 2zM17.5 3.2v15.6M4 18.8a2 2 0 0 0 2 2h11.5"/></symbol>
+<symbol id="i-sidebar" viewBox="0 0 24 24"><rect x="3.2" y="4.4" width="17.6" height="15.2" rx="2.4"/><path d="M9.4 4.4v15.2"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.6"/><path d="M15.6 15.6 20.4 20.4"/></symbol>
+<symbol id="i-compose" viewBox="0 0 24 24"><path d="M19.6 12.8v5.6a2 2 0 0 1-2 2H5.6a2 2 0 0 1-2-2V6.4a2 2 0 0 1 2-2h5.6"/><path d="M17.4 3.3 20.7 6.6l-8.4 8.4-4 .7.7-4z"/></symbol>
+<symbol id="i-ellipsis" viewBox="0 0 24 24"><circle cx="5.4" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="18.6" cy="12" r="1.5" fill="currentColor" stroke="none"/></symbol>
+<symbol id="i-share" viewBox="0 0 24 24"><path d="M12 3.4v12.2M8.2 7.2 12 3.4l3.8 3.8"/><path d="M5.4 12.6v6a2 2 0 0 0 2 2h9.2a2 2 0 0 0 2-2v-6"/></symbol>
+<symbol id="i-chev-l" viewBox="0 0 24 24"><path d="M14.6 4.8 7.4 12l7.2 7.2"/></symbol>
+<symbol id="i-chev-r" viewBox="0 0 24 24"><path d="M9.4 4.8 16.6 12l-7.2 7.2"/></symbol>
+<symbol id="i-chev-u" viewBox="0 0 24 24"><path d="M4.8 14.6 12 7.4l7.2 7.2"/></symbol>
+<symbol id="i-chev-d" viewBox="0 0 24 24"><path d="M4.8 9.4 12 16.6l7.2-7.2"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 4.6v14.8M4.6 12h14.8"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="M4.8 12.6 9.6 17.4 19.2 6.6"/></symbol>
+<symbol id="i-xmark" viewBox="0 0 24 24"><path d="M6.2 6.2 17.8 17.8M17.8 6.2 6.2 17.8"/></symbol>
+<symbol id="i-xcircle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="currentColor" stroke="none"/><path d="M8.8 8.8 15.2 15.2M15.2 8.8 8.8 15.2" stroke="var(--bg-2)" stroke-width="2"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.2 6.6h15.6M9.4 6.6V4.4h5.2v2.2M6.4 6.6l.9 13a1.8 1.8 0 0 0 1.8 1.7h5.8a1.8 1.8 0 0 0 1.8-1.7l.9-13"/></symbol>
+<symbol id="i-undo" viewBox="0 0 24 24"><path d="M4.4 9.6h9.8a5.2 5.2 0 0 1 0 10.4H9"/><path d="M8.2 5.4 4 9.6l4.2 4.2"/></symbol>
+<symbol id="i-pen" viewBox="0 0 24 24"><path d="M12 2.8 15.6 10H8.4zM8.4 10h7.2v3.6H8.4zM9.6 13.6h4.8v7.6H9.6z"/></symbol>
+<symbol id="i-marker" viewBox="0 0 24 24"><path d="M4.6 19.4h4l9-9a2.2 2.2 0 0 0 0-3.1l-1.5-1.5a2.2 2.2 0 0 0-3.1 0l-9 9zM13.4 6.6l4 4"/></symbol>
+<symbol id="i-eraser" viewBox="0 0 24 24"><path d="M7.6 19.4 3.4 15.2a1.6 1.6 0 0 1 0-2.3l8.6-8.6a1.6 1.6 0 0 1 2.3 0l6 6a1.6 1.6 0 0 1 0 2.3l-6.6 6.8zM9.6 19.4h11"/></symbol>
+<symbol id="i-hand" viewBox="0 0 24 24"><path d="M8.4 11V5.2a1.5 1.5 0 0 1 3 0V10m0-.4V4a1.5 1.5 0 0 1 3 0v5.6m0-.2V5.6a1.5 1.5 0 0 1 3 0v7.8a7 7 0 0 1-7 7h-.6a5.4 5.4 0 0 1-4.3-2.1l-3-4a1.4 1.4 0 0 1 2-2l1.9 1.6"/></symbol>
+<symbol id="i-photo" viewBox="0 0 24 24"><rect x="3.4" y="5" width="17.2" height="14" rx="2.2"/><circle cx="8.8" cy="9.8" r="1.6"/><path d="M3.8 17.2 9 12.6l4 3.4 3-2.4 4.2 3.6"/></symbol>
+<symbol id="i-camera" viewBox="0 0 24 24"><path d="M4.4 7.8h2.8l1.4-2.2h6.8l1.4 2.2h2.8a1.6 1.6 0 0 1 1.6 1.6v8.2a1.6 1.6 0 0 1-1.6 1.6H4.4a1.6 1.6 0 0 1-1.6-1.6V9.4a1.6 1.6 0 0 1 1.6-1.6z"/><circle cx="12" cy="13.4" r="3.3"/></symbol>
+<symbol id="i-checklist" viewBox="0 0 24 24"><path d="M3.6 7.2 5.2 8.8 8.4 5.6M11.6 7.2h8.8M3.6 15.6l1.6 1.6 3.2-3.2M11.6 15.6h8.8"/></symbol>
+<symbol id="i-text" viewBox="0 0 24 24"><path d="M4.6 19.4 11.2 4.6h1.6l6.6 14.8M7.6 14.4h8.8"/></symbol>
+<symbol id="i-printer" viewBox="0 0 24 24"><path d="M7 8.4V3.6h10v4.8M17 15.6h3.4V10a1.6 1.6 0 0 0-1.6-1.6H5.2A1.6 1.6 0 0 0 3.6 10v5.6H7M7 12.6h10v7.8H7z"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.4"/><path d="M12 7.2V12l3.2 2.2"/></symbol>
+<symbol id="i-link" viewBox="0 0 24 24"><path d="M10.2 13.8a3.6 3.6 0 0 0 5.4.4l2.8-2.8a3.6 3.6 0 0 0-5.1-5.1l-1.6 1.6"/><path d="M13.8 10.2a3.6 3.6 0 0 0-5.4-.4l-2.8 2.8a3.6 3.6 0 0 0 5.1 5.1l1.6-1.6"/></symbol>
+<symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.4 7a2 2 0 0 1 2-2h3.8l2 2.2h9.4a2 2 0 0 1 2 2v8.8a2 2 0 0 1-2 2H5.4a2 2 0 0 1-2-2z"/></symbol>
+<symbol id="i-export" viewBox="0 0 24 24"><path d="M12 3.4v10.2M8.2 7.2 12 3.4l3.8 3.8M4.6 14.4v4a2 2 0 0 0 2 2h10.8a2 2 0 0 0 2-2v-4"/></symbol>
+<symbol id="i-import" viewBox="0 0 24 24"><path d="M12 13.6V3.4M8.2 9.8 12 13.6l3.8-3.8M4.6 14.4v4a2 2 0 0 0 2 2h10.8a2 2 0 0 0 2-2v-4"/></symbol>
+<symbol id="i-person" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.8"/><path d="M4.8 20.4a7.2 7.2 0 0 1 14.4 0"/></symbol>
+<symbol id="i-note" viewBox="0 0 24 24"><path d="M5.4 4.4h13.2v9.4l-5 5.8H5.4z"/><path d="M18.6 13.8h-5v5.8"/></symbol>
+<symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3.4 13.8 9 19.4 10.8 13.8 12.6 12 18.2 10.2 12.6 4.6 10.8 10.2 9z"/><path d="M18.4 16.2 19.2 18.6 21.6 19.4 19.2 20.2 18.4 22.6 17.6 20.2 15.2 19.4 17.6 18.6z"/></symbol>
+</defs></svg>
+
+<div class="split" id="split">
+
+  <!-- ===================== サイドバー ===================== -->
+  <aside class="sidebar" id="sidebar">
+    <div class="navbar" style="background:var(--bg-sidebar);border-bottom:0">
+      <div class="lead"></div>
+      <div class="title" style="opacity:0">疑問ノート</div>
+      <div class="trail"><button class="navbtn" id="btnSettings" aria-label="設定"><svg class="g"><use href="#i-gear"/></svg></button></div>
     </div>
+    <div class="largehead"><h1>疑問ノート</h1></div>
+    <div class="colscroll"><nav class="sblist" id="sbList" aria-label="コレクション"></nav></div>
   </aside>
-  <div class="side-bg" id="sideBg" hidden></div>
+  <div class="sidebar-scrim" id="sidebarScrim" hidden></div>
 
-  <!-- ===== 一覧ペイン(ページ一覧 / ホーム) ===== -->
-  <section class="pane list-pane" id="listPane">
-    <div class="hdr">
-      <button class="btn icon ghost menu-btn" id="btnMenu" aria-label="メニュー">☰</button>
-      <div class="ttl" id="viewTitle">ホーム</div>
-      <button class="btn sm ghost" id="btnPrint" title="解決済みをFAQとして印刷">🖨 FAQ</button>
-    </div>
-    <div class="filters" id="filters">
-      <input class="search" id="q" type="search" placeholder="検索" autocomplete="off">
-      <div class="chips scroll-x" id="statusChips">
-        <button class="chip on" data-s="">すべて</button>
-        <button class="chip" data-s="open">未解決</button>
-        <button class="chip" data-s="wip">確認中</button>
-        <button class="chip" data-s="done">解決</button>
-      </div>
-      <div class="chips scroll-x tagrow" id="tagChips" hidden></div>
-    </div>
-    <div class="scroll" id="listScroll">
-      <div class="home" id="home"></div>
-      <div class="list" id="list" hidden></div>
-    </div>
-    <button class="fab" id="fab"><span class="p">＋</span> 疑問を書く</button>
-  </section>
+  <!-- ===================== コンテンツ ===================== -->
+  <div class="content">
 
-  <!-- ===== エディタペイン(ページ) ===== -->
-  <section class="pane edit-pane" id="editPane">
-    <div class="hdr">
-      <button class="btn ghost back-btn" id="edBack">‹ 一覧へ</button>
-      <div class="ttl" id="edCrumb"></div>
-      <button class="btn sm ghost" id="edPin" title="ピン留め" hidden>📌</button>
-      <button class="btn sm ghost" id="edShare" title="このページを共有" hidden>⇪</button>
-      <button class="btn sm primary" id="edDone" hidden>閉じる</button>
-    </div>
-    <div class="scroll">
-      <div class="editor-empty" id="edEmpty">
-        <div>左の一覧からページを選ぶか、<br><b>「＋ 疑問を書く」</b>で新しいページを作りましょう。</div>
-      </div>
-      <div class="ed-body" id="edBody" hidden>
-        <input class="ed-title" id="edTitle" placeholder="疑問を一言で（あとで書いてもOK）" autocomplete="off">
-        <div class="props">
-          <div class="prop"><span class="k">ステータス</span><div class="chips" id="edStatus">
-            <button class="chip stchip open" data-s="open">🔴 未解決</button>
-            <button class="chip stchip wip" data-s="wip">🟡 確認中</button>
-            <button class="chip stchip done" data-s="done">🟢 解決</button>
-          </div></div>
-          <div class="prop"><span class="k">業務</span><div class="chips scroll-x" id="edCats"></div></div>
-          <div class="prop"><span class="k">タグ</span><div class="chips" id="edTags"></div></div>
+    <!-- 一覧 -->
+    <section class="stack under" id="listStack">
+      <header class="navbar">
+        <div class="lead">
+          <button class="navbtn" id="btnSidebar" aria-label="サイドバーを表示"><svg class="g"><use href="#i-sidebar"/></svg></button>
         </div>
-
-        <div class="blocks" id="blocks"></div>
-        <div class="addblk">
-          <span class="lbl">追加：</span>
-          <button class="btn sm" data-add="ink">✎ 手書き</button>
-          <button class="btn sm" data-add="text">Ａ テキスト</button>
-          <button class="btn sm" data-add="check">☑ チェックリスト</button>
-          <button class="btn sm" data-add="image">📷 写真</button>
-          <input type="file" id="imgFile" accept="image/*" hidden>
+        <h2 class="title" id="listTitle">ホーム</h2>
+        <div class="trail">
+          <button class="navbtn" id="btnListMenu" aria-label="その他の操作"><svg class="g"><use href="#i-ellipsis"/></svg></button>
+          <button class="navbtn" id="btnCompose" aria-label="新しいページ"><svg class="g"><use href="#i-compose"/></svg></button>
         </div>
-
-        <div class="answer">
-          <h3>💬 回答・対応 <span class="muted small">（LD / 分かった人が書く）</span></h3>
-          <textarea id="edAnswer" placeholder="結論 → 根拠 → 参照先（手順書のページなど）。次の人が読んで分かるように"></textarea>
-          <div class="who">回答者 <input type="text" id="edAnsweredBy" placeholder="名前"><span id="edAnsweredAt"></span></div>
-          <div class="done-cta" id="doneCta" hidden>
-            <span class="small muted">回答を確認できたら…</span>
-            <button class="btn sm" id="btnMarkDone">🟢 解決にする</button>
-          </div>
+      </header>
+      <div class="accessory" id="listAccessory">
+        <div class="searchfield">
+          <svg class="g sm"><use href="#i-search"/></svg>
+          <input id="searchField" type="search" placeholder="検索" autocomplete="off" enterkeyhint="search" aria-label="ページを検索">
+          <button class="clr" id="searchClear" aria-label="検索語を消去" hidden><svg class="g sm"><use href="#i-xcircle"/></svg></button>
         </div>
-
-        <div class="related" id="relatedBox" hidden><h3>🔗 関連するページ</h3><div id="relatedList"></div></div>
-        <details class="history" id="histBox"><summary>履歴</summary><ul id="historyList"></ul></details>
-
-        <div class="ed-foot">
-          <button class="btn danger ghost" id="edDelete">🗑 このページを削除</button>
+        <div class="segmented" id="segStatus" role="tablist" aria-label="ステータスで絞り込む">
+          <button role="tab" data-s="" aria-selected="true">すべて</button>
+          <button role="tab" data-s="open" aria-selected="false">未解決</button>
+          <button role="tab" data-s="wip" aria-selected="false">確認中</button>
+          <button role="tab" data-s="done" aria-selected="false">解決</button>
         </div>
       </div>
-    </div>
-  </section>
-</div>
+      <div class="colscroll" id="listScroll">
+        <div class="grouped" id="home"></div>
+        <div class="grouped" id="list" hidden></div>
+      </div>
+    </section>
 
+    <!-- ページ -->
+    <section class="stack pushed" id="pageStack" aria-hidden="true">
+      <header class="navbar">
+        <div class="lead">
+          <button class="navbtn text" id="btnBack"><svg class="g"><use href="#i-chev-l"/></svg><span id="backLabel">一覧</span></button>
+        </div>
+        <h2 class="title" id="pageTitle"></h2>
+        <div class="trail">
+          <button class="navbtn" id="btnPin" aria-label="ピン留め"><svg class="g"><use href="#i-pin"/></svg></button>
+          <button class="navbtn" id="btnShare" aria-label="このページを共有"><svg class="g"><use href="#i-share"/></svg></button>
+          <button class="navbtn" id="btnPageMenu" aria-label="その他の操作"><svg class="g"><use href="#i-ellipsis"/></svg></button>
+        </div>
+      </header>
+      <div class="colscroll" id="pageScroll">
+        <div class="doc" id="doc"></div>
+      </div>
+    </section>
 
-<!-- 新規作成シート(テンプレート) -->
-<div class="sheet-bg" id="newSheet" hidden>
-  <div class="sheet">
-    <h2>どんなふうに書きますか？</h2>
-    <button class="tpl" data-tpl="ink"><span class="i">✎</span><span><span class="t">手書きですぐ書く</span><br><span class="d">白い紙が開きます。あとから整理でOK</span></span></button>
-    <button class="tpl" data-tpl="question"><span class="i">❓</span><span><span class="t">疑問テンプレ</span><br><span class="d">状況 / 自分がやったこと / 聞きたいこと の3項目</span></span></button>
-    <button class="tpl" data-tpl="steps"><span class="i">☑</span><span><span class="t">手順・チェックリスト</span><br><span class="d">教わった手順をそのまま順番に</span></span></button>
-    <button class="tpl" data-tpl="call"><span class="i">📞</span><span><span class="t">電話・引継ぎメモ</span><br><span class="d">相手 / 用件 / 対応 / 次にやること</span></span></button>
-    <button class="btn ghost" id="newCancel" style="width:100%">キャンセル</button>
   </div>
 </div>
 
-<!-- 使い方 -->
-<dialog id="dlgHelp">
-  <div class="d">
-    <h2>疑問ノートの使い方</h2>
-    <div class="steps">
-      <div class="step"><div class="n">1</div><div><b>迷ったら「＋ 疑問を書く」</b><span>手書きでもテキストでも、殴り書きでOK。タイトルや業務はあとで直せます。</span></div></div>
-      <div class="step"><div class="n">2</div><div><b>業務ごとに自動で整理される</b><span>左の業務一覧に「未解決の数」が出ます。増やしたいときは 設定 → 業務の編集。</span></div></div>
-      <div class="step"><div class="n">3</div><div><b>LDが回答を書く → 🟢解決にする</b><span>書き出し → AirDrop → 取り込み で共有。「新しい回答」はホームに出ます。</span></div></div>
-      <div class="step"><div class="n">4</div><div><b>解決したものはFAQになる</b><span>「🖨 FAQ」で印刷用にまとめられます。次に入る人への引継ぎ資料に。</span></div></div>
-    </div>
-    <p class="small">Apple Pencil：テキスト欄に直接手書きすると文字になります（スクリブル）。手書きパッドの「✋」で指を無視できます。</p>
-    <div class="acts"><button class="btn primary" id="helpClose">はじめる</button></div>
-  </div>
-</dialog>
-
-<!-- 設定 -->
-<dialog id="dlgSettings">
-  <div class="d">
-    <h2>設定</h2>
-    <div class="setrow"><div class="k"><b>あなたの名前</b><span>作成者・回答者として記録されます</span></div><input type="text" id="nameInput" placeholder="例：田中" style="width:150px"></div>
-    <div class="setrow"><div class="k"><b>業務カテゴリ</b><span>名前・色・並び順を変更</span></div><button class="btn sm" id="btnCats">編集</button></div>
-    <div class="setrow"><div class="k"><b>書き出し（共有）</b><span>すべてのページを1ファイルに</span></div><button class="btn sm" id="btnExport">⇪ 書き出し</button></div>
-    <div class="setrow"><div class="k"><b>取り込み（マージ）</b><span>相手のファイルを合流させる</span></div><button class="btn sm" id="btnImport">⇩ 取り込み</button><input type="file" id="fileImport" accept="application/json,.json" hidden></div>
-    <div class="setrow"><div class="k"><b>手書きは Pencil のみ</b><span>指や手のひらを無視する</span></div><input type="checkbox" id="penOnly" style="width:24px;height:24px"></div>
-    <div class="acts"><button class="btn primary" id="settingsClose">閉じる</button></div>
-  </div>
-</dialog>
-
-<dialog id="dlgCats">
-  <div class="d">
-    <h2>業務カテゴリ</h2>
-    <p>多岐にわたるなら、迷わず増やしてOK。色は左の一覧やカードの目印になります。</p>
-    <div class="catlist" id="catEdit"></div>
-    <button class="btn sm" id="catAdd">＋ 追加</button>
-    <div class="acts"><button class="btn" id="catCancel">閉じる</button><button class="btn primary" id="catSave">保存</button></div>
-  </div>
-</dialog>
-
-<dialog id="dlgPrompt">
-  <div class="d"><h2 id="ptTitle">入力</h2><input type="text" id="ptInput" autocomplete="off"><div class="acts"><button class="btn" id="ptNo">キャンセル</button><button class="btn primary" id="ptOk">追加</button></div></div>
-</dialog>
-<dialog id="dlgConfirm">
-  <div class="d">
-    <h2 id="cfTitle">確認</h2>
-    <p id="cfText"></p>
-    <div class="acts"><button class="btn" id="cfNo">キャンセル</button><button class="btn danger" id="cfYes">実行</button></div>
-  </div>
-</dialog>
-
+<input type="file" id="imgFile" accept="image/*" hidden>
+<input type="file" id="fileImport" accept="application/json,.json" hidden>
 <div id="printView"></div>
-<div class="toast" id="toast"></div>
+<div class="hud" id="hud" role="status" aria-live="polite"></div>
 <script src="app.js"></script>
 </body>
 </html>
