@@ -13,259 +13,386 @@
 <title>疑問ノート</title>
 <style>
 :root{
-  --bg:#f6f5f1; --panel:#ffffff; --ink:#1f2328; --muted:#6b7280; --line:#e3e1da;
-  --accent:#2f6fed; --accent-ink:#ffffff;
+  --bg:#f3f2ee; --panel:#ffffff; --panel2:#faf9f6; --ink:#1f2328; --muted:#6b7280; --line:#e4e2db; --line2:#eeede8;
+  --accent:#2f6fed; --accent-bg:#e9f0ff; --accent-ink:#ffffff;
   --open:#d9480f; --open-bg:#fff1e6;
   --wip:#b7791f; --wip-bg:#fff8e1;
   --done:#2b8a3e; --done-bg:#e9f7ec;
-  --radius:12px;
+  --new:#7c3aed; --new-bg:#f1eaff;
+  --shadow:0 8px 24px rgba(20,20,30,.08);
+  --radius:14px; --r2:10px;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#17181b; --panel:#212328; --panel2:#2a2c32; --ink:#ececee; --muted:#9a9ca6; --line:#34363d; --line2:#2c2e34;
+    --accent:#6b9bff; --accent-bg:#1f2b48; --open:#ff8a4d; --open-bg:#3a2417; --wip:#e0aa3d; --wip-bg:#3a2f14; --done:#63c47a; --done-bg:#163a20;
+    --new:#b48cff; --new-bg:#2c1f45; --shadow:0 8px 24px rgba(0,0,0,.4); }
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
-  font-family:-apple-system,"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;font-size:16px;
+  font-family:-apple-system,"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;font-size:16px;line-height:1.5;
   overscroll-behavior:none}
-button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;line-height:1.3}
 input,textarea,select{font:inherit;color:inherit}
-.app{display:flex;height:100%;height:100dvh}
+textarea{line-height:1.6}
+[hidden]{display:none !important}
+.muted{color:var(--muted)}
+.small{font-size:12px}
 
-/* ---- sidebar ---- */
-.side{width:260px;flex:0 0 260px;border-right:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;
-  padding-top:env(safe-area-inset-top)}
-.side h1{font-size:18px;margin:0;padding:16px 16px 8px}
-.side .sub{color:var(--muted);font-size:12px;padding:0 16px 12px}
-.cats{flex:1;overflow:auto;padding:0 8px 8px}
-.cat{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:10px 10px;border-radius:8px;font-size:15px}
-.cat.active{background:#eef3ff;color:var(--accent);font-weight:600}
-.cat .n{margin-left:auto;font-size:12px;color:var(--open);background:var(--open-bg);border-radius:999px;padding:2px 8px;min-width:24px;text-align:center}
-.cat .n.zero{color:var(--muted);background:#f1f1ee}
-.cat .dots{color:var(--muted);font-size:18px;padding:0 4px}
-.side .foot{border-top:1px solid var(--line);padding:10px 12px;display:flex;flex-direction:column;gap:6px;padding-bottom:calc(10px + env(safe-area-inset-bottom))}
-.side .foot button{text-align:left;padding:8px 6px;border-radius:8px;font-size:14px;color:var(--muted)}
-.side .foot button:active{background:#f1f1ee}
+/* ===== レイアウト ===== */
+.app{display:flex;height:100%;height:100dvh;overflow:hidden}
+.side{width:236px;flex:0 0 236px;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top)}
+.pane{flex:1;min-width:0;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top)}
+.list-pane{position:relative;flex:0 0 340px;width:340px;border-right:1px solid var(--line);background:var(--bg)}
+.edit-pane{flex:1;background:var(--panel2)}
+.hdr{display:flex;align-items:center;gap:8px;padding:10px 14px;min-height:56px;border-bottom:1px solid var(--line);background:var(--panel)}
+.hdr .ttl{font-weight:700;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;display:flex;align-items:center;gap:8px}
+.scroll{flex:1;overflow:auto;-webkit-overflow-scrolling:touch}
 
-/* ---- main ---- */
-.main{flex:1;display:flex;flex-direction:column;min-width:0;padding-top:env(safe-area-inset-top)}
-.bar{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
-.bar .title{font-weight:700;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.search{flex:1;min-width:0;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:#faf9f6}
-.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#faf9f6}
-.seg button{padding:8px 12px;font-size:14px;color:var(--muted)}
-.seg button.on{background:var(--ink);color:#fff}
-.btn{padding:9px 14px;border-radius:10px;border:1px solid var(--line);background:var(--panel);font-size:15px;white-space:nowrap}
+/* ===== サイドバー ===== */
+.brand{display:flex;align-items:center;gap:10px;padding:16px 16px 6px}
+.brand .logo{width:32px;height:32px;border-radius:9px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px}
+.brand h1{font-size:17px;margin:0}
+.nav{padding:6px 10px}
+.nav .lbl{font-size:11px;color:var(--muted);letter-spacing:.06em;padding:14px 8px 4px;font-weight:600}
+.navi{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:9px 10px;border-radius:9px;font-size:15px;position:relative}
+.navi .ico{width:22px;text-align:center;font-size:15px}
+.navi .dot{width:10px;height:10px;border-radius:3px;flex:0 0 10px}
+.navi .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.navi .n{font-size:12px;color:var(--open);background:var(--open-bg);border-radius:999px;padding:1px 8px;min-width:24px;text-align:center;font-weight:600}
+.navi .n.zero{color:var(--muted);background:var(--line2);font-weight:400}
+.navi .n.new{color:var(--new);background:var(--new-bg)}
+.navi.active{background:var(--accent-bg);color:var(--accent);font-weight:600}
+.navi:active{opacity:.7}
+.side .foot{border-top:1px solid var(--line);padding:8px 10px;padding-bottom:calc(8px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:2px}
+.side .foot .navi{font-size:14px;color:var(--muted)}
+
+/* ===== ボタン ===== */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 14px;border-radius:var(--r2);border:1px solid var(--line);background:var(--panel);font-size:15px;white-space:nowrap;min-height:40px}
 .btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
-.btn.danger{color:#c92a2a}
-.btn:active{opacity:.75}
-.btn.icon{width:40px;padding:0;height:40px;display:inline-flex;align-items:center;justify-content:center;font-size:18px}
+.btn.danger{color:#d6336c}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
+.btn.sm{padding:6px 10px;font-size:13px;min-height:32px}
+.btn:active{opacity:.7}
+.btn.icon{width:40px;padding:0}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel);font-size:14px;white-space:nowrap;min-height:34px}
+.chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.chip:active{opacity:.7}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chips.scroll-x{flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+.chips.scroll-x::-webkit-scrollbar{display:none}
 
-.list{flex:1;overflow:auto;padding:12px 16px;padding-bottom:calc(90px + env(safe-area-inset-bottom))}
-.empty{color:var(--muted);text-align:center;padding:60px 20px;line-height:1.8}
-.item{display:flex;gap:12px;padding:12px 14px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:10px;width:100%;text-align:left;align-items:flex-start}
-.item:active{background:#faf9f6}
-.item .thumb{width:72px;height:54px;flex:0 0 72px;border:1px solid var(--line);border-radius:6px;background:#fff;object-fit:cover}
-.item .body{flex:1;min-width:0}
-.item .t{font-weight:600;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.item .t.untitled{color:var(--muted);font-weight:400}
-.item .m{color:var(--muted);font-size:12px;margin-top:4px;display:flex;gap:8px;flex-wrap:wrap}
-.item .a{font-size:13px;color:var(--done);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pill{display:inline-block;font-size:12px;padding:3px 9px;border-radius:999px;font-weight:600;white-space:nowrap}
+/* ===== 一覧 ===== */
+.search{flex:1;min-width:0;padding:9px 12px 9px 34px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239a9ca6' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-3.5-3.5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:11px center}
+.filters{padding:8px 12px;display:flex;gap:6px;align-items:center;border-bottom:1px solid var(--line);background:var(--panel)}
+.list{padding:10px 12px;padding-bottom:calc(100px + env(safe-area-inset-bottom))}
+.card{display:flex;gap:12px;padding:12px 14px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:8px;width:100%;text-align:left;align-items:flex-start;position:relative}
+.card:active{background:var(--panel2)}
+.card.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-bg)}
+.card .bar{position:absolute;left:0;top:12px;bottom:12px;width:4px;border-radius:0 3px 3px 0}
+.card .thumb{width:64px;height:48px;flex:0 0 64px;border:1px solid var(--line);border-radius:6px;background:#fff;object-fit:cover}
+.card .thumb.ph{display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:18px;background:var(--panel2)}
+.card .body{flex:1;min-width:0}
+.card .t{font-weight:600;font-size:15.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.card .t.untitled{color:var(--muted);font-weight:400}
+.card .m{color:var(--muted);font-size:12px;margin-top:3px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.card .a{font-size:13px;color:var(--done);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card .tg{display:flex;gap:4px}
+.pill{display:inline-block;font-size:11.5px;padding:2px 8px;border-radius:999px;font-weight:600;white-space:nowrap}
 .pill.open{color:var(--open);background:var(--open-bg)}
 .pill.wip{color:var(--wip);background:var(--wip-bg)}
 .pill.done{color:var(--done);background:var(--done-bg)}
+.pill.new{color:var(--new);background:var(--new-bg)}
+.pill.cat{color:var(--muted);background:var(--line2);font-weight:500}
+.group-h{font-size:12px;color:var(--muted);font-weight:600;padding:12px 4px 6px;letter-spacing:.04em}
+.empty{color:var(--muted);text-align:center;padding:50px 20px;line-height:1.9}
+.empty .big{font-size:40px;line-height:1.2}
+.empty b{color:var(--ink)}
 
-.fab{position:fixed;right:24px;bottom:calc(24px + env(safe-area-inset-bottom));width:64px;height:64px;border-radius:50%;background:var(--accent);color:#fff;font-size:34px;box-shadow:0 6px 18px rgba(47,111,237,.35);display:flex;align-items:center;justify-content:center}
-.fab:active{transform:scale(.96)}
+/* ===== ホーム ===== */
+.home{padding:20px 22px;padding-bottom:calc(100px + env(safe-area-inset-bottom));max-width:900px}
+.home h2{font-size:22px;margin:4px 0 2px}
+.home .sub{color:var(--muted);margin-bottom:18px}
+.tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:22px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;text-align:left}
+.tile .k{font-size:12px;color:var(--muted)}
+.tile .v{font-size:30px;font-weight:800;line-height:1.2;margin-top:2px}
+.tile.open .v{color:var(--open)} .tile.wip .v{color:var(--wip)} .tile.new .v{color:var(--new)} .tile.done .v{color:var(--done)}
+.tile:active{opacity:.7}
+.home h3{font-size:14px;color:var(--muted);margin:18px 0 8px;letter-spacing:.04em}
+.cta{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.cta .btn{min-height:52px;padding:0 18px;font-size:16px;border-radius:14px}
+.tip{background:var(--accent-bg);border-radius:var(--radius);padding:12px 14px;font-size:14px;color:var(--ink);margin-bottom:16px;display:flex;gap:10px;align-items:flex-start}
+.tip .x{margin-left:auto;color:var(--muted)}
 
-/* ---- editor ---- */
-.editor{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;z-index:20;padding-top:env(safe-area-inset-top)}
-.editor[hidden]{display:none}
-.editor .bar{gap:8px}
-.editor .bar .spacer{flex:1}
-.ed-body{flex:1;overflow:auto;padding:12px 16px;padding-bottom:calc(20px + env(safe-area-inset-bottom))}
-.field{margin-bottom:12px}
-.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
-.field input[type=text],.field textarea,.field select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
-.field textarea{min-height:72px;resize:vertical;line-height:1.5}
-.row{display:flex;gap:10px}
-.row .field{flex:1;min-width:0}
-.status-row{display:flex;gap:8px;flex-wrap:wrap}
-.status-row button{padding:9px 16px;border-radius:999px;border:1px solid var(--line);background:var(--panel);font-size:15px}
-.status-row button.on.open{background:var(--open);color:#fff;border-color:var(--open)}
-.status-row button.on.wip{background:var(--wip);color:#fff;border-color:var(--wip)}
-.status-row button.on.done{background:var(--done);color:#fff;border-color:var(--done)}
+/* ===== エディタ ===== */
+.editor-empty{display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);text-align:center;line-height:1.9;padding:20px}
+.ed-body{padding:16px 20px;padding-bottom:calc(120px + env(safe-area-inset-bottom));max-width:860px}
+.ed-title{width:100%;font-size:22px;font-weight:700;border:0;background:transparent;padding:6px 0;outline:none;border-bottom:2px solid transparent}
+.ed-title:focus{border-bottom-color:var(--accent)}
+.ed-title::placeholder{color:var(--muted);font-weight:400}
+.props{display:flex;flex-direction:column;gap:8px;margin:8px 0 14px}
+.prop{display:flex;align-items:center;gap:10px;min-height:36px}
+.prop .k{font-size:12px;color:var(--muted);width:76px;flex:0 0 76px}
+.prop .chips{flex:1}
+.stchip.on.open{background:var(--open);border-color:var(--open);color:#fff}
+.stchip.on.wip{background:var(--wip);border-color:var(--wip);color:#fff}
+.stchip.on.done{background:var(--done);border-color:var(--done);color:#fff}
+.catchip{gap:7px} .catchip .dot{width:10px;height:10px;border-radius:3px}
+.catchip.on{background:var(--panel);color:var(--ink);border-width:2px}
+.tagchip.on{background:var(--new-bg);color:var(--new);border-color:var(--new)}
 
-.answer{background:#f3faf4;border:1px solid #cfe8d4;border-radius:var(--radius);padding:12px;margin:14px 0}
-.answer h3{margin:0 0 8px;font-size:14px;color:var(--done)}
-.answer textarea{background:#fff}
-
-.sketch{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;margin-bottom:12px}
-.sketch .tools{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--line);flex-wrap:wrap}
-.sketch .tools .g{display:flex;gap:4px;margin-right:6px}
-.tool{width:36px;height:36px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:16px;border:1px solid transparent}
-.tool.on{background:#eef3ff;border-color:var(--accent);color:var(--accent)}
-.swatch{width:26px;height:26px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--line)}
+.blocks{display:flex;flex-direction:column;gap:10px}
+.blk{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);position:relative}
+.blk .bh{display:flex;align-items:center;gap:4px;padding:6px 8px;border-bottom:1px solid var(--line2);min-height:38px}
+.blk .bh .k{font-size:12px;color:var(--muted);padding:0 6px;flex:1}
+.blk .bh .tool{opacity:.7}
+.blk textarea{width:100%;border:0;background:transparent;padding:12px 14px;resize:none;outline:none;min-height:56px;display:block;font-size:16px}
+.blk textarea::placeholder{color:var(--muted)}
+.tool{width:31px;height:31px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:15px;border:1px solid transparent}
+.tool.on{background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
+.tool:active{opacity:.6}
+.swatch{width:21px;height:21px;border-radius:50%;border:2px solid var(--panel);box-shadow:0 0 0 1px var(--line);margin:0 2px}
 .swatch.on{box-shadow:0 0 0 2px var(--accent)}
-.sketch .tools .r{margin-left:auto;display:flex;gap:4px}
-.sketch .tools .hint{font-size:12px;color:var(--muted);width:100%}
-.canvas-wrap{position:relative;touch-action:none;background:#fff;
-  background-image:linear-gradient(#f0eee8 1px,transparent 1px);background-size:100% 32px}
+.ink-tools{display:flex;align-items:center;gap:2px;flex-wrap:wrap;flex:1}
+.ink-tools .sep{width:1px;height:20px;background:var(--line);margin:0 3px}
+.canvas-wrap{position:relative;touch-action:none;background:#fff;border-radius:0 0 var(--radius) var(--radius);overflow:hidden;
+  background-image:linear-gradient(#eeece6 1px,transparent 1px);background-size:100% 32px}
 canvas.pad{display:block;width:100%;height:100%;touch-action:none}
+.canvas-wrap .grip{position:absolute;right:0;left:0;bottom:0;height:18px;display:flex;align-items:center;justify-content:center;color:#b5b3ac;font-size:12px;background:linear-gradient(transparent,rgba(255,255,255,.9));touch-action:none;cursor:ns-resize}
+.check{padding:6px 10px 8px}
+.ci{display:flex;align-items:flex-start;gap:8px;padding:4px 4px}
+.ci input[type=checkbox]{width:22px;height:22px;margin:4px 0 0;accent-color:var(--done);flex:0 0 22px}
+.ci input[type=text]{flex:1;border:0;background:transparent;padding:4px 2px;outline:none;min-width:0;font-size:16px}
+.ci.done input[type=text]{text-decoration:line-through;color:var(--muted)}
+.ci .rm{color:var(--muted);width:30px;height:30px}
+.check .add{color:var(--accent);font-size:14px;padding:6px 8px}
+.img{padding:10px}
+.img img{max-width:100%;border-radius:8px;display:block;margin:0 auto}
+.img input{width:100%;border:0;background:transparent;padding:8px 4px 0;outline:none;font-size:14px;text-align:center;color:var(--muted)}
+.addblk{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 4px;align-items:center}
+.addblk .lbl{font-size:12px;color:var(--muted);margin-right:4px}
 
-.meta{color:var(--muted);font-size:12px;margin-top:16px;line-height:1.7}
+.answer{background:var(--done-bg);border:1px solid color-mix(in srgb,var(--done) 30%,transparent);border-radius:var(--radius);padding:12px 14px;margin:18px 0 12px}
+.answer h3{margin:0 0 6px;font-size:14px;color:var(--done);display:flex;align-items:center;gap:8px}
+.answer textarea{width:100%;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:80px;resize:vertical;outline:none;font-size:16px}
+.answer .who{display:flex;gap:8px;align-items:center;margin-top:8px;font-size:13px;color:var(--muted)}
+.answer .who input{flex:0 1 180px;border:1px solid var(--line);border-radius:8px;padding:6px 10px;background:var(--panel)}
+.answer .done-cta{margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.history{margin-top:18px;font-size:12.5px;color:var(--muted)}
+.history summary{cursor:pointer;font-weight:600;padding:6px 0}
+.history li{padding:2px 0}
+.ed-foot{display:flex;gap:8px;margin-top:20px;flex-wrap:wrap}
 
-/* ---- dialog ---- */
-dialog{border:0;border-radius:14px;padding:0;max-width:92vw;width:420px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
-dialog::backdrop{background:rgba(0,0,0,.3)}
-dialog .d{padding:18px}
-dialog h2{margin:0 0 12px;font-size:17px}
-dialog p{color:var(--muted);font-size:14px;line-height:1.6;margin:0 0 12px}
-dialog .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
-.catlist{display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow:auto;margin-bottom:10px}
-.catlist .c{display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--line);border-radius:8px}
-.catlist .c input{flex:1;border:0;background:transparent;padding:4px}
-.catlist .c button{color:var(--muted);padding:4px 6px}
+/* FAB / シート */
+.fab{position:absolute;right:18px;bottom:calc(18px + env(safe-area-inset-bottom));height:60px;padding:0 22px 0 18px;border-radius:999px;background:var(--accent);color:#fff;font-size:17px;font-weight:700;box-shadow:0 8px 22px rgba(47,111,237,.4);display:flex;align-items:center;gap:8px;z-index:15}
+.fab .p{font-size:28px;font-weight:400;line-height:1}
+.fab:active{transform:scale(.97)}
+.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:40;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--panel);border-radius:18px 18px 0 0;width:100%;max-width:560px;padding:14px 16px;padding-bottom:calc(18px + env(safe-area-inset-bottom));box-shadow:var(--shadow)}
+@media (min-width:700px){ .sheet-bg{align-items:center} .sheet{border-radius:18px} }
+.sheet h2{font-size:16px;margin:4px 4px 10px}
+.tpl{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:12px;border-radius:12px;border:1px solid var(--line);margin-bottom:8px;background:var(--panel2)}
+.tpl:active{background:var(--accent-bg)}
+.tpl .i{font-size:26px;width:40px;text-align:center}
+.tpl .t{font-weight:600} .tpl .d{font-size:12.5px;color:var(--muted)}
 
-.toast{position:fixed;left:50%;bottom:calc(100px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:999px;font-size:14px;z-index:50;opacity:0;transition:opacity .2s;pointer-events:none}
+/* ダイアログ */
+dialog{border:0;border-radius:16px;padding:0;max-width:92vw;width:460px;box-shadow:0 20px 60px rgba(0,0,0,.3);background:var(--panel);color:var(--ink)}
+dialog::backdrop{background:rgba(0,0,0,.35)}
+dialog .d{padding:20px}
+dialog h2{margin:0 0 10px;font-size:18px}
+dialog p{color:var(--muted);font-size:14px;line-height:1.7;margin:0 0 12px}
+dialog .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;flex-wrap:wrap}
+dialog input[type=text]{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2)}
+.catlist{display:flex;flex-direction:column;gap:6px;max-height:46vh;overflow:auto;margin-bottom:10px}
+.catlist .c{display:flex;align-items:center;gap:6px;padding:6px 8px;border:1px solid var(--line);border-radius:10px}
+.catlist .c input[type=text]{flex:1;border:0;background:transparent;padding:4px}
+.catlist .c input[type=color]{width:30px;height:30px;border:0;padding:0;background:none;border-radius:6px}
+.catlist .c button{color:var(--muted);width:30px;height:30px;border-radius:6px}
+.steps{display:flex;flex-direction:column;gap:10px;margin:8px 0}
+.step{display:flex;gap:12px;align-items:flex-start;background:var(--panel2);border-radius:12px;padding:12px}
+.step .n{width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;flex:0 0 28px}
+.step b{display:block;margin-bottom:2px}
+.step span{font-size:13.5px;color:var(--muted)}
+.setrow{display:flex;justify-content:space-between;align-items:center;padding:12px 4px;border-bottom:1px solid var(--line2);gap:10px}
+.setrow .k b{display:block} .setrow .k span{font-size:12.5px;color:var(--muted)}
+
+.toast{position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:999px;font-size:14px;z-index:60;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw;text-align:center}
 .toast.show{opacity:1}
+.menu-btn{display:none}
+.back-btn{display:none}
 
-@media (max-width:700px){
-  .side{position:fixed;inset:0 auto 0 0;z-index:30;transform:translateX(-100%);transition:transform .2s;box-shadow:0 0 30px rgba(0,0,0,.2)}
-  .side.open{transform:none}
-  .menu-btn{display:inline-flex}
-  .bar .title{display:none}
+/* ===== レスポンシブ: 3ペイン / 2ペイン / 1ペイン ===== */
+@media (max-width:999px){
+  .edit-pane{position:fixed;inset:0;z-index:20;transform:translateX(100%);transition:transform .22s;padding-top:env(safe-area-inset-top)}
+  .edit-pane.open{transform:none}
+  .list-pane{flex:1;width:auto}
+  .back-btn{display:inline-flex}
 }
-@media (min-width:701px){ .btn.icon.menu-btn{display:none} }
+@media (max-width:720px){
+  .side{position:fixed;inset:0 auto 0 0;z-index:30;transform:translateX(-100%);transition:transform .2s;box-shadow:0 0 40px rgba(0,0,0,.3)}
+  .side.open{transform:none}
+  .side-bg{position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:29}
+  .menu-btn{display:inline-flex}
+  .filters{flex-wrap:wrap}
+  .prop{align-items:flex-start;flex-direction:column;gap:4px}
+  .prop .k{width:auto}
+}
+
+/* ===== 印刷(FAQ) ===== */
+#printView{display:none}
+@media print{
+  body *{visibility:hidden}
+  #printView,#printView *{visibility:visible}
+  #printView{display:block;position:absolute;left:0;top:0;width:100%;padding:20px;background:#fff;color:#000}
+  .pq{page-break-inside:avoid;border-bottom:1px solid #ccc;padding:10px 0;margin-bottom:8px}
+  .pq h4{margin:0 0 4px;font-size:15px}
+  .pq .pa{white-space:pre-wrap;font-size:13.5px}
+  .pq .pm{font-size:11px;color:#666}
+  .pq img{max-width:60%;display:block;border:1px solid #ddd;margin:6px 0}
+}
 </style>
 </head>
 <body>
 <div class="app">
+  <!-- ===== サイドバー(セクション) ===== -->
   <aside class="side" id="side">
-    <h1>疑問ノート</h1>
-    <div class="sub" id="sub">業務ごとに疑問をためて、解消する</div>
-    <div class="cats" id="cats"></div>
+    <div class="brand"><div class="logo">？</div><h1>疑問ノート</h1></div>
+    <div class="scroll nav" id="nav"></div>
     <div class="foot">
-      <button id="btnCats">＋ 業務カテゴリを編集</button>
-      <button id="btnExport">⇪ 書き出し（共有）</button>
-      <button id="btnImport">⇩ 取り込み（マージ）</button>
-      <button id="btnName" title="表示名">👤 <span id="myName">名前未設定</span></button>
-      <input type="file" id="fileImport" accept="application/json,.json" hidden>
+      <button class="navi" id="btnHelp"><span class="ico">📖</span><span class="nm">使い方</span></button>
+      <button class="navi" id="btnSettings"><span class="ico">⚙️</span><span class="nm" id="meLabel">設定</span></button>
     </div>
   </aside>
+  <div class="side-bg" id="sideBg" hidden></div>
 
-  <main class="main">
-    <div class="bar">
-      <button class="btn icon menu-btn" id="btnMenu">☰</button>
-      <div class="title" id="viewTitle">すべて</div>
-      <input class="search" id="q" type="search" placeholder="検索（タイトル・本文・回答）" autocomplete="off">
-      <div class="seg" id="statusSeg">
-        <button data-s="" class="on">全部</button>
-        <button data-s="open">未解決</button>
-        <button data-s="wip">確認中</button>
-        <button data-s="done">解決</button>
+  <!-- ===== 一覧ペイン(ページ一覧 / ホーム) ===== -->
+  <section class="pane list-pane" id="listPane">
+    <div class="hdr">
+      <button class="btn icon ghost menu-btn" id="btnMenu" aria-label="メニュー">☰</button>
+      <div class="ttl" id="viewTitle">ホーム</div>
+      <button class="btn sm ghost" id="btnPrint" title="解決済みをFAQとして印刷">🖨 FAQ</button>
+    </div>
+    <div class="filters" id="filters">
+      <input class="search" id="q" type="search" placeholder="検索" autocomplete="off">
+      <div class="chips scroll-x" id="statusChips">
+        <button class="chip on" data-s="">すべて</button>
+        <button class="chip" data-s="open">未解決</button>
+        <button class="chip" data-s="wip">確認中</button>
+        <button class="chip" data-s="done">解決</button>
       </div>
     </div>
-    <div class="list" id="list"></div>
-    <button class="fab" id="fab" aria-label="新しい疑問">＋</button>
-  </main>
+    <div class="scroll" id="listScroll">
+      <div class="home" id="home"></div>
+      <div class="list" id="list" hidden></div>
+    </div>
+    <button class="fab" id="fab"><span class="p">＋</span> 疑問を書く</button>
+  </section>
+
+  <!-- ===== エディタペイン(ページ) ===== -->
+  <section class="pane edit-pane" id="editPane">
+    <div class="hdr">
+      <button class="btn ghost back-btn" id="edBack">‹ 一覧へ</button>
+      <div class="ttl" id="edCrumb"></div>
+      <button class="btn sm ghost" id="edPin" title="ピン留め">📌</button>
+      <button class="btn sm ghost" id="edShare" title="このページを共有">⇪</button>
+      <button class="btn sm primary" id="edDone">閉じる</button>
+    </div>
+    <div class="scroll">
+      <div class="editor-empty" id="edEmpty">
+        <div>左の一覧からページを選ぶか、<br><b>「＋ 疑問を書く」</b>で新しいページを作りましょう。</div>
+      </div>
+      <div class="ed-body" id="edBody" hidden>
+        <input class="ed-title" id="edTitle" placeholder="疑問を一言で（あとで書いてもOK）" autocomplete="off">
+        <div class="props">
+          <div class="prop"><span class="k">ステータス</span><div class="chips" id="edStatus">
+            <button class="chip stchip open" data-s="open">🔴 未解決</button>
+            <button class="chip stchip wip" data-s="wip">🟡 確認中</button>
+            <button class="chip stchip done" data-s="done">🟢 解決</button>
+          </div></div>
+          <div class="prop"><span class="k">業務</span><div class="chips scroll-x" id="edCats"></div></div>
+          <div class="prop"><span class="k">タグ</span><div class="chips" id="edTags"></div></div>
+        </div>
+
+        <div class="blocks" id="blocks"></div>
+        <div class="addblk">
+          <span class="lbl">追加：</span>
+          <button class="btn sm" data-add="ink">✎ 手書き</button>
+          <button class="btn sm" data-add="text">Ａ テキスト</button>
+          <button class="btn sm" data-add="check">☑ チェックリスト</button>
+          <button class="btn sm" data-add="image">📷 写真</button>
+          <input type="file" id="imgFile" accept="image/*" hidden>
+        </div>
+
+        <div class="answer">
+          <h3>💬 回答・対応 <span class="muted small">（LD / 分かった人が書く）</span></h3>
+          <textarea id="edAnswer" placeholder="結論 → 根拠 → 参照先（手順書のページなど）。次の人が読んで分かるように"></textarea>
+          <div class="who">回答者 <input type="text" id="edAnsweredBy" placeholder="名前"><span id="edAnsweredAt"></span></div>
+          <div class="done-cta" id="doneCta" hidden>
+            <span class="small muted">回答を確認できたら…</span>
+            <button class="btn sm" id="btnMarkDone">🟢 解決にする</button>
+          </div>
+        </div>
+
+        <details class="history" id="histBox"><summary>履歴</summary><ul id="historyList"></ul></details>
+
+        <div class="ed-foot">
+          <button class="btn danger ghost" id="edDelete">🗑 このページを削除</button>
+        </div>
+      </div>
+    </div>
+  </section>
 </div>
 
-<!-- editor -->
-<section class="editor" id="editor" hidden>
-  <div class="bar">
-    <button class="btn" id="edBack">‹ 一覧</button>
-    <span class="spacer"></span>
-    <button class="btn danger" id="edDelete">削除</button>
-    <button class="btn primary" id="edDone">保存して閉じる</button>
+
+<!-- 新規作成シート(テンプレート) -->
+<div class="sheet-bg" id="newSheet" hidden>
+  <div class="sheet">
+    <h2>どんなふうに書きますか？</h2>
+    <button class="tpl" data-tpl="ink"><span class="i">✎</span><span><span class="t">手書きですぐ書く</span><br><span class="d">白い紙が開きます。あとから整理でOK</span></span></button>
+    <button class="tpl" data-tpl="question"><span class="i">❓</span><span><span class="t">疑問テンプレ</span><br><span class="d">状況 / 自分がやったこと / 聞きたいこと の3項目</span></span></button>
+    <button class="tpl" data-tpl="steps"><span class="i">☑</span><span><span class="t">手順・チェックリスト</span><br><span class="d">教わった手順をそのまま順番に</span></span></button>
+    <button class="tpl" data-tpl="call"><span class="i">📞</span><span><span class="t">電話・引継ぎメモ</span><br><span class="d">相手 / 用件 / 対応 / 次にやること</span></span></button>
+    <button class="btn ghost" id="newCancel" style="width:100%">キャンセル</button>
   </div>
-  <div class="ed-body">
-    <div class="field">
-      <input type="text" id="edTitle" placeholder="疑問を一言で（空でもOK）" autocomplete="off">
-    </div>
+</div>
 
-    <div class="sketch" id="sketch">
-      <div class="tools">
-        <div class="g">
-          <button class="tool on" data-tool="pen" title="ペン">✎</button>
-          <button class="tool" data-tool="eraser" title="消しゴム">◻</button>
-        </div>
-        <div class="g" id="swatches">
-          <button class="swatch on" data-color="#1f2328" style="background:#1f2328"></button>
-          <button class="swatch" data-color="#d9480f" style="background:#d9480f"></button>
-          <button class="swatch" data-color="#2f6fed" style="background:#2f6fed"></button>
-          <button class="swatch" data-color="#2b8a3e" style="background:#2b8a3e"></button>
-        </div>
-        <div class="g">
-          <button class="tool" data-w="2" title="細">·</button>
-          <button class="tool on" data-w="3.5" title="中">•</button>
-          <button class="tool" data-w="6" title="太">●</button>
-        </div>
-        <div class="r">
-          <button class="tool" id="skUndo" title="元に戻す">↶</button>
-          <button class="tool" id="skClear" title="全消去">🗑</button>
-          <button class="tool" id="skTaller" title="紙を伸ばす">↕</button>
-          <button class="tool" id="skPenOnly" title="ペンのみ受け付ける（手のひら無視）">✋</button>
-        </div>
-      </div>
-      <div class="canvas-wrap" id="canvasWrap" style="height:320px">
-        <canvas class="pad" id="pad"></canvas>
-      </div>
+<!-- 使い方 -->
+<dialog id="dlgHelp">
+  <div class="d">
+    <h2>疑問ノートの使い方</h2>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><div><b>迷ったら「＋ 疑問を書く」</b><span>手書きでもテキストでも、殴り書きでOK。タイトルや業務はあとで直せます。</span></div></div>
+      <div class="step"><div class="n">2</div><div><b>業務ごとに自動で整理される</b><span>左の業務一覧に「未解決の数」が出ます。増やしたいときは 設定 → 業務の編集。</span></div></div>
+      <div class="step"><div class="n">3</div><div><b>LDが回答を書く → 🟢解決にする</b><span>書き出し → AirDrop → 取り込み で共有。「新しい回答」はホームに出ます。</span></div></div>
+      <div class="step"><div class="n">4</div><div><b>解決したものはFAQになる</b><span>「🖨 FAQ」で印刷用にまとめられます。次に入る人への引継ぎ資料に。</span></div></div>
     </div>
-
-    <div class="row">
-      <div class="field">
-        <label>業務カテゴリ</label>
-        <select id="edCat"></select>
-      </div>
-      <div class="field">
-        <label>ステータス</label>
-        <div class="status-row" id="edStatus">
-          <button class="open" data-s="open">未解決</button>
-          <button class="wip" data-s="wip">確認中</button>
-          <button class="done" data-s="done">解決</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="field">
-      <label>補足（テキスト。Apple Pencilならそのまま手書き入力できます）</label>
-      <textarea id="edBody" placeholder="状況、いつ起きたか、誰に聞いたか など"></textarea>
-    </div>
-
-    <div class="answer">
-      <h3>回答・対応（LD / 分かった人が書く）</h3>
-      <div class="field">
-        <textarea id="edAnswer" placeholder="結論、根拠、参照先。次の人が読んで分かるように"></textarea>
-      </div>
-      <div class="row">
-        <div class="field"><label>回答者</label><input type="text" id="edAnsweredBy" placeholder="名前"></div>
-      </div>
-    </div>
-
-    <div class="meta" id="edMeta"></div>
+    <p class="small">Apple Pencil：テキスト欄に直接手書きすると文字になります（スクリブル）。手書きパッドの「✋」で指を無視できます。</p>
+    <div class="acts"><button class="btn primary" id="helpClose">はじめる</button></div>
   </div>
-</section>
+</dialog>
+
+<!-- 設定 -->
+<dialog id="dlgSettings">
+  <div class="d">
+    <h2>設定</h2>
+    <div class="setrow"><div class="k"><b>あなたの名前</b><span>作成者・回答者として記録されます</span></div><input type="text" id="nameInput" placeholder="例：田中" style="width:150px"></div>
+    <div class="setrow"><div class="k"><b>業務カテゴリ</b><span>名前・色・並び順を変更</span></div><button class="btn sm" id="btnCats">編集</button></div>
+    <div class="setrow"><div class="k"><b>書き出し（共有）</b><span>すべてのページを1ファイルに</span></div><button class="btn sm" id="btnExport">⇪ 書き出し</button></div>
+    <div class="setrow"><div class="k"><b>取り込み（マージ）</b><span>相手のファイルを合流させる</span></div><button class="btn sm" id="btnImport">⇩ 取り込み</button><input type="file" id="fileImport" accept="application/json,.json" hidden></div>
+    <div class="setrow"><div class="k"><b>手書きは Pencil のみ</b><span>指や手のひらを無視する</span></div><input type="checkbox" id="penOnly" style="width:24px;height:24px"></div>
+    <div class="acts"><button class="btn primary" id="settingsClose">閉じる</button></div>
+  </div>
+</dialog>
 
 <dialog id="dlgCats">
   <div class="d">
     <h2>業務カテゴリ</h2>
-    <p>多岐にわたるなら、迷わず増やしてOK。あとで統合もできます（並び替えはドラッグ不可、上下ボタン）。</p>
+    <p>多岐にわたるなら、迷わず増やしてOK。色は左の一覧やカードの目印になります。</p>
     <div class="catlist" id="catEdit"></div>
-    <button class="btn" id="catAdd">＋ 追加</button>
-    <div class="acts">
-      <button class="btn" id="catCancel">閉じる</button>
-      <button class="btn primary" id="catSave">保存</button>
-    </div>
-  </div>
-</dialog>
-
-<dialog id="dlgName">
-  <div class="d">
-    <h2>あなたの表示名</h2>
-    <p>作成者・回答者として記録されます。書き出したデータをLDと突き合わせるときの目印です。</p>
-    <div class="field"><input type="text" id="nameInput" placeholder="例：田中"></div>
-    <div class="acts">
-      <button class="btn" id="nameCancel">キャンセル</button>
-      <button class="btn primary" id="nameSave">保存</button>
-    </div>
+    <button class="btn sm" id="catAdd">＋ 追加</button>
+    <div class="acts"><button class="btn" id="catCancel">閉じる</button><button class="btn primary" id="catSave">保存</button></div>
   </div>
 </dialog>
 
@@ -273,13 +400,11 @@ dialog .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
   <div class="d">
     <h2 id="cfTitle">確認</h2>
     <p id="cfText"></p>
-    <div class="acts">
-      <button class="btn" id="cfNo">キャンセル</button>
-      <button class="btn danger" id="cfYes">実行</button>
-    </div>
+    <div class="acts"><button class="btn" id="cfNo">キャンセル</button><button class="btn danger" id="cfYes">実行</button></div>
   </div>
 </dialog>
 
+<div id="printView"></div>
 <div class="toast" id="toast"></div>
 <script src="app.js"></script>
 </body>
