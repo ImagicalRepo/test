@@ -15,6 +15,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<'
 const ic = (name, cls = '') => `<svg class="g ${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 
+const INKS = ['#17181C', '#FF3B30', '#007AFF', '#34C759'];
 const STATUS = { open: '未解決', wip: '確認中', done: '解決' };
 const STATUS_ORDER = { open: 0, wip: 1, done: 2 };
 const STATUS_VAR = { open: 'var(--red)', wip: 'var(--orange)', done: 'var(--green)' };
@@ -71,7 +72,22 @@ const THEMES = [
   { id: 'sage', name: 'セージ', color: '#6C8D62', pastel: '#D6E5CF' },
   { id: 'slate', name: 'スレート', color: '#56697E', pastel: '#D3DCE7' },
 ];
+// 文字の色。地に対して十分な濃さを保ったまま、印象だけを変える
+const TEXT_COLORS = [
+  { id: 'sumi', name: '墨', color: '#17181C', dark: '#F4F5F7' },
+  { id: 'navy', name: 'ネイビー', color: '#1B2A45', dark: '#DEE7F7' },
+  { id: 'sepia', name: 'セピア', color: '#3B2E22', dark: '#F1E6D8' },
+  { id: 'forest', name: 'フォレスト', color: '#1D3329', dark: '#DCEDE2' },
+  { id: 'plum', name: 'プラム', color: '#34203B', dark: '#EDDFF2' },
+  { id: 'slateink', name: 'スレート', color: '#2C3540', dark: '#E3E9F0' },
+];
 const applyTheme = (id) => document.documentElement.setAttribute('data-theme', THEMES.find(t => t.id === id) ? id : 'sky');
+const applyText = (id) => {
+  const t = TEXT_COLORS.find(x => x.id === id) || TEXT_COLORS[0];
+  document.documentElement.setAttribute('data-text', t.id);
+  INKS[0] = t.color;                       // 手書きの既定のインクも文字の色に揃える
+  if (state.ink) state.ink.color = t.color;
+};
 
 const SYS = { blue: '#007AFF', red: '#FF3B30', orange: '#FF9500', green: '#34C759', indigo: '#5856D6', purple: '#AF52DE', teal: '#30B0C7', pink: '#FF2D55', brown: '#A2845E' };
 const DEFAULT_CATS = [
@@ -93,6 +109,7 @@ const state = {
   editing: null, dirty: false,
   ink: { tool: 'pen', color: '#1C1C1E', width: 3.5 },
   theme: 'sky',
+  text: 'sumi',
 };
 const catOf = (id) => state.cats.find(c => c.id === id) || state.cats[0];
 const catByName = (name) => state.cats.find(c => c.name === name);
@@ -123,7 +140,9 @@ async function load() {
   const meta = Object.fromEntries((await DB.all('meta')).map(x => [x.key, x.value]));
   state.me = meta.me || '';
   state.theme = meta.theme || 'sky';
+  state.text = meta.text || 'sumi';
   applyTheme(state.theme);
+  applyText(state.text);
   if (Array.isArray(meta.cats) && meta.cats.length && typeof meta.cats[0] === 'object') state.cats = meta.cats;
   else if (Array.isArray(meta.cats)) {
     state.cats = [DEFAULT_CATS[0], ...meta.cats.map((n, i) => ({ id: 'c' + (i + 1), name: n, color: DEFAULT_CATS[(i % 5) + 1].color }))];
@@ -435,7 +454,7 @@ function renderHome() {
   const greet = hour < 11 ? 'おはようございます' : hour < 17 ? 'こんにちは' : 'お疲れさまです';
 
   const sec = (title, arr, more) => arr.length ? `<div class="gsec"><div class="ghead">${esc(title)}${more ? `<button class="more" data-go="${more}">すべて表示</button>` : ''}</div>
-    <div class="glist">${arr.map(noteCell).join('')}</div></div>` : '';
+    <div class="glist">${arr.map(i => noteCell(i)).join('')}</div></div>` : '';
 
   $('#home').innerHTML = `
     <div class="gsec" style="padding:2px var(--margin) 0">
@@ -516,7 +535,6 @@ const renderAll = () => { renderSidebar(); renderList(); };
 // ============================================================
 // 手書き
 // ============================================================
-const INKS = ['#1C1C1E', '#FF3B30', '#007AFF', '#34C759'];
 function drawStrokes(ctx, strokes, lineScale) {
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   for (const s of strokes) {
@@ -953,6 +971,11 @@ function settingsSheet() {
         <span class="cvalue">${state.cats.length} 件</span>${ic('chev-r', 'sm')}</button>
     </div><div class="gfoot">名前は、作成者と回答者として各ページに記録されます。</div></div>
 
+    <div class="gsec"><div class="ghead">文字の色</div><div class="glist"><div class="inks">
+      ${TEXT_COLORS.map(t => `<button class="inkopt" data-text="${t.id}" aria-pressed="${state.text === t.id}"
+        aria-label="${esc(t.name)}"><i style="background:${t.color}"></i><span>${esc(t.name)}</span></button>`).join('')}
+    </div></div><div class="gfoot">本文の色が変わります。手書きの既定のインクも同じ色になります。</div></div>
+
     <div class="gsec"><div class="ghead">テーマの色</div><div class="glist themes-wrap"><div class="themes">
       ${THEMES.map(t => `<button class="theme" data-theme="${t.id}" aria-pressed="${state.theme === t.id}"
         style="color:${t.color}" aria-label="${esc(t.name)}"><i style="background:${t.pastel}"></i><span>${esc(t.name)}</span></button>`).join('')}
@@ -980,7 +1003,16 @@ function settingsSheet() {
   });
 
   sheet.wrap.addEventListener('click', async e => {
-    const th = e.target.closest('[data-theme]');
+    const tx = e.target.closest('.inkopt');
+    if (tx) {
+      state.text = tx.dataset.text;
+      applyText(state.text);
+      await saveMeta('text', state.text);
+      $$('.inkopt', sheet.wrap).forEach(x => x.setAttribute('aria-pressed', String(x.dataset.text === state.text)));
+      if (state.editing) PAGE.renderBlocks();   // パレットの既定インクを差し替える
+      return;
+    }
+    const th = e.target.closest('.theme');
     if (th) {
       state.theme = th.dataset.theme;
       applyTheme(state.theme);
