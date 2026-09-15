@@ -78,7 +78,7 @@ const state = {
   view: { type: 'home', id: null },
   filter: { status: '', q: '' },
   editing: null, dirty: false,
-  ink: { tool: 'pen', color: '#1C1C1E', width: 3.5, penOnly: false },
+  ink: { tool: 'pen', color: '#1C1C1E', width: 3.5 },
 };
 const catOf = (id) => state.cats.find(c => c.id === id) || state.cats[0];
 const catByName = (name) => state.cats.find(c => c.name === name);
@@ -108,7 +108,6 @@ async function load() {
   await DB.open();
   const meta = Object.fromEntries((await DB.all('meta')).map(x => [x.key, x.value]));
   state.me = meta.me || '';
-  state.ink.penOnly = !!meta.penOnly;
   if (Array.isArray(meta.cats) && meta.cats.length && typeof meta.cats[0] === 'object') state.cats = meta.cats;
   else if (Array.isArray(meta.cats)) {
     state.cats = [DEFAULT_CATS[0], ...meta.cats.map((n, i) => ({ id: 'c' + (i + 1), name: n, color: DEFAULT_CATS[(i % 5) + 1].color }))];
@@ -137,7 +136,7 @@ async function seed() {
   const it = { v: 2, id: uid(), title: 'このページは削除して大丈夫です', cat: 'inbox', status: 'done', tags: ['あとで見る'], pinned: true,
     blocks: [
       { id: uid(), type: 'text', text: '疑問は1ページに1つ。うまく書こうとせず、その場で残すのがコツです。タイトルも業務も、あとから直せます。' },
-      { id: uid(), type: 'check', items: [{ text: '手書きのブロックを足して、Pencil で書く', done: true }, { text: '写真で画面や紙の資料を貼る', done: true }, { text: '回答をもらったら「解決」にする', done: false }] },
+      { id: uid(), type: 'check', items: [{ text: '手書きのブロックを足して、指で図を描く', done: true }, { text: '写真で画面や紙の資料を貼る', done: true }, { text: '回答をもらったら「解決」にする', done: false }] },
     ],
     answer: '回答はこの欄に書きます。届いた回答はホームの「新しい回答」に並びます。解決したページは FAQ としてまとめて印刷できます。',
     answeredBy: 'リーダー', answerAt: t, answerReadAt: t,
@@ -494,11 +493,11 @@ function drawStrokes(ctx, strokes, lineScale) {
     ctx.globalCompositeOperation = s.tool === 'eraser' ? 'destination-out' : 'source-over';
     ctx.strokeStyle = s.color;
     const base = s.tool === 'eraser' ? s.w * 6 : s.w;
-    for (let i = 1; i < pts.length; i++) {
-      const [x0, y0] = pts[i - 1], [x1, y1, p] = pts[i];
-      ctx.lineWidth = base * (.6 + .8 * (p ?? .5)) * lineScale;
-      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
-    }
+    ctx.lineWidth = base * lineScale;
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.stroke();
   }
   ctx.globalCompositeOperation = 'source-over';
 }
@@ -541,19 +540,16 @@ class Pad {
   }
   pt(e) {
     const r = this.canvas.getBoundingClientRect(), s = this.scale();
-    const p = e.pointerType === 'pen' ? (e.pressure || .5) : .5;
-    return [Math.round((e.clientX - r.left) / s * 10) / 10, Math.round((e.clientY - r.top) / s * 10) / 10, Math.round(p * 100) / 100];
+    return [Math.round((e.clientX - r.left) / s * 10) / 10, Math.round((e.clientY - r.top) / s * 10) / 10];
   }
-  accept(e) { return !(state.ink.penOnly && e.pointerType === 'touch'); }
   down(e) {
-    if (!this.accept(e)) return;
     e.preventDefault();
     this.canvas.setPointerCapture(e.pointerId);
     const { tool, color, width } = state.ink;
     this.cur = { tool, color: tool === 'marker' ? '#FFD60A' : color, w: tool === 'marker' ? 18 : width, points: [this.pt(e)] };
   }
   move(e) {
-    if (!this.cur || !this.accept(e)) return;
+    if (!this.cur) return;
     e.preventDefault();
     const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
     for (const ev of evs) this.cur.points.push(this.pt(ev));
@@ -678,13 +674,12 @@ const PAGE = {
             <span class="div"></span>
             <button class="tool" data-act="undo" aria-label="取り消す">${ic('undo')}</button>
             <button class="tool" data-act="clearInk" aria-label="すべて消す">${ic('trash')}</button>
-            <button class="tool" data-act="penOnly" aria-pressed="${state.ink.penOnly}" aria-label="Apple Pencil のみで描く">${ic('hand')}</button>
           </div>
           <div class="grip" title="ドラッグして高さを変える"><span></span></div>
         </div></div>`;
       if (b.type === 'text') return `<div class="block" data-bid="${b.id}">
         <div class="block-bar"><span class="bk">テキスト</span>${ctl(i)}</div>
-        <textarea placeholder="${esc(b.placeholder || 'ここに書く。Apple Pencil ならそのまま手書きで入力できます')}">${esc(b.text)}</textarea></div>`;
+        <textarea placeholder="${esc(b.placeholder || 'ここに書く')}">${esc(b.text)}</textarea></div>`;
       if (b.type === 'check') return `<div class="block" data-bid="${b.id}">
         <div class="block-bar"><span class="bk">チェックリスト ${b.items.filter(x => x.done).length}／${b.items.length}</span>${ctl(i)}</div>
         <div class="checks">${b.items.map((x, j) => `<div class="chk ${x.done ? 'on' : ''}" data-j="${j}">
@@ -905,11 +900,6 @@ function settingsSheet() {
     </div><div class="gfoot">名前は、作成者と回答者として各ページに記録されます。</div></div>
 
     <div class="gsec"><div class="glist">
-      <div class="cell"><span class="cbody"><span class="ctitle">Apple Pencil のみで描く</span></span>
-        <input class="switch" type="checkbox" id="setPenOnly" ${state.ink.penOnly ? 'checked' : ''} aria-label="Apple Pencil のみで描く"></div>
-    </div><div class="gfoot">オンにすると、手のひらや指が当たっても線を引きません。</div></div>
-
-    <div class="gsec"><div class="glist">
       <button class="cell inset-sep" data-act="export"><span class="lead-icon" style="background:var(--blue)">${ic('export')}</span>
         <span class="cbody"><span class="ctitle">すべてを書き出す</span></span>${ic('chev-r', 'sm')}</button>
       <button class="cell inset-sep" data-act="import"><span class="lead-icon" style="background:var(--green)">${ic('import')}</span>
@@ -930,12 +920,6 @@ function settingsSheet() {
     },
   });
 
-  sheet.wrap.addEventListener('change', async e => {
-    if (e.target.id === 'setPenOnly') {
-      state.ink.penOnly = e.target.checked;
-      await saveMeta('penOnly', state.ink.penOnly);
-    }
-  });
   sheet.wrap.addEventListener('click', e => {
     const b = e.target.closest('[data-act]'); if (!b) return;
     const act = b.dataset.act;
@@ -1019,9 +1003,9 @@ function helpSheet() {
       ${step('bubble', 'var(--green)', 'リーダーが回答を書く', '書き出したファイルを渡し、回答をもらったら取り込みます。届いた回答はホームに並びます。')}
       ${step('printer', 'var(--orange)', '解決したページは FAQ になる', '一覧の「その他」から FAQ を印刷できます。次に入る人への引き継ぎ資料になります。')}
     </div></div>
-    <div class="gsec"><div class="ghead">Apple Pencil</div><div class="glist">
-      ${step('text', '#8E8E93', 'テキスト欄に直接手書きできる', '書いた文字は自動で文字になるので、あとから検索できます。')}
-      ${step('hand', 'var(--teal)', '手のひらを無視する', '手書きツールの手のアイコン、または設定から切り替えられます。')}
+    <div class="gsec"><div class="ghead">手書き</div><div class="glist">
+      ${step('pen', 'var(--teal)', '指でそのまま書ける', '図や矢印など、文字にしにくいものは手書きが速いです。紙の下のグリップで高さを変えられます。')}
+      ${step('text', '#8E8E93', '文字はテキストで残す', '手書きは検索に引っかかりません。あとで探したいことはテキストのブロックに書きます。')}
     </div></div>` });
 }
 
@@ -1172,7 +1156,6 @@ function syncInk() {
   $$('#blocks [data-tool]').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.tool === state.ink.tool)));
   $$('#blocks [data-color]').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.color === state.ink.color)));
   $$('#blocks [data-w]').forEach(x => x.setAttribute('aria-pressed', String(+x.dataset.w === state.ink.width)));
-  $$('#blocks [data-act="penOnly"]').forEach(x => x.setAttribute('aria-pressed', String(state.ink.penOnly)));
 }
 
 // ============================================================
@@ -1311,11 +1294,6 @@ async function main() {
       case 'clearInk':
         if (await confirm_('手書きをすべて消しますか', 'この紙に書いた線がすべて消えます。', '消す')) pad.clear();
         return;
-      case 'penOnly':
-        state.ink.penOnly = !state.ink.penOnly;
-        saveMeta('penOnly', state.ink.penOnly);
-        syncInk();
-        return hud(state.ink.penOnly ? 'Apple Pencil のみで描きます' : '指でも描けます');
       case 'up':
         if (i > 0) { it.blocks.splice(i, 1); it.blocks.splice(i - 1, 0, b); PAGE.renderBlocks(); PAGE.touch(true); }
         return;
