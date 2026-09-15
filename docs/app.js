@@ -60,6 +60,19 @@ const DB = {
 // ============================================================
 // 状態
 // ============================================================
+// 8色。地はパステル、文字やボタンに使う色は読めるだけの濃さを持たせる
+const THEMES = [
+  { id: 'sky', name: 'スカイ', color: '#0A78FF', pastel: '#CFE2FF' },
+  { id: 'mint', name: 'ミント', color: '#0E9E86', pastel: '#C8ECE2' },
+  { id: 'lavender', name: 'ラベンダー', color: '#7566EE', pastel: '#DCD6FB' },
+  { id: 'sakura', name: 'サクラ', color: '#DE6391', pastel: '#F8D3E1' },
+  { id: 'apricot', name: 'アプリコット', color: '#D97B36', pastel: '#FBDEC4' },
+  { id: 'lemon', name: 'レモン', color: '#AF8E1F', pastel: '#F3E6B4' },
+  { id: 'sage', name: 'セージ', color: '#6C8D62', pastel: '#D6E5CF' },
+  { id: 'slate', name: 'スレート', color: '#56697E', pastel: '#D3DCE7' },
+];
+const applyTheme = (id) => document.documentElement.setAttribute('data-theme', THEMES.find(t => t.id === id) ? id : 'sky');
+
 const SYS = { blue: '#007AFF', red: '#FF3B30', orange: '#FF9500', green: '#34C759', indigo: '#5856D6', purple: '#AF52DE', teal: '#30B0C7', pink: '#FF2D55', brown: '#A2845E' };
 const DEFAULT_CATS = [
   { id: 'inbox', name: '未分類', color: '#8E8E93' },
@@ -79,6 +92,7 @@ const state = {
   filter: { status: '', q: '' },
   editing: null, dirty: false,
   ink: { tool: 'pen', color: '#1C1C1E', width: 3.5 },
+  theme: 'sky',
 };
 const catOf = (id) => state.cats.find(c => c.id === id) || state.cats[0];
 const catByName = (name) => state.cats.find(c => c.name === name);
@@ -91,14 +105,14 @@ function allTags() {
 
 // v1 → v2 変換
 function migrate(it) {
-  if (it.v === 2) { it.tags = normTags(it.tags); return it; }
+  if (it.v === 2) { it.tags = normTags(it.tags); if (it.parentId === undefined) it.parentId = null; return it; }
   const blocks = [];
   if (it.strokes?.length) blocks.push({ id: uid(), type: 'ink', strokes: it.strokes, w: it.padW || 800, h: it.padH || 320 });
   if (it.body?.trim()) blocks.push({ id: uid(), type: 'text', text: it.body });
   const named = typeof it.cat === 'string' && !state.cats.find(x => x.id === it.cat) ? catByName(it.cat) : null;
   return { v: 2, id: it.id, title: it.title || '',
     cat: named ? named.id : (state.cats.find(x => x.id === it.cat) ? it.cat : 'inbox'),
-    status: it.status || 'open', tags: normTags(it.tags), pinned: !!it.pinned, blocks: it.blocks || blocks,
+    status: it.status || 'open', tags: normTags(it.tags), pinned: !!it.pinned, parentId: it.parentId || null, blocks: it.blocks || blocks,
     answer: it.answer || '', answeredBy: it.answeredBy || '', answerAt: it.answerAt || (it.answer ? it.updatedAt : 0), answerReadAt: it.answerReadAt || 0,
     history: it.history || [{ at: it.createdAt || now(), by: it.createdBy || '', ev: 'created' }],
     createdAt: it.createdAt || now(), updatedAt: it.updatedAt || now(), createdBy: it.createdBy || '' };
@@ -108,6 +122,8 @@ async function load() {
   await DB.open();
   const meta = Object.fromEntries((await DB.all('meta')).map(x => [x.key, x.value]));
   state.me = meta.me || '';
+  state.theme = meta.theme || 'sky';
+  applyTheme(state.theme);
   if (Array.isArray(meta.cats) && meta.cats.length && typeof meta.cats[0] === 'object') state.cats = meta.cats;
   else if (Array.isArray(meta.cats)) {
     state.cats = [DEFAULT_CATS[0], ...meta.cats.map((n, i) => ({ id: 'c' + (i + 1), name: n, color: DEFAULT_CATS[(i % 5) + 1].color }))];
@@ -148,6 +164,15 @@ async function seed() {
 // ============================================================
 // 派生
 // ============================================================
+const byId = (id) => state.items.find(x => x.id === id);
+const childrenOf = (id) => state.items.filter(x => x.parentId === id)
+  .sort((a, b) => (STATUS_ORDER[a.status] - STATUS_ORDER[b.status]) || (a.createdAt - b.createdAt));
+// 循環を避けつつ、子孫をすべて集める
+function descendants(id, seen = new Set()) {
+  if (seen.has(id)) return [];
+  seen.add(id);
+  return childrenOf(id).flatMap(c => [c, ...descendants(c.id, seen)]);
+}
 const isUnread = (it) => it.answer && it.answerAt > (it.answerReadAt || 0) && it.answeredBy !== state.me;
 const blockText = (b) => b.type === 'text' ? b.text : b.type === 'check' ? b.items.map(x => x.text).join(' ') : b.type === 'image' ? (b.caption || '') : '';
 const textOf = (it) => [it.title, it.answer, it.answeredBy, it.createdBy, catOf(it.cat)?.name, ...it.tags, ...it.blocks.map(blockText)].join('\n').toLowerCase();
@@ -353,15 +378,25 @@ function renderList() {
     el.innerHTML = `<div class="empty">${ic('note', 'lg')}<div class="h">${esc(h)}</div>${d ? `<div class="d">${esc(d)}</div>` : ''}</div>`;
     return;
   }
-  const sec = (title, arr) => arr.length
-    ? `<div class="gsec"><div class="ghead">${esc(title)}</div><div class="glist">${arr.map(noteCell).join('')}</div></div>` : '';
   const flat = state.filter.status || state.filter.q || v.type === 'tag' || v.type === 'unread';
-  el.innerHTML = flat
-    ? `<div class="gsec"><div class="ghead">${items.length} 件</div><div class="glist">${items.map(noteCell).join('')}</div></div>`
-    : sec('ピン留め', items.filter(i => i.pinned)) + ['open', 'wip', 'done'].map(s => sec(STATUS[s], items.filter(i => !i.pinned && i.status === s))).join('');
+  if (flat) {
+    el.innerHTML = `<div class="gsec"><div class="ghead">${items.length} 件</div><div class="glist">${items.map(i => noteCell(i)).join('')}</div></div>`;
+    return;
+  }
+  // 親が同じ一覧にいるページは、親の下にぶら下げて表示する
+  const ids = new Set(items.map(i => i.id));
+  const roots = items.filter(i => !i.parentId || !ids.has(i.parentId));
+  const branch = (it, depth) => {
+    const kids = childrenOf(it.id).filter(k => ids.has(k.id));
+    return noteCell(it, depth) + kids.map((k, j) => branch(k, Math.min(depth + 1, 2), j === kids.length - 1)).join('');
+  };
+  const sec = (title, arr) => arr.length
+    ? `<div class="gsec"><div class="ghead">${esc(title)}</div><div class="glist">${arr.map(i => branch(i, 0)).join('')}</div></div>` : '';
+  el.innerHTML = sec('ピン留め', roots.filter(i => i.pinned))
+    + ['open', 'wip', 'done'].map(st => sec(STATUS[st], roots.filter(i => !i.pinned && i.status === st))).join('');
 }
 
-function noteCell(it) {
+function noteCell(it, depth = 0) {
   const th = thumb(it);
   const c = catOf(it.cat);
   const sn = snippet(it);
@@ -369,7 +404,9 @@ function noteCell(it) {
   // タイトルが本文の1行目そのものなら、続きだけを抜粋に出す（重複を避ける）
   const rest = sn.startsWith(title) ? sn.slice(title.length).replace(/^[。、\s]+/, '') : sn;
   const sub = it.answer ? '回答：' + it.answer : (rest || '追加のテキストなし');
-  return `<button class="cell note" data-open="${it.id}">
+  const kids = childrenOf(it.id).length;
+  return `<button class="cell note ${depth ? 'child' : ''} ${depth > 1 ? 'd2' : ''}" data-open="${it.id}">
+    ${depth ? '<span class="twig" aria-hidden="true"></span>' : ''}
     <span class="cbody">
       <span class="ntitle ${it.title ? '' : 'untitled'}">
         ${isUnread(it) ? '<span class="newdot"></span>' : ''}${it.pinned ? ic('pin', 'sm') : ''}
@@ -380,6 +417,7 @@ function noteCell(it) {
         <span>${fmt(it.updatedAt)}</span>
         <span style="display:inline-flex;align-items:center;gap:4px"><span class="swatch" style="width:8px;height:8px;background:${c.color}"></span>${esc(c.name)}</span>
         ${it.tags.slice(0, 2).map(t => `<span class="tagtoken">${ic('tag', 'sm')}${esc(t)}</span>`).join('')}
+        ${kids ? `<span class="tagtoken">${ic('link', 'sm')}${kids}</span>` : ''}
       </span>
     </span>
     ${th ? `<img class="nthumb" src="${th}" alt="">` : ''}
@@ -591,22 +629,21 @@ const PAGE = {
     this.killPads();
     const it = state.editing;
     const c = catOf(it.cat);
+    const parent = it.parentId ? byId(it.parentId) : null;
     $('#pageTitle').innerHTML = `<span class="swatch" style="background:${c.color}"></span><span class="t-footnote c2">${esc(c.name)}</span>`;
     $('#btnPin').style.color = it.pinned ? 'var(--tint)' : 'var(--label-3)';
     $('#btnPin').setAttribute('aria-pressed', String(it.pinned));
 
     $('#doc').innerHTML = `
+      ${parent ? `<button class="parentbar" data-open="${parent.id}">${ic('chev-l', 'sm')}<span class="nm">${esc(parent.title || firstLine(parent) || '親ページ')}</span></button>` : ''}
       <textarea class="doc-title" id="edTitle" rows="1" placeholder="タイトル" aria-label="タイトル">${esc(it.title)}</textarea>
 
-      <div class="gsec"><div class="glist">
-        <button class="cell" data-prop="status"><span class="cbody"><span class="ctitle">ステータス</span></span>
-          <span class="cvalue"><span class="status st-${it.status}"><span class="dot"></span>${STATUS[it.status]}</span></span>${ic('chev-r', 'sm')}</button>
-        <button class="cell" data-prop="cat"><span class="cbody"><span class="ctitle">業務</span></span>
-          <span class="cvalue"><span class="swatch" style="width:10px;height:10px;background:${c.color}"></span>${esc(c.name)}</span>${ic('chev-r', 'sm')}</button>
-        <button class="cell" data-prop="tags"><span class="cbody"><span class="ctitle">タグ</span></span>
-          ${it.tags.length ? `<span class="tokens">${it.tags.map(t => `<span class="token">${ic('tag', 'sm')}${esc(t)}</span>`).join('')}</span>` : '<span class="cvalue">なし</span>'}
-          ${ic('chev-r', 'sm')}</button>
-      </div></div>
+      <div class="propbar">
+        <button class="pchip st-${it.status}" data-prop="status"><span class="dot" style="background:currentColor"></span>${STATUS[it.status]}</button>
+        <button class="pchip" data-prop="cat"><span class="dot" style="background:${c.color}"></span>${esc(c.name)}</button>
+        ${it.tags.map(t => `<button class="pchip tag" data-prop="tags">${ic('tag', 'sm')}${esc(t)}</button>`).join('')}
+        <button class="pchip add" data-prop="tags" aria-label="タグを追加">${ic('tag', 'sm')}${it.tags.length ? '' : 'タグ'}${ic('plus', 'sm')}</button>
+      </div>
 
       <div class="blocks" id="blocks"></div>
 
@@ -630,6 +667,9 @@ const PAGE = {
         <div class="gfoot">回答を書くと、ステータスは自動で「確認中」になります。</div>
       </div>
 
+      <div class="gsec"><div class="ghead">ぶら下がっているページ</div><div class="glist" id="kidList"></div>
+        <div class="gfoot">このページから派生した疑問を、続けてここにぶら下げられます。</div></div>
+
       <div class="gsec" id="relSec" hidden><div class="ghead">関連するページ</div><div class="glist" id="relList"></div></div>
 
       <div class="gsec"><div class="glist">
@@ -639,8 +679,17 @@ const PAGE = {
     autogrow($('#edTitle'));
     autogrow($('#edAnswer'));
     this.renderBlocks();
+    this.renderChildren();
     this.renderRelated();
     this.renderHistory();
+  },
+
+  renderChildren() {
+    const kids = childrenOf(state.editing.id);
+    $('#kidList').innerHTML = kids.map(k => `<button class="cell" data-open="${k.id}">
+        <span class="cbody"><span class="ctitle">${esc(k.title || firstLine(k) || '新しいページ')}</span></span>
+        <span class="cvalue"><span class="status st-${k.status}"><span class="dot"></span>${STATUS[k.status]}</span></span>${ic('chev-r', 'sm')}</button>`).join('')
+      + `<button class="plainbtn" id="btnAddChild">${ic('plus', 'sm')}ここにぶら下げて書く</button>`;
   },
 
   killPads() { for (const p of this.pads.values()) p.destroy(); this.pads.clear(); },
@@ -741,7 +790,7 @@ const PAGE = {
 
   addBlock(type) {
     if (type === 'image') return $('#imgFile').click();
-    const b = type === 'ink' ? { id: uid(), type, strokes: [], w: 0, h: 340 }
+    const b = type === 'ink' ? { id: uid(), type, strokes: [], w: 0, h: 420 }
       : type === 'check' ? { id: uid(), type, items: [{ text: '', done: false }] }
       : { id: uid(), type: 'text', text: '' };
     state.editing.blocks.push(b);
@@ -787,7 +836,11 @@ const PAGE = {
   },
   async remove() {
     const it = state.editing;
-    if (!(await confirm_('このページを削除しますか', '削除したページは元に戻せません。'))) return;
+    const kids = childrenOf(it.id);
+    if (!(await confirm_('このページを削除しますか',
+      kids.length ? `ぶら下がっている ${kids.length} 件は、ひとつ上に繋ぎ直します。削除したページは元に戻せません。`
+                  : '削除したページは元に戻せません。'))) return;
+    for (const k of kids) { k.parentId = it.parentId || null; await saveItem(k); }
     state.items = state.items.filter(x => x !== it);
     await DB.del('items', it.id);
     this.killPads();
@@ -854,10 +907,11 @@ const TEMPLATES = [
   { id: 'steps', icon: 'checklist', label: '教わった手順を残す', sub: '順番にチェックリストで' },
   { id: 'call', icon: 'bubble', label: '電話・引き継ぎのメモ', sub: '相手 / 用件 / 対応 / 次にやること' },
 ];
-function newItem(tpl) {
-  const cat = state.view.type === 'cat' ? state.view.id : 'inbox';
+function newItem(tpl, parentId = null) {
+  const parent = parentId ? byId(parentId) : null;
+  const cat = parent ? parent.cat : state.view.type === 'cat' ? state.view.id : 'inbox';
   const blocks = {
-    ink: [{ id: uid(), type: 'ink', strokes: [], w: 0, h: 380 }],
+    ink: [{ id: uid(), type: 'ink', strokes: [], w: 0, h: 460 }],
     text: [{ id: uid(), type: 'text', text: '' }],
     question: [
       { id: uid(), type: 'text', text: '', placeholder: 'いつ、どの業務で、何が起きましたか' },
@@ -871,8 +925,8 @@ function newItem(tpl) {
       { id: uid(), type: 'text', text: '', placeholder: '用件' },
       { id: uid(), type: 'text', text: '', placeholder: '対応したこと' },
       { id: uid(), type: 'check', items: [{ text: '', done: false }] }],
-  }[tpl] || [{ id: uid(), type: 'ink', strokes: [], w: 0, h: 380 }];
-  return { v: 2, id: uid(), title: '', cat,
+  }[tpl] || [{ id: uid(), type: 'ink', strokes: [], w: 0, h: 460 }];
+  return { v: 2, id: uid(), title: '', cat, parentId,
     status: tpl === 'steps' ? 'done' : 'open',
     tags: tpl === 'call' ? ['やること'] : [],
     pinned: false, blocks, answer: '', answeredBy: '', answerAt: 0, answerReadAt: 0,
@@ -899,6 +953,11 @@ function settingsSheet() {
         <span class="cvalue">${state.cats.length} 件</span>${ic('chev-r', 'sm')}</button>
     </div><div class="gfoot">名前は、作成者と回答者として各ページに記録されます。</div></div>
 
+    <div class="gsec"><div class="ghead">テーマの色</div><div class="glist themes-wrap"><div class="themes">
+      ${THEMES.map(t => `<button class="theme" data-theme="${t.id}" aria-pressed="${state.theme === t.id}"
+        style="color:${t.color}" aria-label="${esc(t.name)}"><i style="background:${t.pastel}"></i><span>${esc(t.name)}</span></button>`).join('')}
+    </div></div></div>
+
     <div class="gsec"><div class="glist">
       <button class="cell inset-sep" data-act="export"><span class="lead-icon" style="background:var(--blue)">${ic('export')}</span>
         <span class="cbody"><span class="ctitle">すべてを書き出す</span></span>${ic('chev-r', 'sm')}</button>
@@ -920,7 +979,15 @@ function settingsSheet() {
     },
   });
 
-  sheet.wrap.addEventListener('click', e => {
+  sheet.wrap.addEventListener('click', async e => {
+    const th = e.target.closest('[data-theme]');
+    if (th) {
+      state.theme = th.dataset.theme;
+      applyTheme(state.theme);
+      await saveMeta('theme', state.theme);
+      $$('.theme', sheet.wrap).forEach(x => x.setAttribute('aria-pressed', String(x.dataset.theme === state.theme)));
+      return;
+    }
     const b = e.target.closest('[data-act]'); if (!b) return;
     const act = b.dataset.act;
     if (act === 'cats') { sheet.close(); catSheet(); }
@@ -1000,6 +1067,7 @@ function helpSheet() {
     <div class="gsec"><div class="glist">
       ${step('compose', 'var(--blue)', '迷ったらすぐ書く', '右上の作成ボタン、またはホームの入力欄から。うまく書こうとしなくて大丈夫です。')}
       ${step('folder', 'var(--indigo)', 'あとから業務ごとに整理', '最初は「未分類」に入ります。サイドバーの業務を選ぶと、その業務のページだけが表示されます。')}
+      ${step('link', 'var(--teal)', '続きの疑問はぶら下げる', 'ページの下の「ここにぶら下げて書く」から。一覧では親の下に枝分かれして並びます。')}
       ${step('bubble', 'var(--green)', 'リーダーが回答を書く', '書き出したファイルを渡し、回答をもらったら取り込みます。届いた回答はホームに並びます。')}
       ${step('printer', 'var(--orange)', '解決したページは FAQ になる', '一覧の「その他」から FAQ を印刷できます。次に入る人への引き継ぎ資料になります。')}
     </div></div>
@@ -1227,18 +1295,23 @@ async function main() {
     renderList();
   });
 
-  $('#btnCompose').onclick = (e) => popover(e.currentTarget,
+  // 作成は1タップで手書きの紙が開く。形を選びたいときはメニューから
+  $('#btnCompose').onclick = () => PAGE.open(newItem('ink'));
+
+  const openTemplates = (anchor, parentId = null) => popover(anchor,
     TEMPLATES.map(t => ({ label: t.label, sub: t.sub, icon: t.icon, value: t.id })),
     m => {
-      PAGE.open(newItem(m.value));
+      PAGE.open(newItem(m.value, parentId));
       if (m.value !== 'ink') setTimeout(() => $('#edTitle')?.focus(), 320);
     });
 
   $('#btnListMenu').onclick = (e) => popover(e.currentTarget, [
+    { label: 'テンプレートから作る', sub: '疑問の整理、手順、電話メモ', icon: 'compose', value: 'tpl' },
     { label: 'FAQ を印刷', sub: 'この一覧の解決済みページ', icon: 'printer', value: 'print' },
     { label: 'すべてを書き出す', icon: 'export', value: 'export' },
     { label: 'ファイルを取り込む', icon: 'import', value: 'import' },
   ], m => {
+    if (m.value === 'tpl') openTemplates($('#btnListMenu'));
     if (m.value === 'print') printFAQ();
     if (m.value === 'export') exportData();
     if (m.value === 'import') $('#fileImport').click();
@@ -1255,9 +1328,13 @@ async function main() {
   };
   $('#btnShare').onclick = () => state.editing && exportData([state.editing]);
   $('#btnPageMenu').onclick = (e) => popover(e.currentTarget, [
+    { label: 'ここにぶら下げて書く', sub: 'このページの子として新規作成', icon: 'plus', value: 'child' },
+    { label: 'テンプレートからぶら下げる', icon: 'compose', value: 'childTpl' },
     { label: 'このページを書き出す', icon: 'export', value: 'share' },
     { label: 'ページを削除', icon: 'trash', value: 'delete', style: 'destructive' },
   ], m => {
+    if (m.value === 'child') PAGE.open(newItem('ink', state.editing.id));
+    if (m.value === 'childTpl') openTemplates($('#btnPageMenu'), state.editing.id);
     if (m.value === 'share') exportData([state.editing]);
     if (m.value === 'delete') PAGE.remove();
   });
@@ -1273,6 +1350,11 @@ async function main() {
     if (e.target.closest('#btnMarkDone')) {
       PAGE.setStatus('done', true);
       return hud('解決にしました。FAQ に載ります');
+    }
+    if (e.target.closest('#btnAddChild')) {
+      if (PAGE.isEmpty(it)) return hud('先にこのページに何か書いてください');
+      await PAGE.save();
+      return PAGE.open(newItem('ink', it.id));
     }
 
     const blk = e.target.closest('.block'); if (!blk) return;
